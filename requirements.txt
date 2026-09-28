@@ -1,0 +1,6 @@
+requests
+pandas
+numpy
+pyyaml
+python-dotenv
+pytest

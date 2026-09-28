@@ -1,0 +1,11 @@
+exchange:
+  base_url: https://mock-api.roostoo.com
+  quote_currency: USD
+
+# PLACEHOLDER -- the real Roostoo rate limit is still UNKNOWN.
+# Do not treat this value as validated; set it once the limit is confirmed.
+poll_interval_seconds: null  # TODO: set after rate limit is known
+
+pairs: []  # TBD
+
+risk: {}   # TBD
