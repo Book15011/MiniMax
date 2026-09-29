@@ -6,6 +6,90 @@ exchange:
 # Do not treat this value as validated; set it once the limit is confirmed.
 poll_interval_seconds: null  # TODO: set after rate limit is known
 
-pairs: []  # TBD
+# Trading universe: 65 active crypto pairs, ordered by 24h USD volume.
+# Source: the PUBLIC /v3/exchangeInfo snapshot of 2026-09-29 -- pairs with AssetType == crypto,
+# minus TON/USD and OMNI/USD (no ticker data). The 21 AssetType == stock pairs are excluded.
+# MUST be re-checked against the competition account's exchangeInfo once API keys arrive.
+# All code reads the universe from here; do not hard-code pair lists elsewhere.
+universe:
+  - BTC/USD
+  - ETH/USD
+  - ZEC/USD
+  - SOL/USD
+  - XRP/USD
+  - NEAR/USD
+  - HBAR/USD
+  - SUI/USD
+  - LINK/USD
+  - UNI/USD
+  - BNB/USD
+  - DOGE/USD
+  - XLM/USD
+  - PUMP/USD
+  - WLD/USD
+  - ONDO/USD
+  - ENA/USD
+  - AVAX/USD
+  - TAO/USD
+  - ADA/USD
+  - LTC/USD
+  - PEPE/USD
+  - ARB/USD
+  - TRX/USD
+  - FET/USD
+  - XPL/USD
+  - AAVE/USD
+  - SEI/USD
+  - TRUMP/USD
+  - FIL/USD
+  - PAXG/USD
+  - ICP/USD
+  - ASTER/USD
+  - DOT/USD
+  - PENGU/USD
+  - VIRTUAL/USD
+  - CRV/USD
+  - POL/USD
+  - APT/USD
+  - CAKE/USD
+  - ZEN/USD
+  - PENDLE/USD
+  - PLUME/USD
+  - WLFI/USD
+  - SHIB/USD
+  - BONK/USD
+  - EIGEN/USD
+  - LINEA/USD
+  - WIF/USD
+  - TUT/USD
+  - FLOKI/USD
+  - BIO/USD
+  - EDEN/USD
+  - HEMI/USD
+  - FORM/USD
+  - CFX/USD
+  - S/USD
+  - OPEN/USD
+  - AVNT/USD
+  - MIRA/USD
+  - SOMI/USD
+  - STO/USD
+  - BMT/USD
+  - 1000CHEEMS/USD
+  - LISTA/USD
+
+data:
+  binance_spot:
+    base_url: https://data.binance.vision/data/spot
+    interval: 1m
+    monthly_start: "2025-09"
+    monthly_end: "2026-08"
+    daily_start: "2026-09-01"
+    daily_end: latest            # or an explicit YYYY-MM-DD
+    raw_dir: data/binance_spot/klines_1m
+    parquet_dir: data/binance_spot/parquet
+    manifest: data/binance_spot/_manifest.jsonl
+    lock_file: data/binance_spot/.downloader.lock
+    max_workers: 4               # hard-capped at 4 in code
 
 risk: {}   # TBD
