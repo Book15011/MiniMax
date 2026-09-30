@@ -1,7 +1,7 @@
 # MiniMax: rules for agents and teammates
 
 Every agent (Claude Code, Codex/ChatGPT, Copilot) reads this file at the start of every session and follows it.
-It overrides tool defaults. Change it only through a reviewed merge (§4). Last updated 2026-09-30.
+It overrides tool defaults. Change it only through a reviewed merge (§4). Last updated 2026-09-30 (v2).
 
 **Start every agent session with:** `ssh metallurgy-server 'git -C /home/ubuntu/test/MiniMax show main:AGENTS.md'`
 
@@ -12,7 +12,7 @@ It overrides tool defaults. Change it only through a reviewed merge (§4). Last 
 - The live bot runs **only** on the organizers' AWS EC2 (Sydney). This server is for data, research and tests.
 - Git is **local to this server**: no GitHub day to day. Book pushes `main` to GitHub once, for submission.
 - The repo goes public at submission, so write every file, commit and comment as if it's already public.
-- Plan and workstreams: `docs/TEAM_PLAN.md`.
+- Plan: `docs/TEAM_PLAN.md` · code map: `docs/PROJECT_MAP.md` · building and testing a model: `docs/STRATEGY_GUIDE.md`.
 
 ## 2. Hard rules
 
@@ -62,22 +62,17 @@ scripts/status                                        # worktrees, tmux sessions
 Members: `pol`, `book`, `baitoey`.
 
 - **Identity:** `scripts/wt new` sets your git name and email for that worktree from `.team/identities` (never shared). Commits must show who did what.
-- **Ownership:** every area has an owner (§5). Change another owner's area only on your own branch, and get that owner as the reviewer.
 - **Review:** before `scripts/wt merge`, the reviewer reads `git diff main...feature/<task>` and confirms. `Reviewed-by` goes into the merge commit, so history shows who checked what.
-- **Long jobs:** run them in tmux named `mm-<member>-<task>`, wrapped in `scripts/lock <name> -- <command>` so two copies can't run.
-  - Outputs go to `results/<member>/<YYYYMMDD>-<task>/`.
-  - Check `scripts/status` before starting anything heavy.
+- **Long jobs:** run them in tmux named `mm-<member>-<task>`, wrapped in `scripts/lock <name> -- <command>` so two copies can't run. Check `scripts/status` before starting anything heavy.
+- **Reports:** every test or backtest run writes `reports/<model_name>/<YYYYMMDD-HHMM>.md` (committed) and a `.log` with the same name (never committed). Comparisons write to `reports/compare/<method>/`. Scratch output goes to `results/<member>/`.
 - **Main stays green:** `scripts/wt merge` refuses to merge if tests fail or the worktree has uncommitted changes. Merges run under a lock, so two people can't merge at once.
 
-## 5. Ownership
+## 5. Models and shared code
 
-| Workstream | Owner | Paths |
-|---|---|---|
-| W1 Live engine & ops | pol | `src/api/`, `src/execution/`, `src/live/`, `deploy/`, `tests/test_api*`, README engine section |
-| W2 Data, backtest & validation | book | `src/data/`, `backtest/`, `src/validation/`, `src/orchestrator/`, `data/` |
-| W3 Strategies & risk | baitoey | `src/strategy/`, `src/risk/`, `config.yaml` strategy section, README strategy section |
-
-Shared contracts: `src/contracts.py`. Change them only with all three members reviewing. Details are in `docs/TEAM_PLAN.md`.
+- **No fixed roles.** Each member builds their own models; the harness scores every model the same way, and the best of the three in each method wins (rule in `docs/STRATEGY_GUIDE.md`).
+- **Models** live in `src/models/<member>/<model_name>.py`, names start with the member (`pol_…`, `book_…`, `baitoey_…`), and each declares a method: `momentum`, `trend` or `selector` (add a method only by team agreement).
+- **Shared code** belongs to everyone: data (`src/data/`), validation (`src/validation/`), harness (`backtest/`), exchange client and engine (`src/api/`, `src/execution/`, `src/live/`), `deploy/`.
+- **Reviews:** the reviewer is always someone other than the author. Changes to shared contracts (`src/contracts.py`) need both other members as reviewers.
 
 ## 6. Every task
 
@@ -85,7 +80,7 @@ Shared contracts: `src/contracts.py`. Change them only with all three members re
 2. `scripts/wt new <member> <task>`.
 3. Write tests first for anything that touches money: sizing, orders, fees, metrics.
 4. Implement. Strategy code is pure (no I/O), and every tunable number lives in `config.yaml`.
-5. `pytest -q`, then commit (say *why*), then `scripts/wt merge` once reviewed. If strategy behaviour changed, the merge needs a backtest diff in `results/`.
+5. `pytest -q`, then commit (say *why*), then `scripts/wt merge` once reviewed. If a model changed, the merge includes its new report in `reports/<model_name>/`.
 6. Report what changed, what was verified, and what is still unverified.
 
 ## 7. Code rules

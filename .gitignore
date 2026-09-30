@@ -16,3 +16,6 @@ __pycache__/
 # symlinks inside worktrees (no trailing slash so links match too)
 /.venv
 /data
+
+# Run logs next to reports are never committed (AGENTS.md section 4)
+reports/**/*.log

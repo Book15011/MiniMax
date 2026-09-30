@@ -1,28 +1,18 @@
 # MiniMax team plan
 
-_Version 1 · 2026-09-30 · proposal for team review. Decisions become final when the team merges this file into `main`._
+_Version 2 · 2026-09-30 · replaces v1. Decisions become final when the team merges this file into `main`._
 
 ## 0. Summary
 
-| Decision | Proposal | Evidence |
-|---|---|---|
-| Launch strategy (v1) | **Momentum rotation + 25% short sleeve** (MOM-SS), with a forced daily trade | Best risk-adjusted record 2022–2026. Also positive in 2020–2023, data that did not exist when its parameters were set (§2) |
-| Orchestrator | **Research track only.** No live method-switching until it beats MOM-SS and a fixed blend in a walk-forward test | All three switching orchestrators we tested lost to MOM-SS out of sample (§2.2) |
-| Drawdown brakes / loss floor | Team decision. They cut the worst fortnight from about −11% to about −7%, and cost about 0.5 pp of the typical fortnight | §2.3 |
-| Activity rule | Enforced by the **engine** (exact daily rebalance), not left to each strategy | Without it, most methods fail "≥ 10 active days" in 63–98% of windows |
-| Workstreams | W1 Live engine & ops · W2 Data, backtest & validation · W3 Strategies & risk | §4 |
-| Critical path | Engine + EC2 must be live-capable by **Oct 3**. Research never blocks it | §3 |
-
-### Where the repo stands (Sep 30)
-
-| Area | Status |
+| Topic | Decision |
 |---|---|
-| Data: Binance downloader, loader, integrity sweep, FRED, futures funding/OI copy | ✅ built (`src/data/`, 3.2 GB in `data/`) |
-| Lookalike validation pipeline with a pre-registered rule | ✅ built (`src/validation/`); results pending |
-| Tests | ✅ 40 passing |
-| Roostoo API client, order planner, paper/live engine, EC2 deploy | ❌ not started (W1) |
-| Backtest engine + metrics + window evaluator | ❌ not started (W2) |
-| Strategy functions and risk overlays | ❌ not started (W3) |
+| Process | **No fixed roles.** Each member builds their own models in each method (`momentum`, `trend`, `selector`). One harness scores every model the same way. The best of the three in each method wins, by the pre-registered rule in `docs/STRATEGY_GUIDE.md` |
+| Launch default | The **momentum** winner, unless a selector passes the selection ladder or the trend winner beats it in both test periods (§4.3) |
+| Lookalike validation | Built and pre-registered (`reports/validation_set_v1.md`). It shows **no skill** at predicting direction, so it's used to size risk and as a scenario set, not to pick strategies (§3) |
+| Selectors (orchestrators) | Go live only if they pass the selection ladder (`docs/STRATEGY_GUIDE.md` §6) |
+| Activity rule | Enforced by the engine: a guaranteed daily strategy trade |
+| Reports | `reports/<model_name>/<YYYYMMDD-HHMM>.md` (committed) + `.log` (not committed) |
+| AWS | Invite expected around Oct 2. Everything that doesn't need EC2 proceeds now |
 
 ## 1. Rules check: does every method in the plan comply?
 
@@ -56,7 +46,7 @@ The rules come from the Luma page, the info-session deck, the FAQ and the organi
 
 **Plan-level risks:**
 
-1. **Scope vs. time.** The validation build (macro data, walk-forward skill scoring, stress sets, a bootstrap simulator) plus eight strategy families plus tuning is more than 4 days of work. The **live engine has no named owner** in the plan, and it's the critical path. §4 fixes that.
+1. **Scope vs. time.** The validation build is done. The live engine and the harness were unstarted on Sep 30; both are now on the build list (§4.1) and start first.
 2. **"≥ 10 active days in 100% of windows" is unreachable for raw strategies.** Build it into the engine as a guaranteed daily trade (§2.3 shows 100% with the guard).
 3. **The lab server's clock is ~12.8 h off, and Binance's live API is blocked here.** Signed requests must use the `/v3/serverTime` offset. The live data path must be tested on EC2.
 4. **The lookalike skill test may show no skill.** Our quick walk-forward test of lookalike-based *method selection* did worse than a fixed choice (§2.2). Pre-register what happens if it fails: fall back to the fixed choice.
@@ -132,63 +122,77 @@ The orchestrator stays a research goal, run in this order:
 - The brakes are insurance: they cut the worst fortnight by about a third and cost typical return.
 - A gentler floor (shrink smoothly toward −10% of the round's starting equity) cost less in earlier tests. Team decision.
 
-## 3. Recommended plan
+## 3. Lookalike validation: what it tells us
 
-**Track A: live-capable v1 by Oct 3** (never blocked by research):
-1. MOM-SS as a pure strategy function:
-   - daily decision at 00:05 UTC
-   - top 15 liquid coins, top 5 long, keep while in the top 10
-   - 25% short sleeve on the 4 weakest coins with negative momentum
-   - long book volatility-capped
-2. The engine guarantees a daily trade, applies the §1 conditions, and falls back to long-only if the short check fails.
-3. Market orders at launch. Limit-first execution only after the test key shows how limit orders fill.
+**Setup** (`reports/validation_set_v1.md`, as of Sep 30 00:00 UTC):
+- Pre-registered.
+- Picks the 25 past 14-day windows whose starting market state (trend, cycle, volatility, market structure) is closest to the live start.
+- Funding, macro and calendar features were tested and didn't earn a place.
 
-**Track B: upgrades, Oct 1–10.** Each candidate must pass a pre-written rule:
-- It beats MOM-SS on 2022–2026 walk-forward (median composite and worst-10%, under both metric conventions).
-- It has paper-traded for 3 days without errors.
-- Candidates, in order:
-  1. Loss floor or profit lock (team decision)
-  2. Limit-first execution
-  3. Fixed blend
-  4. Orchestrator soft tilts
-  5. TG-MOM as a sleeve (its shallow drawdowns may help a blend)
-  6. ML signal overlay
+**Verdict:**
 
-After Oct 10: bug fixes only. No strategy changes in the last 3 days.
+| Question | Answer (from the report's own numbers) |
+|---|---|
+| Better than using all of history? | No clear skill. +0.007 [−0.011, +0.028] in SCREEN and +0.025 [−0.007, +0.053] in CONFIRM; both intervals include 0 |
+| Better than the 25 most recent windows? | **No, worse.** −0.060 in SCREEN, −0.022 in CONFIRM |
+| What it does predict | BTC volatility (+0.16), cross-coin dispersion (+0.13), rebounds (+0.07) |
+| What it predicts worse than doing nothing | BTC direction (−0.045) and cross-coin correlation (−0.059) |
+| Stability | Dropping VOL keeps 19% of the 25 windows; dropping STRUCTURE keeps 14% |
+| The 25 windows | Cover every regime; their outcomes look like the whole pool's (BTC 14-day p10 −12.9% vs −12.0%) |
 
-## 4. Workstreams: who does what
+**How we use it:**
+1. **As a scenario set.** The harness reports every model on the 25 lookalikes and on the 25 most recent windows, next to all windows.
+2. **To size risk, not to pick direction.** It predicts volatility and dispersion, which can set how much risk to take. That's a model idea, tested like any other.
+3. **Not to choose the launch strategy.** Picking a strategy from lookalikes lost to a fixed strategy in our walk-forward test (§2.2).
 
-The work is split by similarity of skills and code, so each person owns one coherent area with few hand-offs.
+**Two measurement notes, for the record (the pre-registered choice doesn't change):**
+- The report scores with the standard sample CRPS, which slightly penalizes a 25-window set against the ~2,000-window pool. A fair-CRPS side check (`reports/validation_set_v1_fair_crps/`) shows how much.
+- Future pre-registrations should require the interval's lower bound > 0 **and** beating the recent-windows baseline, not only a positive point estimate.
 
-| | W1 Live engine & ops | W2 Data, backtest & validation | W3 Strategies & risk |
+## 4. The plan
+
+### 4.1 Build list (shared; anyone takes an item by opening a worktree for it)
+
+| # | Item | Needs EC2? | Status |
 |---|---|---|---|
-| **Owner (proposed)** | Pol | Book | Baitoey |
-| **Why this fit** | Wrote the API/EC2/compliance plan | Already built the downloader and is on the validation set; has lab-server experience | Authored TG-MOM; strategy logic is the natural next step |
-| **Owns** | `src/api/`, `src/execution/`, `src/live/`, `deploy/` | `src/data/`, `backtest/`, `src/validation/`, `src/orchestrator/` | `src/strategy/`, `src/risk/`, strategy section of `config.yaml` |
-| **Sep 30 – Oct 1** | Signed client + HMAC test vector, serverTime offset, 20 calls/min budget, `Success` semantics, never-retry + `query_order` reconcile. Order planner (precision, $1 min, sells first) | 1h data 2020+ (incl. delisted coins), loader, backtest engine using W1's planner, metrics under both conventions, window evaluator | MOM-SS, TG-MOM, TS-LS, TREND-2, ROT-EW as pure `targets(bars, state) -> weights` functions. Unit tests |
-| **Oct 1 – 2** | Test-key checks: market/limit fills, fees, shorts open/close, rate limit → `docs/API_NOTES.md`. Paper broker on live Roostoo prices | Reproduce §2 on the full data. Lookalike features + walk-forward skill test | Overlays: forced daily trade hook, loss floor, profit lock, brakes. Parameter plateau checks |
-| **Oct 2 – 3** | EC2: Python, systemd auto-restart, warm start, logging (JSONL + trade CSV), 24 h paper run, crash/restart drill | Decision report: v1 confirmation + fallback | README strategy + risk sections |
-| **Oct 4** | Switch EC2 to the competition key (commit + restart). Watch the first trades | — | — |
-| **Oct 4 – 10** | Monitoring, reconciliation audits, limit-first execution v1.1 | Orchestrator research (blend → soft tilts), live-vs-backtest attribution | Upgrade candidates via the Track B rule. Finalist-deck material |
-| **Oct 10 – 17** | Repo submission-ready (Oct 10); Book pushes `main` to GitHub and makes it public; bug fixes only | Post-mortem analytics | Deck draft |
+| H1 | Harness: backtest engine, metrics (both conventions), 14-day windows from cash, reports, per-method comparison | No | `feature/harness` (Pol), in review |
+| H2 | Selection ladder for selectors | No | `feature/selection-ladder` (Pol), after H1 |
+| H3 | Fair-CRPS side check of the validation set | No | with H2 |
+| E1 | Roostoo client (signing, clock offset, rate budget, `Success` rules, reconcile), order planner, paper broker, test-key self-check | No (the self-check needs the test key in `.env`) | `feature/roostoo-client` (Pol) |
+| E2 | Live runner, systemd unit, warm start, JSONL logging, EC2 setup script | Deploy only | after E1 |
+| M | Models: every member at least one model per method | No | due **Oct 1, 20:00 HKT** |
+| D | README sections: strategy, backtests, engine, fees, risk (markdown only) | No | by Oct 10 |
 
-**Shared contracts** (`src/contracts.py`; changes need all three members to review):
-- `targets(bars: DataFrame, state: dict) -> pd.Series`: signed weights, Σ|w| ≤ 1, pure, no I/O. W3 writes them; W1 and W2 call them.
-- `plan_orders(targets, holdings, prices, rules) -> list[Order]`: W1 writes it. It's used by both live and backtest, so the two can't drift apart.
-- `load_bars(symbols, start, end, interval) -> DataFrame`: W2 writes it. Close-time UTC index, no look-ahead.
-- `metrics(equity) -> dict`: W2 writes it. Both conventions.
+### 4.2 Timeline (HKT)
 
-**Hand-offs that must not slip:**
-- W1's planner → W2's backtester (Oct 1).
-- W3's MOM-SS function → W1's paper run (Oct 1).
-- W2's v1 confirmation → W1's Oct 3 tag.
+| Date | Milestone |
+|---|---|
+| Sep 30 | Process v2, harness, selection ladder, client and planner |
+| Oct 1, 20:00 | Models due. Then `backtest.compare` per method, then the selection ladder |
+| Oct 1–2 | Test-key self-check (signing, fills, fees, shorts, rate limit). Paper trading on live Roostoo prices |
+| ~Oct 2 | AWS invite: EC2 setup, Binance reachability from Sydney, systemd, 24 h paper run |
+| Oct 3, 16:00 UTC | Freeze the launch model by §4.3. Open the holdout once for it. Rehearse on EC2 with the test key |
+| **Oct 4, 00:00** | Live with the competition key |
+| Oct 4–10 | Monitor. Upgrades only by the rule in `docs/STRATEGY_GUIDE.md` §7 |
+| Oct 10 | Repo submission-ready; Book pushes `main` to GitHub |
+| Oct 14–17 | Bug fixes only |
+
+### 4.3 Launch decision rule (pre-registered)
+
+1. In each method, the winner is chosen by the rule in `docs/STRATEGY_GUIDE.md` §5.
+2. **Launch = the momentum winner**, unless:
+   - a selector passes the selection ladder, in which case it launches; or
+   - the trend winner has the better combined rank in **both** SCREEN and CONFIRM, in which case it launches.
+3. The holdout (windows ending after 2026-08-08 16:00 UTC) is opened **once**, on Oct 3, for the chosen model. It is reported, and changes the choice only if it reveals a bug (e.g. a rules failure).
+4. The final lookalike re-run on Oct 3 is informational only.
 
 ## 5. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Shorts disabled on the competition account | Automatic long-only fallback (MOM-SS long book at 75% gross) |
-| Engine slips while research grows | Track A has a named owner and a fixed Oct 3 deadline; research can't block it |
-| Overfitting through many tests | Pre-written accept rules, a fixed test budget, plateau (not peak) selection, the untouched last 8 weeks |
-| Key leak | Keys only in `.env` (server/EC2). Never in chats, docs or prompts. **Rotate any key that was pasted into a chat or a shared link** |
-| Shared-server collisions | Worktrees, locks and ownership (`AGENTS.md` §4–5) |
+| Engine not ready for Oct 4 | E1 starts now (no keys needed). E2 is scripted before AWS arrives |
+| Too many models, too little time | Models due Oct 1 20:00; after that only the ones already registered compete |
+| Overfitting through many tests | One harness, pre-registered comparison rule, holdout opened once |
+| Shorts disabled on the competition account | Every model with shorts has a long-only fallback flag; the engine switches automatically |
+| Key leak | Keys only in `.env` files (server test key, EC2 competition key); never in chats, docs or prompts |
+| Shared-server collisions | Worktrees, locks, reviewed merges (`AGENTS.md` §4) |
