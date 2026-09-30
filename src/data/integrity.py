@@ -1,9 +1,10 @@
-"""Open every downloaded kline zip and check it; write a JSON report.
+"""Open every downloaded kline zip of a job and check it; write a JSON report.
 
-Run from the repo root:  python -m src.data.integrity
+Run from the repo root:  python -m src.data.integrity [--job spot_klines_1h]
 """
 from __future__ import annotations
 
+import argparse
 import calendar
 import json
 import re
@@ -13,12 +14,13 @@ from pathlib import Path
 
 import numpy as np
 
-from src.config import binance_symbol, load_config, resolve, universe
-from src.data.binance_spot_downloader import Manifest, sha256_file
+from src.config import load_config, resolve
+from src.data.binance_downloader import Manifest, sha256_file
 from src.data.loader import PRICE_COLS, read_kline_zip
 
 MINUTE_MS = 60_000
-PERIOD_RE = re.compile(r"-(\d{4}-\d{2}(?:-\d{2})?)\.zip$")
+STEP_MS = {"1m": MINUTE_MS, "1h": 60 * MINUTE_MS}
+NAME_RE = re.compile(r"-(1m|1h)-(\d{4}-\d{2}(?:-\d{2})?)\.zip$")
 
 
 def period_bounds(period: str) -> tuple[int, int]:
@@ -38,22 +40,23 @@ def _ms_to_str(ms: int) -> str:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
 
 
-def missing_runs(present: np.ndarray, start: int, end: int) -> list[dict]:
-    grid = np.arange(start, end, MINUTE_MS)
+def missing_runs(present: np.ndarray, start: int, end: int, step: int = MINUTE_MS) -> list[dict]:
+    grid = np.arange(start, end, step)
     missing = grid[~np.isin(grid, present)]
     if missing.size == 0:
         return []
-    breaks = np.where(np.diff(missing) != MINUTE_MS)[0]
+    breaks = np.where(np.diff(missing) != step)[0]
     starts = np.r_[missing[0], missing[breaks + 1]]
     ends = np.r_[missing[breaks], missing[-1]]
-    return [{"from": _ms_to_str(a), "to": _ms_to_str(b), "minutes": int((b - a) // MINUTE_MS + 1)}
+    return [{"from": _ms_to_str(a), "to": _ms_to_str(b), "minutes": int((b - a + step) // MINUTE_MS)}
             for a, b in zip(starts, ends)]
 
 
 def check_file(path: Path, expected_sha: str | None) -> dict:
-    period = PERIOD_RE.search(path.name).group(1)
+    interval, period = NAME_RE.search(path.name).groups()
+    step = STEP_MS[interval]
     start, end = period_bounds(period)
-    res = {"file": path.name, "period": period, "expected_rows": (end - start) // MINUTE_MS}
+    res = {"file": path.name, "period": period, "expected_rows": (end - start) // step}
     if expected_sha is not None:
         res["sha256_matches_manifest"] = sha256_file(path) == expected_sha
     df = read_kline_zip(path)
@@ -63,10 +66,10 @@ def check_file(path: Path, expected_sha: str | None) -> dict:
         rows=len(df),
         duplicate_ts=int(df["open_time"].duplicated().sum()),
         non_increasing=int((diffs <= 0).sum()),
-        off_grid_ts=int((t % MINUTE_MS != 0).sum()),
+        off_grid_ts=int((t % step != 0).sum()),
         outside_period=int(((t < start) | (t >= end)).sum()),
         nonpositive_price_rows=int((df[PRICE_COLS] <= 0).any(axis=1).sum()),
-        gaps=missing_runs(t, start, end),
+        gaps=missing_runs(t, start, end, step),
         first=_ms_to_str(int(t.min())) if len(t) else None,
         last=_ms_to_str(int(t.max())) if len(t) else None,
     )
@@ -76,12 +79,13 @@ def check_file(path: Path, expected_sha: str | None) -> dict:
     return res
 
 
-def sweep(cfg: dict) -> dict:
-    dcfg = cfg["data"]["binance_spot"]
-    raw_dir = resolve(dcfg["raw_dir"])
-    latest = Manifest(resolve(dcfg["manifest"])).latest()
+def sweep(cfg: dict, job: str = "spot_klines_1m") -> dict:
+    jcfg = cfg["data"]["jobs"][job]
+    raw_dir = resolve(jcfg["raw_dir"])
+    latest = Manifest(resolve(jcfg["manifest"])).latest()
+    symbols = sorted({k.split("/")[0] for k in latest} | {p.name for p in raw_dir.iterdir() if p.is_dir()})
     report = {}
-    for sym in (binance_symbol(p) for p in universe(cfg)):
+    for sym in symbols:
         files = sorted((raw_dir / sym).glob("*.zip"))
         checks = []
         for f in files:
@@ -107,10 +111,13 @@ def sweep(cfg: dict) -> dict:
     return report
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--job", default="spot_klines_1m")
+    args = ap.parse_args(argv)
     cfg = load_config()
-    report = sweep(cfg)
-    out = resolve(cfg["data"]["binance_spot"]["raw_dir"]).parent / "integrity_report.json"
+    report = sweep(cfg, args.job)
+    out = resolve(cfg["data"]["jobs"][args.job]["raw_dir"]).parent / f"integrity_report_{args.job}.json"
     out.write_text(json.dumps(report, indent=1))
     print("| Symbol | Files | First | Last | Rows | Gaps (count: min) | Not intact | Failed |")
     print("|---|---|---|---|---|---|---|---|")

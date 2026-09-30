@@ -79,17 +79,110 @@ universe:
   - LISTA/USD
 
 data:
-  binance_spot:
-    base_url: https://data.binance.vision/data/spot
-    interval: 1m
-    monthly_start: "2025-09"
-    monthly_end: "2026-08"
-    daily_start: "2026-09-01"
-    daily_end: latest            # or an explicit YYYY-MM-DD
-    raw_dir: data/binance_spot/klines_1m
-    parquet_dir: data/binance_spot/parquet
-    manifest: data/binance_spot/_manifest.jsonl
-    lock_file: data/binance_spot/.downloader.lock
-    max_workers: 4               # hard-capped at 4 in code
+  base_url: https://data.binance.vision/data
+  lock_file: data/.downloader.lock   # one lock for every download job
+  max_workers: 8                     # hard-capped at 8 in code
+  # Each group: monthly [start, end|latest] and/or daily_from (daily files up to the newest published day).
+  jobs:
+    spot_klines_1m:
+      market: spot
+      dataset: klines
+      interval: 1m
+      raw_dir: data/binance_spot/klines_1m
+      parquet_dir: data/binance_spot/parquet
+      manifest: data/binance_spot/_manifest.jsonl
+      groups:
+        - symbols: universe
+          monthly: ["2025-09", "2026-08"]
+          daily_from: "2026-09-01"
+    spot_klines_1h:
+      market: spot
+      dataset: klines
+      interval: 1h
+      raw_dir: data/binance_spot/klines_1h
+      manifest: data/binance_spot/_manifest_1h.jsonl
+      groups:
+        - symbols: [BTCUSDT, ETHUSDT]
+          monthly: ["2018-01", "2025-08"]
+        - symbols: universe
+          exclude: [BTCUSDT, ETHUSDT]
+          monthly: ["2020-01", "2025-08"]
+        # One overlap month, only to assert that 1m->1h resampling matches the 1h archive.
+        - symbols: [BTCUSDT]
+          monthly: ["2026-08", "2026-08"]
+        # Historically large coins (incl. delisted) to limit survivorship bias, plus renamed tickers.
+        - symbols: [LUNAUSDT, FTTUSDT, BCHUSDT, ETCUSDT, EOSUSDT, ATOMUSDT, XMRUSDT, ALGOUSDT, VETUSDT,
+                    THETAUSDT, AXSUSDT, SANDUSDT, MANAUSDT, GALAUSDT, APEUSDT, OPUSDT, INJUSDT, RUNEUSDT,
+                    EGLDUSDT, XTZUSDT, MKRUSDT, GRTUSDT, CHZUSDT, KSMUSDT, SUSHIUSDT, COMPUSDT, SNXUSDT,
+                    NEOUSDT, MATICUSDT, FTMUSDT]
+          monthly: ["2020-01", "2026-08"]
+          daily_from: "2026-09-01"
+    # Months before these starts come from the lob-execution-hma copy (src/data/external_copy.py).
+    futures_funding:
+      market: futures/um
+      dataset: fundingRate
+      raw_dir: data/external/binance_futures/fundingRate
+      manifest: data/external/binance_futures/_manifest_fundingRate.jsonl
+      groups:
+        - symbols: [BTCUSDT]
+          monthly: ["2026-08", latest]
+    futures_metrics:
+      market: futures/um
+      dataset: metrics
+      raw_dir: data/external/binance_futures/metrics
+      manifest: data/external/binance_futures/_manifest_metrics.jsonl
+      groups:
+        - symbols: [BTCUSDT]
+          daily_from: "2026-08-12"
+  external_copy:
+    source: /home/ubuntu/test/lob-execution-hma/data/raw_l1   # READ-ONLY source
+    dest: data/external/lob_copy
+    datasets: [funding_rate, open_interest]
+  fred:
+    url: https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}
+    dir: data/external/fred
+    series: [CPIAUCNS, DFEDTARU, DGS10, DTWEXBGS, SP500, VIXCLS, DCOILWTICO]
+
+# Lookalike validation set (src/validation). Every value here is recorded in validation/validation_set_v1.json.
+validation:
+  live_start: "2026-10-03 16:00"     # T*, UTC (= 2026-10-04 00:00 HKT)
+  holdout_days: 56                   # H = T* - 56d
+  horizon_days: 14
+  pool_earliest: "2020-06-01"
+  grid_hour_utc: 16
+  k: 25
+  min_separation_days: 14
+  span_days: 90
+  max_per_span: 3
+  hourly_from_1m: "2025-09-01"       # symbols with 1m data use resampled 1m from here on
+  overlap_check: {symbol: BTCUSDT, month: "2026-08"}
+  segment_gap_days: 7                # a longer hole starts a new listing (e.g. LUNA 2022, FTT 2022-23)
+  renames:
+    - {old: MATICUSDT, new: POLUSDT}
+    - {old: FTMUSDT, new: SUSDT}
+  rename_checks: {min_overlap_hours: 24, max_median_abs_log_diff: 0.005, max_abs_log_diff: 0.02,
+                  max_gap_hours: 168, max_gap_abs_log_diff: 0.05}
+  universe:
+    top_n: 30
+    min_history_days: 90
+    volume_days: 30
+    exclude: [PAXGUSDT]
+    stablecoins: [USDCUSDT, FDUSDUSDT, TUSDUSDT, BUSDUSDT, DAIUSDT, USDPUSDT, PYUSDUSDT, USD1USDT,
+                  EURUSDT, AEURUSDT, USDEUSDT, USTUSDT]
+    leveraged_regex: "^[A-Z0-9]+(UP|DOWN|BULL|BEAR)USDT$"
+  funding_min_coverage: 0.5          # P1 needs >= 50% of the expected prints in the last 7 days
+  funding_prints_per_day: 3          # BTCUSDT perp funds every 8h
+  oi_max_staleness_hours: 1
+  cpi_release_day: 16                # month m assumed released on the 16th of m+1, 00:00 UTC
+  walkforward:
+    start: "2022-07-01"
+    step_days: 7
+    screen_end: "2024-06-30"
+    confirm_start: "2024-07-01"
+    random_draws: 50
+    bootstrap_reps: 2000
+    bootstrap_block: 4
+    seed: 20261003
+  sensitivity_k: [15, 40]
 
 risk: {}   # TBD

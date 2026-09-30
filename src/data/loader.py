@@ -20,8 +20,8 @@ MICROSECOND_THRESHOLD = 10**14
 
 
 def _default_dirs() -> tuple[Path, Path]:
-    dcfg = load_config()["data"]["binance_spot"]
-    return resolve(dcfg["raw_dir"]), resolve(dcfg["parquet_dir"])
+    jcfg = load_config()["data"]["jobs"]["spot_klines_1m"]
+    return resolve(jcfg["raw_dir"]), resolve(jcfg["parquet_dir"])
 
 
 def normalize_time_units(df: pd.DataFrame) -> pd.DataFrame:
@@ -48,6 +48,21 @@ def read_kline_zip(path: str | Path) -> pd.DataFrame:
     return normalize_time_units(df)
 
 
+def concat_klines(files: list[Path], label: str) -> pd.DataFrame:
+    df = pd.concat([read_kline_zip(f) for f in files], ignore_index=True)
+    df = df.sort_values("open_time", kind="stable")
+    # Binance archives occasionally repeat a block of identical rows (e.g. VIRTUALUSDT 2026-07-16).
+    n_before = len(df)
+    df = df.drop_duplicates().reset_index(drop=True)
+    if len(df) < n_before:
+        log.warning("%s: dropped %d exact duplicate rows", label, n_before - len(df))
+    dups = df["open_time"].duplicated()
+    if dups.any():
+        raise ValueError(f"{label}: {int(dups.sum())} open_time values with conflicting rows")
+    df.insert(0, "timestamp", pd.to_datetime(df["open_time"], unit="ms", utc=True))
+    return df
+
+
 def load_symbol(symbol: str, raw_dir: str | Path | None = None, parquet_dir: str | Path | None = None,
                 use_cache: bool = True) -> pd.DataFrame:
     """All downloaded klines for one Binance symbol; `open_time`/`close_time` are UTC epoch ms."""
@@ -63,18 +78,7 @@ def load_symbol(symbol: str, raw_dir: str | Path | None = None, parquet_dir: str
     if use_cache and cache.exists() and cache.stat().st_mtime >= newest:
         return pd.read_parquet(cache)
 
-    df = pd.concat([read_kline_zip(f) for f in files], ignore_index=True)
-    df = df.sort_values("open_time", kind="stable")
-    # Binance archives occasionally repeat a block of identical rows (e.g. VIRTUALUSDT 2026-07-16).
-    n_before = len(df)
-    df = df.drop_duplicates().reset_index(drop=True)
-    if len(df) < n_before:
-        log.warning("%s: dropped %d exact duplicate rows", symbol, n_before - len(df))
-    dups = df["open_time"].duplicated()
-    if dups.any():
-        raise ValueError(f"{symbol}: {int(dups.sum())} open_time values with conflicting rows")
-    df.insert(0, "timestamp", pd.to_datetime(df["open_time"], unit="ms", utc=True))
-
+    df = concat_klines(files, symbol)
     parquet_dir.mkdir(parents=True, exist_ok=True)
     tmp = cache.with_name(cache.name + ".tmp")
     df.to_parquet(tmp, index=False)

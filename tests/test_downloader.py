@@ -3,12 +3,34 @@ import json
 
 import pytest
 
-from src.data import binance_spot_downloader as dl
-from src.data.binance_spot_downloader import (
+from datetime import date
+
+from src.data import binance_downloader as dl
+from src.data.binance_downloader import (
     AlreadyRunning, Manifest, NotFound, SingleInstanceLock, Task, month_range, should_skip, verify_checksum,
 )
 
-BASE = "https://example.invalid/data/spot"
+BASE = "https://example.invalid/data"
+
+
+def K(symbol, granularity, period, interval="1m"):
+    return Task("spot", "klines", symbol, granularity, period, interval)
+
+
+def test_urls_match_archive_layout():
+    assert K("BTCUSDT", "monthly", "2025-09", "1h").url(BASE) == \
+        f"{BASE}/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2025-09.zip"
+    assert Task("futures/um", "fundingRate", "BTCUSDT", "monthly", "2026-08").url(BASE) == \
+        f"{BASE}/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2026-08.zip"
+    assert Task("futures/um", "metrics", "BTCUSDT", "daily", "2026-08-12").url(BASE) == \
+        f"{BASE}/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-2026-08-12.zip"
+
+
+def test_recent_daily_not_listed_is_retried(tmp_path):
+    old, recent = K("XUSDT", "daily", "2026-09-01"), K("XUSDT", "daily", "2026-09-27")
+    cutoff = date(2026, 9, 22)
+    assert should_skip(old, {"status": "not_listed"}, tmp_path, False, cutoff)
+    assert not should_skip(recent, {"status": "not_listed"}, tmp_path, False, cutoff)
 
 
 def _checksum_line(payload: bytes, name: str) -> str:
@@ -68,7 +90,7 @@ def _fake_http(files: dict[str, bytes]):
 
 
 def test_run_preserves_existing_failed_history(tmp_path, monkeypatch):
-    t = Task("BTCUSDT", "daily", "2026-09-01")
+    t = K("BTCUSDT", "daily", "2026-09-01")
     payload = b"zipbytes"
     monkeypatch.setattr(dl, "http_get", _fake_http({
         t.url(BASE): payload,
@@ -89,13 +111,13 @@ def test_run_preserves_existing_failed_history(tmp_path, monkeypatch):
 def test_404_is_recorded_as_not_listed(tmp_path, monkeypatch):
     monkeypatch.setattr(dl, "http_get", _fake_http({}))
     m = Manifest(tmp_path / "_manifest.jsonl")
-    rec = dl.process(Task("PUMPUSDT", "monthly", "2025-08"), BASE, tmp_path, m)
+    rec = dl.process(K("PUMPUSDT", "monthly", "2025-08"), BASE, tmp_path, m)
     assert rec["status"] == "not_listed"
     assert m.latest()["PUMPUSDT/PUMPUSDT-1m-2025-08.zip"]["status"] == "not_listed"
 
 
 def test_checksum_mismatch_is_failed_and_leaves_no_file(tmp_path, monkeypatch):
-    t = Task("BTCUSDT", "daily", "2026-09-01")
+    t = K("BTCUSDT", "daily", "2026-09-01")
     monkeypatch.setattr(dl, "http_get", _fake_http({
         t.url(BASE): b"corrupted",
         t.url(BASE) + ".CHECKSUM": _checksum_line(b"original", t.filename).encode(),
@@ -106,7 +128,7 @@ def test_checksum_mismatch_is_failed_and_leaves_no_file(tmp_path, monkeypatch):
 
 
 def test_skip_logic(tmp_path):
-    t = Task("BTCUSDT", "daily", "2026-09-01")
+    t = K("BTCUSDT", "daily", "2026-09-01")
     dest = tmp_path / "BTCUSDT" / t.filename
     dest.parent.mkdir()
     dest.write_bytes(b"12345")

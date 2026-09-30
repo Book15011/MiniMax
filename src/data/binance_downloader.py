@@ -1,6 +1,6 @@
-"""Download Binance spot 1m klines from data.binance.vision, sha256-verified.
+"""Download data.binance.vision archives (spot klines, futures funding/metrics), sha256-verified.
 
-Run from the repo root:  python -m src.data.binance_spot_downloader
+Run from the repo root:  python -m src.data.binance_downloader [--job NAME ...]
 """
 from __future__ import annotations
 
@@ -18,18 +18,21 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import requests
 
 from src.config import binance_symbol, load_config, resolve, universe
 
-log = logging.getLogger("binance_spot_downloader")
+log = logging.getLogger("binance_downloader")
 
-MAX_WORKERS_CAP = 4
+MAX_WORKERS_CAP = 8
 MAX_ATTEMPTS = 5
 TIMEOUT_S = 60
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
+# A daily file that 404s this close to the newest published day may simply not be published yet.
+RECENT_RETRY_DAYS = 7
 
 
 class AlreadyRunning(RuntimeError):
@@ -42,21 +45,25 @@ class NotFound(Exception):
 
 @dataclass(frozen=True)
 class Task:
+    market: str  # "spot" | "futures/um"
+    dataset: str  # "klines" | "fundingRate" | "metrics"
     symbol: str
     granularity: str  # "monthly" | "daily"
     period: str  # "YYYY-MM" | "YYYY-MM-DD"
-    interval: str = "1m"
+    interval: str | None = None  # klines only
 
     @property
     def filename(self) -> str:
-        return f"{self.symbol}-{self.interval}-{self.period}.zip"
+        tag = self.interval if self.dataset == "klines" else self.dataset
+        return f"{self.symbol}-{tag}-{self.period}.zip"
 
     @property
     def key(self) -> str:
         return f"{self.symbol}/{self.filename}"
 
     def url(self, base_url: str) -> str:
-        return f"{base_url}/{self.granularity}/klines/{self.symbol}/{self.interval}/{self.filename}"
+        sub = f"{self.symbol}/{self.interval}" if self.dataset == "klines" else self.symbol
+        return f"{base_url}/{self.market}/{self.granularity}/{self.dataset}/{sub}/{self.filename}"
 
 
 def sha256_file(path: Path) -> str:
@@ -97,21 +104,20 @@ class Manifest:
             f.flush()
             os.fsync(f.fileno())
 
-    def latest(self) -> dict[str, dict]:
-        state: dict[str, dict] = {}
+    def iter_records(self):
         if not self.path.exists():
-            return state
+            return
         with open(self.path) as f:
             for n, line in enumerate(f, 1):
                 if not line.strip():
                     continue
                 try:
-                    rec = json.loads(line)
+                    yield json.loads(line)
                 except json.JSONDecodeError:
                     log.warning("manifest line %d is not valid JSON; ignored (left in place)", n)
-                    continue
-                state[rec["file"]] = rec
-        return state
+
+    def latest(self) -> dict[str, dict]:
+        return {rec["file"]: rec for rec in self.iter_records()}
 
 
 class SingleInstanceLock:
@@ -172,6 +178,19 @@ def http_get(url: str, method: str = "GET") -> requests.Response:
     raise AssertionError("unreachable")
 
 
+def remote_today(base_url: str) -> date:
+    """Today's UTC date from the archive server's Date header (the local clock is not trusted)."""
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            r = _session().head(base_url.rsplit("/data", 1)[0] + "/", timeout=TIMEOUT_S)
+            return parsedate_to_datetime(r.headers["Date"]).astimezone(timezone.utc).date()
+        except (requests.ConnectionError, requests.Timeout, KeyError):
+            if attempt == MAX_ATTEMPTS:
+                raise
+            time.sleep(2.0**attempt)
+    raise AssertionError("unreachable")
+
+
 def month_range(start: str, end: str) -> list[str]:
     y, m = map(int, start.split("-"))
     ey, em = map(int, end.split("-"))
@@ -186,35 +205,82 @@ def day_range(start: date, end: date) -> list[str]:
     return [(start + timedelta(days=i)).isoformat() for i in range((end - start).days + 1)]
 
 
-def latest_daily_available(base_url: str, probe_symbol: str, earliest: date, interval: str) -> date | None:
-    """Walk back from today (UTC) until the probe symbol's daily archive exists."""
-    d = datetime.now(timezone.utc).date()
+def _exists(task: Task, base_url: str) -> bool:
+    try:
+        http_get(task.url(base_url), method="HEAD")
+        return True
+    except NotFound:
+        return False
+
+
+def latest_daily(probe: Task, base_url: str, earliest: date, today: date) -> date | None:
+    d = today
     while d >= earliest:
-        try:
-            http_get(Task(probe_symbol, "daily", d.isoformat(), interval).url(base_url), method="HEAD")
+        if _exists(Task(probe.market, probe.dataset, probe.symbol, "daily", d.isoformat(), probe.interval), base_url):
             return d
-        except NotFound:
-            d -= timedelta(days=1)
+        d -= timedelta(days=1)
     return None
 
 
-def plan_tasks(symbols: list[str], dcfg: dict, daily_end: date | None) -> list[Task]:
-    iv = dcfg["interval"]
-    tasks = [Task(s, "monthly", p, iv) for s in symbols for p in month_range(dcfg["monthly_start"], dcfg["monthly_end"])]
-    if daily_end is not None:
-        days = day_range(date.fromisoformat(dcfg["daily_start"]), daily_end)
-        tasks += [Task(s, "daily", d, iv) for s in symbols for d in days]
-    return tasks
+def latest_monthly(probe: Task, base_url: str, earliest: str, today: date) -> str | None:
+    for p in reversed(month_range(earliest, f"{today.year:04d}-{today.month:02d}")):
+        if _exists(Task(probe.market, probe.dataset, probe.symbol, "monthly", p, probe.interval), base_url):
+            return p
+    return None
 
 
-def should_skip(task: Task, last: dict | None, raw_dir: Path, retry_not_listed: bool) -> bool:
+def group_symbols(cfg: dict, group: dict) -> list[str]:
+    syms = group["symbols"]
+    syms = [binance_symbol(p) for p in universe(cfg)] if syms == "universe" else list(syms)
+    excl = set(group.get("exclude", []))
+    return [s for s in syms if s not in excl]
+
+
+def plan_job(cfg: dict, jcfg: dict, base_url: str, today: date) -> tuple[list[Task], date | None]:
+    """All tasks for one job, plus the earliest 'latest daily' date found (for retry decisions)."""
+    tasks: list[Task] = []
+    seen: set[str] = set()
+    newest_daily: date | None = None
+    for g in jcfg["groups"]:
+        syms = group_symbols(cfg, g)
+        probe = Task(jcfg["market"], jcfg["dataset"], syms[0], "monthly", "", jcfg.get("interval"))
+        periods: list[tuple[str, str]] = []
+        if "monthly" in g:
+            start, end = g["monthly"]
+            if end == "latest":
+                end = latest_monthly(probe, base_url, start, today)
+            if end:
+                periods += [("monthly", p) for p in month_range(start, end)]
+        if "daily_from" in g:
+            start = date.fromisoformat(g["daily_from"])
+            end = latest_daily(probe, base_url, start, today)
+            if end:
+                periods += [("daily", d) for d in day_range(start, end)]
+                newest_daily = end if newest_daily is None else min(newest_daily, end)
+        log.info("group %s..: %d symbols, %d periods (%s..%s)", syms[0], len(syms), len(periods),
+                 periods[0][1] if periods else "-", periods[-1][1] if periods else "-")
+        for s in syms:
+            for gran, p in periods:
+                t = Task(jcfg["market"], jcfg["dataset"], s, gran, p, jcfg.get("interval"))
+                if t.key not in seen:
+                    seen.add(t.key)
+                    tasks.append(t)
+    return tasks, newest_daily
+
+
+def should_skip(task: Task, last: dict | None, raw_dir: Path, retry_not_listed: bool,
+                recent_cutoff: date | None = None) -> bool:
     if last is None:
         return False
     if last["status"] == "ok":
         dest = raw_dir / task.symbol / task.filename
         return dest.exists() and dest.stat().st_size == last.get("bytes")
     if last["status"] == "not_listed":
-        return not retry_not_listed
+        if retry_not_listed:
+            return False
+        recent = (task.granularity == "daily" and recent_cutoff is not None
+                  and date.fromisoformat(task.period) >= recent_cutoff)
+        return not recent
     return False  # failed -> retry
 
 
@@ -254,25 +320,21 @@ def process(task: Task, base_url: str, raw_dir: Path, manifest: Manifest) -> dic
         manifest.append(rec)
 
 
-def run(cfg: dict, retry_not_listed: bool = False, dry_run: bool = False) -> Counter:
-    dcfg = cfg["data"]["binance_spot"]
+def run_job(cfg: dict, name: str, retry_not_listed: bool = False, dry_run: bool = False) -> Counter:
+    dcfg = cfg["data"]
+    jcfg = dcfg["jobs"][name]
     base_url = dcfg["base_url"].rstrip("/")
-    raw_dir = resolve(dcfg["raw_dir"])
-    manifest = Manifest(resolve(dcfg["manifest"]))
-    symbols = [binance_symbol(p) for p in universe(cfg)]
+    raw_dir = resolve(jcfg["raw_dir"])
+    manifest = Manifest(resolve(jcfg["manifest"]))
     workers = min(int(dcfg.get("max_workers", MAX_WORKERS_CAP)), MAX_WORKERS_CAP)
+    today = remote_today(base_url)
 
-    if dcfg.get("daily_end", "latest") == "latest":
-        daily_end = latest_daily_available(base_url, "BTCUSDT", date.fromisoformat(dcfg["daily_start"]), dcfg["interval"])
-    else:
-        daily_end = date.fromisoformat(str(dcfg["daily_end"]))
-    log.info("symbols=%d monthly=%s..%s daily=%s..%s workers=%d", len(symbols), dcfg["monthly_start"],
-             dcfg["monthly_end"], dcfg["daily_start"], daily_end, workers)
-
-    tasks = plan_tasks(symbols, dcfg, daily_end)
+    tasks, newest_daily = plan_job(cfg, jcfg, base_url, today)
+    cutoff = newest_daily - timedelta(days=RECENT_RETRY_DAYS) if newest_daily else None
     state = manifest.latest()
-    todo = [t for t in tasks if not should_skip(t, state.get(t.key), raw_dir, retry_not_listed)]
-    log.info("planned=%d already_done=%d to_fetch=%d", len(tasks), len(tasks) - len(todo), len(todo))
+    todo = [t for t in tasks if not should_skip(t, state.get(t.key), raw_dir, retry_not_listed, cutoff)]
+    log.info("[%s] remote_today=%s planned=%d already_done=%d to_fetch=%d workers=%d",
+             name, today, len(tasks), len(tasks) - len(todo), len(todo), workers)
     counts: Counter = Counter()
     if dry_run:
         return counts
@@ -284,28 +346,35 @@ def run(cfg: dict, retry_not_listed: bool = False, dry_run: bool = False) -> Cou
             counts[rec["status"]] += 1
             if rec["status"] == "failed":
                 log.error("FAILED %s: %s", rec["file"], rec["reason"])
-            if i % 100 == 0 or i == len(futures):
-                log.info("progress %d/%d %s", i, len(futures), dict(counts))
-    log.info("run done: %s", dict(counts))
+            if i % 200 == 0 or i == len(futures):
+                log.info("[%s] progress %d/%d %s", name, i, len(futures), dict(counts))
+    log.info("[%s] run done: %s", name, dict(counts))
     return counts
+
+
+def run_all(cfg: dict, jobs: list[str] | None = None, retry_not_listed: bool = False,
+            dry_run: bool = False) -> dict[str, Counter]:
+    names = jobs or list(cfg["data"]["jobs"])
+    with SingleInstanceLock(resolve(cfg["data"]["lock_file"])):
+        log.info("lock acquired (pid %d)", os.getpid())
+        return {n: run_job(cfg, n, retry_not_listed, dry_run) for n in names}
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", default=None)
+    ap.add_argument("--job", action="append", help="job name from config data.jobs (default: all)")
     ap.add_argument("--retry-not-listed", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
     cfg = load_config(args.config) if args.config else load_config()
     try:
-        with SingleInstanceLock(resolve(cfg["data"]["binance_spot"]["lock_file"])):
-            log.info("lock acquired (pid %d)", os.getpid())
-            counts = run(cfg, args.retry_not_listed, args.dry_run)
+        results = run_all(cfg, args.job, args.retry_not_listed, args.dry_run)
     except AlreadyRunning as e:
         log.error("refusing to start: %s", e)
         return 2
-    return 1 if counts.get("failed") else 0
+    return 1 if any(c.get("failed") for c in results.values()) else 0
 
 
 if __name__ == "__main__":
