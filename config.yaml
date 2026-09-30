@@ -186,3 +186,12 @@ validation:
   sensitivity_k: [15, 40]
 
 risk: {}   # TBD
+
+# Exchange client and order planning (src/api, src/execution, src/live).
+execution:
+  env_file: .env                # holds ROOSTOO_API_KEY, ROOSTOO_SECRET_KEY, ROOSTOO_ENV (test here; competition only on EC2)
+  calls_per_minute: 20          # our ceiling; the documented limit is 30 calls/min including queries
+  timeout_s: 10
+  fee: 0.001                    # 0.1% market orders and shorts; 0.05% limit (maker) fills
+  cash_buffer: 0.01             # keep 1% of equity in USD so buys never fail on rounding
+  min_trade_usd: 10             # skip orders smaller than this (dust)
