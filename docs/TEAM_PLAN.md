@@ -8,7 +8,7 @@ _Version 2 · 2026-09-30 · replaces v1. Decisions become final when the team me
 |---|---|
 | Process | **No fixed roles.** Each member builds their own models in each method (`momentum`, `trend`, `selector`). One harness scores every model the same way. The best of the three in each method wins, by the pre-registered rule in `docs/STRATEGY_GUIDE.md` |
 | Launch default | The **momentum** winner, unless a selector passes the selection ladder or the trend winner beats it in both test periods (§4.3) |
-| Lookalike validation | Built and pre-registered (`reports/validation_set_v1.md`). It shows **no skill** at predicting direction, so it's used to size risk and as a scenario set, not to pick strategies (§3) |
+| Lookalike validation | Built and pre-registered (`reports/validation_set_v1.md`). It predicts the market's volatility and dispersion better than all of history, but **not direction**, and no better than recent history. Used to size risk and as a scenario set, not to pick strategies (§3) |
 | Selectors (orchestrators) | Go live only if they pass the selection ladder (`docs/STRATEGY_GUIDE.md` §6) |
 | Activity rule | Enforced by the engine: a guaranteed daily strategy trade |
 | Reports | `reports/<model_name>/<YYYYMMDD-HHMM>.md` (committed) + `.log` (not committed) |
@@ -133,8 +133,8 @@ The orchestrator stays a research goal, run in this order:
 
 | Question | Answer (from the report's own numbers) |
 |---|---|
-| Better than using all of history? | No clear skill. +0.007 [−0.011, +0.028] in SCREEN and +0.025 [−0.007, +0.053] in CONFIRM; both intervals include 0 |
-| Better than the 25 most recent windows? | **No, worse.** −0.060 in SCREEN, −0.022 in CONFIRM |
+| Better than using all of history? | **Yes, once scored fairly.** The standard score gives +0.007 and +0.025, both intervals including 0. The fair-CRPS side check gives **+0.056 [+0.039, +0.076]** and **+0.069 [+0.037, +0.098]** (`reports/validation_set_v1_fair_crps/`) |
+| Better than the 25 most recent windows? | **No.** −0.060 / −0.022 (fair: −0.051 / −0.014); intervals reach 0, so no better than recent history |
 | What it does predict | BTC volatility (+0.16), cross-coin dispersion (+0.13), rebounds (+0.07) |
 | What it predicts worse than doing nothing | BTC direction (−0.045) and cross-coin correlation (−0.059) |
 | Stability | Dropping VOL keeps 19% of the 25 windows; dropping STRUCTURE keeps 14% |
@@ -143,11 +143,11 @@ The orchestrator stays a research goal, run in this order:
 **How we use it:**
 1. **As a scenario set.** The harness reports every model on the 25 lookalikes and on the 25 most recent windows, next to all windows.
 2. **To size risk, not to pick direction.** It predicts volatility and dispersion, which can set how much risk to take. That's a model idea, tested like any other.
-3. **Not to choose the launch strategy.** Picking a strategy from lookalikes lost to a fixed strategy in our walk-forward test (§2.2).
+3. **Not to choose the launch strategy.** In the selection ladder (`reports/selection/`), a picker choosing between the models by lookalikes wins only 48% of CONFIRM test dates against simply holding the momentum winner. Predicting the market's character isn't the same as predicting which strategy will do better.
 
 **Two measurement notes, for the record (the pre-registered choice doesn't change):**
-- The report scores with the standard sample CRPS, which slightly penalizes a 25-window set against the ~2,000-window pool. A fair-CRPS side check (`reports/validation_set_v1_fair_crps/`) shows how much.
-- Future pre-registrations should require the interval's lower bound > 0 **and** beating the recent-windows baseline, not only a positive point estimate.
+- The report scores with the standard sample CRPS, which penalizes a 25-window set against the ~2,000-window pool. The fair-CRPS side check shows this hid real skill against all of history (above).
+- Future pre-registrations should use the fair CRPS and require the interval's lower bound > 0 **and** beating the recent-windows baseline, not only a positive point estimate.
 
 ## 4. The plan
 
