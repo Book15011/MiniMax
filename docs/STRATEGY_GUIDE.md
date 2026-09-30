@@ -113,7 +113,7 @@ LOOKALIKE25 and RECENT25 are shown for judgement and the README, but don't enter
 
 ## 6. The selection ladder (selectors only)
 
-A selector goes live only if, walking forward week by week from 2022-07, its picks beat every rung below. Each rung is scored on the realized 14 days after each decision, with a margin whose 90% interval is above zero in **both** SCREEN and CONFIRM:
+A selector goes live only if, walking forward week by week from 2022-07, it beats the references below. At each test date, its realized composite A is compared with each reference's (win, loss or tie). It must beat the **Fixed** and **Blend** rungs with a **win rate** whose 90% interval is above 50%, in **both** SCREEN and CONFIRM. Win rates are used because composite A annualizes a 14-day Calmar, so a few extreme windows dominate any average:
 
 | Rung | Meaning |
 |---|---|

@@ -11,9 +11,11 @@ ended by D, then is scored on the 14-day window that starts at D (from cash). Pi
   <selector> any registered model with method 'selector', scored like any model
 References: fixed:<model> (each candidate held throughout), blend (equal mix of the candidates' decisions),
 random (average over candidates) and oracle (best candidate at D in hindsight; headroom only).
-"Best" = highest median composite A over the reference windows (pre-registered).
-A picker passes only if its mean realized composite A beats BOTH the fixed momentum winner and the blend,
-with the 90% block-bootstrap interval of the difference above zero, in BOTH SCREEN and CONFIRM.
+"Best" = highest median composite A over the reference windows.
+Pass rule: at each test date compare the picker's realized composite A with the reference's (win = 1,
+loss = 0, tie = 0.5). A picker passes only if its win rate against BOTH the fixed momentum winner and the
+blend has a 90% block-bootstrap interval above 50%, in BOTH SCREEN and CONFIRM. (Win rates, not mean
+differences: composite A annualizes a 14-day Calmar, so a few extreme windows dominate any mean.)
 """
 from __future__ import annotations
 
@@ -173,20 +175,26 @@ def main(argv: list[str] | None = None) -> int:
              "of the window starting at each test date.", ""]
     for pname, P in periods.items():
         lines += [f"## {pname} ({len(P)} test dates)", "",
-                  "| Rung | Mean comp. A | Median comp. A | vs fixed (90% CI) | vs blend (90% CI) |", "|---|---|---|---|---|"]
+                  "| Rung | Median comp. A | Mean comp. A | Win rate vs fixed (90% CI) | Win rate vs blend (90% CI) | Mean diff vs fixed |",
+                  "|---|---|---|---|---|---|"]
         for r in rungs + testees:
             if r not in P or P[r].isna().all():
                 continue
             x = P[r].dropna()
-            cells = [f"| {r} | {num(x.mean())} | {num(x.median())} |"]
+            cells = [f"| {r} | {num(x.median())} | {num(x.mean())} |"]
             for base in (f"fixed:{fixed}", "blend"):
                 if r in testees:
                     d = (P[r] - P[base]).dropna().to_numpy()
-                    lo_ci, hi_ci = block_boot_ci(d)
-                    cells.append(f" {num(d.mean())} [{num(lo_ci)}, {num(hi_ci)}] |")
-                    verdict.setdefault(r, []).append(bool(lo_ci > 0))
+                    wins = np.where(d > 0, 1.0, np.where(d < 0, 0.0, 0.5))
+                    lo_ci, hi_ci = block_boot_ci(wins)
+                    cells.append(f" {wins.mean():.0%} [{lo_ci:.0%}, {hi_ci:.0%}] |")
+                    verdict.setdefault(r, []).append(bool(lo_ci > 0.5))
                 else:
                     cells.append(" |")
+            if r in testees:
+                cells.append(f" {num((P[r] - P[f'fixed:{fixed}']).mean())} |")
+            else:
+                cells.append(" |")
             lines.append("".join(cells))
         lines.append("")
     lines += ["## Verdict", "", "| Picker | Passes? |", "|---|---|"]
