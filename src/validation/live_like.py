@@ -111,6 +111,14 @@ def mixture_quantiles(members: np.ndarray, omega: np.ndarray, b: float, qs=(0.1,
     return out
 
 
+def mass_outside_unit(members: np.ndarray, omega: np.ndarray, b: float) -> tuple[float, float]:
+    """Share of the 1-D mixture below 0 and above 1 (no boundary correction is applied)."""
+    erf = np.vectorize(math.erf, otypes=[float])
+    below = float(np.dot(omega, 0.5 * (1 + erf((0.0 - members) / (b * math.sqrt(2))))))
+    above = float(np.dot(omega, 0.5 * (1 - erf((1.0 - members) / (b * math.sqrt(2))))))
+    return below, above
+
+
 def pct_to_value(u: float, pool_values: np.ndarray) -> float:
     """Pool's empirical quantile function: linear between sorted values at (k - 1/2)/n, clipped."""
     s = np.sort(pool_values)
@@ -330,9 +338,11 @@ def main(argv: list[str] | None = None) -> int:
     for j, y in enumerate(YS):
         q10, q50, q90 = mixture_quantiles(U[:, j], omega, b)
         vals = outcomes.loc[pool, y].to_numpy()
+        below, above = mass_outside_unit(U[:, j], omega, b)
         forecast[y] = {"p10_pct": min(max(q10, 0), 1), "median_pct": min(max(q50, 0), 1), "p90_pct": min(max(q90, 0), 1),
                        "p10": pct_to_value(q10, vals), "median": pct_to_value(q50, vals),
-                       "p90": pct_to_value(q90, vals), "pool_median": float(np.median(vals))}
+                       "p90": pct_to_value(q90, vals), "pool_median": float(np.median(vals)),
+                       "p10_pct_unclipped": q10, "kernel_mass_below_0": below, "kernel_mass_above_1": above}
 
     t1p, t2p = feats.loc[pool, "T1"].to_numpy(), feats.loc[pool, "T2"].to_numpy()
     upp = outcomes.loc[pool, "Y1"].to_numpy() > 0
@@ -429,7 +439,14 @@ def main(argv: list[str] | None = None) -> int:
                           "pool median": f"{forecast[y]['pool_median']:.4f}"} for y in YS}).T
     t.index = ["Y2 BTC realised vol (ann.)", "Y5 dispersion (14d)", "Y8 BTC max rebound"]
     t.index.name = f"forecast for {t_star:%Y-%m-%d} + 14 d"
-    o += [_md(t), "", "Percentiles are within the whole pool (all history before H).", ""]
+    o += [_md(t), "", "Percentiles are within the whole pool (all history before H).", "",
+          "Boundary note (descriptive; added after the first results were seen, no rule changed): the pre-registered "
+          "kernel has no boundary correction, so kernel mass that falls below percentile 0 or above 1 is mapped to "
+          "the pool's lowest or highest value. Mass outside [0, 1]: "
+          + "; ".join(f"{y} {forecast[y]['kernel_mass_below_0']:.1%} below, {forecast[y]['kernel_mass_above_1']:.1%} "
+                      f"above (unclipped 10% point {forecast[y]['p10_pct_unclipped']:+.3f})" for y in YS)
+          + ". Where the 10% point is below 0, read the lower end as \"at or below the historical minimum's "
+            "neighbourhood\", not as a precise value.", ""]
 
     o += ["## 0.7 Direction mix (Brier test)", ""]
     t = pd.DataFrame({p: {"Brier skill of trend-state p_up vs unconditional": _cell(r)}
