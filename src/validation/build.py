@@ -40,7 +40,8 @@ KEY_FEATURES = ["T1", "T2", "C1", "V1", "M1", "M2", "M4"]
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    # rstrip only: porcelain lines start with a meaningful space
+    return subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True).stdout.rstrip()
 
 
 def refresh(cfg: dict) -> dict:
