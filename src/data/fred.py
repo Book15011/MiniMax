@@ -72,14 +72,19 @@ def fetch(cfg: dict, attempts: int = 3) -> dict[str, str]:
     return status
 
 
-def load(cfg: dict) -> tuple[dict[str, pd.Series], dict[str, dict]]:
-    """Newest ok snapshot per series, and the manifest record it came from."""
+def load(cfg: dict, pins: dict[str, dict] | None = None) -> tuple[dict[str, pd.Series], dict[str, dict]]:
+    """One snapshot per series and the manifest record it came from: the pinned file when `pins`
+    ({series: {"file", "sha256"}}) is given, else the newest ok snapshot."""
     fcfg = cfg["data"]["fred"]
     out_dir = resolve(fcfg["dir"])
     latest: dict[str, dict] = {}
     for rec in Manifest(out_dir / "_manifest.jsonl").iter_records():
-        if rec.get("status") == "ok":
+        if rec.get("status") != "ok":
+            continue
+        if pins is None or pins.get(rec["series"], {}).get("file") == rec["file"]:
             latest[rec["series"]] = rec
+    if pins is not None and set(pins) - set(latest):
+        raise FileNotFoundError(f"pinned FRED snapshots not found in the manifest: {sorted(set(pins) - set(latest))}")
     series = {}
     for sid, rec in latest.items():
         raw = (out_dir / rec["file"]).read_bytes()
