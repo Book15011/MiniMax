@@ -1,0 +1,53 @@
+{
+ "bls": "HTTP 403",
+ "problems": [
+  "https://www.federalreserve.gov/newsevents/2025-november.htm: HTTP 404",
+  "https://www.federalreserve.gov/newsevents/2026-april.htm: HTTP 404",
+  "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2020: no CPI rows for 2020 (the FRED calendar only lists recent years)",
+  "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2021: no CPI rows for 2021 (the FRED calendar only lists recent years)",
+  "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2022: no CPI rows for 2022 (the FRED calendar only lists recent years)",
+  "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2023: no CPI rows for 2023 (the FRED calendar only lists recent years)",
+  "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2024: no CPI rows for 2024 (the FRED calendar only lists recent years)"
+ ],
+ "fomc_cross_check": {
+  "released_notes": 53,
+  "press_release_times": 53,
+  "monthly_calendar_rows": 52,
+  "released_but_not_in_monthly_calendar": [
+   "2022-01-05",
+   "2023-01-04",
+   "2025-01-08",
+   "2025-11-19",
+   "2026-04-08"
+  ],
+  "time_mismatch_press_release_vs_monthly": [],
+  "monthly_calendar_only (upcoming, or before the notes range)": [
+   "2020-01-03",
+   "2026-10-07",
+   "2026-11-18",
+   "2026-12-30"
+  ]
+ },
+ "cpi_coverage": "2025-2026 only: bls.gov refuses this server and the FRED calendar lists only recent years, so 2020-2024 CPI release times are NOT in the calendar (not approximated)",
+ "counts": {
+  "CPI": {
+   "2025": 11,
+   "2026": 12
+  },
+  "FOMC_MINUTES": {
+   "2020": 8,
+   "2021": 8,
+   "2022": 8,
+   "2023": 8,
+   "2024": 8,
+   "2025": 9,
+   "2026": 8
+  }
+ },
+ "checks": {
+  "CPI 2026-10-14 12:30 UTC": true,
+  "FOMC_MINUTES 2026-10-07 18:00 UTC": true
+ },
+ "sha256": "bcfe1bac5a627a433ca897ee4e5c97ee56ff3f68cc4124e1c74b6ef292e08e83",
+ "rows": 80
+}
