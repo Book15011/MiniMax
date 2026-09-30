@@ -4,9 +4,12 @@ FOMC minutes (all from the Federal Reserve Board): release dates from the FOMC m
   "Minutes (Released <date>)" notes; the time from each minutes press release ("For release at 2:00 p.m. EST");
   minutes not yet released from the monthly event calendars (federalreserve.gov/newsevents/<year>-<month>.htm),
   which are also cross-checked against the press-release times where both exist.
-CPI: the official BLS schedule is unreachable from this server (HTTP 403), so CPI dates and times come from the
-  Federal Reserve Bank of St. Louis FRED release calendar for release 10 ("Consumer Price Index"; the page states
-  "All times are US Central Time"). That calendar only lists recent years, so 2020-2024 CPI is missing.
+CPI: bls.gov refuses this server (HTTP 403), so the BLS release list is kept as a file,
+  validation/cpi_release_times_2020_2026.csv (dates from the BLS news-release archive, one link per row; 8:30 a.m.
+  ET). Every row is re-checked here (UTC recomputed with daylight saving, weekday, after its reference month, no
+  missing month). The October 2025 CPI was never published (government shutdown) and stays a 'not_published'
+  row with no time. The St. Louis Fed FRED release calendar (release 10, US Central Time) is used to cross-check
+  2025-2026 and only adds scheduled releases after the file's last date.
 Every row keeps its source URL. Nothing is approximated: what cannot be read is reported, not filled in.
 
     python -m src.validation.events          -> validation/event_calendar_v1.csv
@@ -31,7 +34,9 @@ from src.config import REPO_ROOT
 log = logging.getLogger("events")
 OUT = REPO_ROOT / "validation" / "event_calendar_v1.csv"
 STATUS = REPO_ROOT / "validation" / "event_calendar_v1.status.json"
+BLS_CSV = REPO_ROOT / "validation" / "cpi_release_times_2020_2026.csv"
 YEARS = range(2020, 2027)
+FRED_YEARS = (2025, 2026)  # the FRED calendar only lists recent years; used to cross-check and extend BLS
 ET, CT = ZoneInfo("America/New_York"), ZoneInfo("America/Chicago")
 BLS_URL = "https://www.bls.gov/schedule/news_release/cpi.htm"
 FED_MONTH = "https://www.federalreserve.gov/newsevents/{year}-{month}.htm"
@@ -140,7 +145,7 @@ def fomc_press_release(day: str) -> tuple[dict | None, str | None]:
 
 def cpi_releases() -> tuple[list[dict], list[str]]:
     rows, problems = [], []
-    for y in YEARS:
+    for y in FRED_YEARS:
         url = FRED_CAL.format(year=y)
         try:
             r = _get(url)
@@ -167,6 +172,62 @@ def cpi_releases() -> tuple[list[dict], list[str]]:
     return rows, problems
 
 
+def load_bls_cpi(path=None) -> tuple[list[dict], list[str], dict]:
+    """The BLS CPI release list (validation/cpi_release_times_2020_2026.csv), checked row by row:
+    UTC recomputed from the ET date and time with daylight saving; weekday; after the reference month;
+    one row per reference month with no gaps. A 'not_published' row is kept with no time."""
+    df = pd.read_csv(path or BLS_CSV, dtype=str, keep_default_na=False)
+    rows, problems = [], []
+    months = pd.PeriodIndex(df["reference_month"], freq="M")
+    expected = pd.period_range(months.min(), months.max(), freq="M")
+    if list(months) != list(expected):
+        problems.append(f"reference months are not one per month without gaps: {sorted(set(expected) - set(months))}")
+    for r in df.itertuples():
+        ref = pd.Period(r.reference_month, freq="M")
+        if r.status.startswith("not_published"):
+            if r.release_date_et or r.release_time_et or r.release_utc:
+                problems.append(f"{r.reference_month}: 'not published' row has a date or time")
+            rows.append({"event": "CPI", "time_utc": pd.NaT, "local": "", "status": "not_published",
+                         "detail": f"reference month {r.reference_month}: not published ({r.status})",
+                         "source": r.source, "sort_key": (ref + 1).start_time.tz_localize("UTC") + pd.Timedelta(days=14)})
+            continue
+        if r.status not in ("released", "scheduled"):
+            problems.append(f"{r.reference_month}: unknown status {r.status!r}")
+            continue
+        day = datetime.strptime(r.release_date_et, "%Y-%m-%d")
+        hh, mm = map(int, r.release_time_et.split(":"))
+        ts = pd.Timestamp(datetime(day.year, day.month, day.day, hh, mm, tzinfo=ET)).tz_convert("UTC")
+        stated = pd.Timestamp(r.release_utc.replace("Z", "+00:00"))
+        if ts != stated:
+            problems.append(f"{r.reference_month}: {r.release_date_et} {r.release_time_et} ET is {ts:%Y-%m-%dT%H:%MZ}, "
+                            f"file says {r.release_utc}")
+        if day.weekday() >= 5:
+            problems.append(f"{r.reference_month}: release on a weekend ({r.release_date_et})")
+        if pd.Timestamp(day) <= ref.end_time:
+            problems.append(f"{r.reference_month}: released before its reference month ended")
+        rows.append({"event": "CPI", "time_utc": ts, "local": f"{r.release_date_et} {r.release_time_et} ET",
+                     "status": r.status, "detail": f"reference month {r.reference_month}", "source": r.source,
+                     "sort_key": ts})
+    info = {"rows": int(len(df)), "released": int((df.status == "released").sum()),
+            "scheduled": int((df.status == "scheduled").sum()),
+            "not_published": [m for m, s in zip(df.reference_month, df.status) if s.startswith("not_published")],
+            "reference_months": f"{months.min()} .. {months.max()}"}
+    return rows, problems, info
+
+
+def cross_check_cpi(bls_rows: list[dict], fred_rows: list[dict]) -> dict:
+    """Compare FRED CPI release times with the BLS list over the release months both cover."""
+    b = {r["time_utc"] for r in bls_rows if pd.notna(r["time_utc"])}
+    f = {r["time_utc"] for r in fred_rows}
+    month = lambda t: t.strftime("%Y-%m")
+    lo = max(min(map(month, b)), min(map(month, f)))
+    hi = min(max(map(month, b)), max(map(month, f)))
+    b_in, f_in = {t for t in b if lo <= month(t) <= hi}, {t for t in f if lo <= month(t) <= hi}
+    fmt = lambda s: sorted(t.strftime("%Y-%m-%d %H:%M") for t in s)
+    return {"overlap_release_months": f"{lo} .. {hi}", "matching": len(b_in & f_in),
+            "fred_only": fmt(f_in - b_in), "bls_only": fmt(b_in - f_in)}
+
+
 def build() -> dict:
     status = {}
     try:
@@ -181,29 +242,47 @@ def build() -> dict:
         row, err = fomc_press_release(d)
         (pr_rows.append(row) if row else p4.append(err))
         time.sleep(0.3)
+    for r in pr_rows:
+        r.update(status="released", sort_key=r["time_utc"])
+    last_released = max(released) if released else ""
     pr_days = {r["time_utc"].strftime("%Y-%m-%d"): r for r in pr_rows}
     mon_days = {r["time_utc"].strftime("%Y-%m-%d"): r for r in monthly}
     time_mismatch = sorted(d for d in set(pr_days) & set(mon_days) if pr_days[d]["time_utc"] != mon_days[d]["time_utc"])
-    upcoming = [r for d, r in mon_days.items() if d not in released]   # scheduled, not yet released
-    cpi, p3 = cpi_releases()
-    df = pd.DataFrame(pr_rows + upcoming + cpi).drop_duplicates(subset=["event", "time_utc"]) \
-        .sort_values(["time_utc", "event"])
+    monthly_only = [dict(r, status="scheduled" if d > last_released else "released", sort_key=r["time_utc"])
+                    for d, r in mon_days.items() if d not in released]
+
+    bls, p5, bls_info = load_bls_cpi()
+    fred, p3 = cpi_releases()
+    cpi_check = cross_check_cpi(bls, fred)
+    last_bls = max(r["time_utc"] for r in bls if pd.notna(r["time_utc"]))
+    fred_after = [dict(r, status="scheduled", sort_key=r["time_utc"]) for r in fred if r["time_utc"] > last_bls]
+
+    df = pd.DataFrame(pr_rows + monthly_only + bls + fred_after)
+    df = df.drop_duplicates(subset=["event", "time_utc", "detail"]).sort_values(["sort_key", "event"])
+    timed = df[df.time_utc.notna()]
     status.update(
-        problems=p1 + p2 + p4 + p3,
+        problems=p1 + p2 + p4 + p3 + p5,
         fomc_cross_check={"released_notes": len(released), "press_release_times": len(pr_rows),
                           "monthly_calendar_rows": len(monthly),
                           "released_but_not_in_monthly_calendar": sorted(set(released) - set(mon_days)),
                           "time_mismatch_press_release_vs_monthly": time_mismatch,
                           "monthly_calendar_only (upcoming, or before the notes range)": sorted(d for d in mon_days if d not in released)},
-        cpi_coverage="2025-2026 only: bls.gov refuses this server and the FRED calendar lists only recent "
-                     "years, so 2020-2024 CPI release times are NOT in the calendar (not approximated)",
+        cpi_bls_file={**bls_info, "sha256": hashlib.sha256(BLS_CSV.read_bytes()).hexdigest(),
+                      "checks": "UTC recomputed from 08:30 ET with DST; weekdays; after the reference month; "
+                                "one row per month", "problems": p5},
+        cpi_cross_check_fred_vs_bls=cpi_check,
+        cpi_coverage=(f"BLS release list for reference months {bls_info['reference_months']} (dates from the BLS "
+                      "news-release archive, supplied as a file because bls.gov refuses this server); "
+                      f"not published: {bls_info['not_published']}; later scheduled releases from the FRED calendar: "
+                      f"{[r['time_utc'].strftime('%Y-%m-%d %H:%M') for r in fred_after]}"),
         counts={e: {int(y): int(n) for y, n in g.time_utc.dt.year.value_counts().sort_index().items()}
-                for e, g in df.groupby("event")},
+                for e, g in timed.groupby("event")},
         checks={f"{e} {t} UTC": bool((df.event.eq(e) & df.time_utc.eq(pd.Timestamp(t, tz="UTC"))).any())
                 for e, t in CHECKS},
     )
-    out = df.assign(time_utc=df.time_utc.dt.strftime("%Y-%m-%d %H:%M"))
-    OUT.write_text(out.to_csv(index=False))
+    out = df.drop(columns="sort_key")
+    out = out.assign(time_utc=out.time_utc.map(lambda t: t.strftime("%Y-%m-%d %H:%M") if pd.notna(t) else ""))
+    OUT.write_text(out[["event", "time_utc", "local", "status", "detail", "source"]].to_csv(index=False))
     status["sha256"] = hashlib.sha256(OUT.read_bytes()).hexdigest()
     status["rows"] = int(len(out))
     STATUS.write_text(json.dumps(status, indent=1, default=str) + "\n")
@@ -211,8 +290,9 @@ def build() -> dict:
 
 
 def load() -> pd.DataFrame:
-    df = pd.read_csv(OUT)
-    df["time_utc"] = pd.to_datetime(df["time_utc"], utc=True)
+    """All calendar rows; time_utc is NaT for releases that never happened (status 'not_published')."""
+    df = pd.read_csv(OUT, keep_default_na=False)
+    df["time_utc"] = pd.to_datetime(df["time_utc"].replace("", None), utc=True)
     return df
 
 
@@ -221,7 +301,10 @@ def main() -> int:
     st = build()
     for k, v in st.items():
         log.info("%s: %s", k, v)
-    return 0 if all(st["checks"].values()) and not st["fomc_cross_check"]["time_mismatch_press_release_vs_monthly"] else 1
+    ok = (all(st["checks"].values()) and not st["fomc_cross_check"]["time_mismatch_press_release_vs_monthly"]
+          and not st["cpi_bls_file"]["problems"] and not st["cpi_cross_check_fred_vs_bls"]["fred_only"]
+          and not st["cpi_cross_check_fred_vs_bls"]["bls_only"])
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

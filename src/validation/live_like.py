@@ -462,9 +462,10 @@ def main(argv: list[str] | None = None) -> int:
 
     o += ["## 0.8 Event calendar (proposed view field; not used in the weights)", ""]
     evs = ev_status
-    o += [f"- BLS CPI schedule ({events_mod.BLS_URL}): **{evs.get('bls', '?')}** from this server — not reachable, "
-          "so CPI dates/times come from the St. Louis Fed FRED release calendar (release 10, US Central Time). "
-          f"Coverage: {evs.get('cpi_coverage', '?')}.",
+    o += [f"- CPI: bls.gov answers **{evs.get('bls', '?')}** to this server, so the BLS release list is kept as "
+          f"`validation/cpi_release_times_2020_2026.csv` and re-checked row by row ({evs.get('cpi_bls_file', {}).get('checks', '?')}; "
+          f"problems: {evs.get('cpi_bls_file', {}).get('problems') or 'none'}). Coverage: {evs.get('cpi_coverage', '?')}.",
+          f"- CPI cross-check, FRED release calendar vs the BLS list: {evs.get('cpi_cross_check_fred_vs_bls')}.",
           "- FOMC minutes (Federal Reserve Board): dates from the FOMC calendars' \"Minutes (Released …)\" notes, "
           "times from each minutes press release, not-yet-released minutes from the monthly event calendars. "
           f"Cross-check: {evs.get('fomc_cross_check')}.",
