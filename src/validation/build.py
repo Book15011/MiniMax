@@ -68,6 +68,7 @@ def load_market(cfg: dict, notes: dict) -> MarketData:
         funding, notes["funding_error"] = None, f"{type(e).__name__}: {e}"
     try:
         oi = load_open_interest(cfg)
+        notes["oi_boundary_conflicts_resolved"] = oi.attrs.get("boundary_conflicts_resolved", 0)
     except Exception as e:  # noqa: BLE001
         oi, notes["oi_error"] = None, f"{type(e).__name__}: {e}"
     series, recs = fred.load(cfg)
@@ -171,6 +172,15 @@ def main(argv: list[str] | None = None) -> int:
     skills = {(var, b, p): skill(cr, var, b, lo, hi, wf["bootstrap_reps"], wf["bootstrap_block"], wf["seed"])
               for var in variants for b in BASELINES for p, (lo, hi) in periods.items()}
     mean_of = {p: {var: float(skills[(var, "all", p)].loc["MEAN", "skill"]) for var in variants} for p in periods}
+    main_ok = [x for x in MAIN_VARIANTS if x in variants]
+    ok_dates = audit[audit.status == "ok"].groupby("variant").D.apply(set)
+    common = set.intersection(*[ok_dates[x] for x in main_ok])
+    crc = cr[cr.D.isin(common)]
+    common_diag = {
+        "n": {p: int(sum(lo <= d <= hi for d in common)) for p, (lo, hi) in periods.items()},
+        "skill": {p: {x: skill(crc, x, "all", lo, hi, wf["bootstrap_reps"], wf["bootstrap_block"], wf["seed"])
+                      .loc["MEAN"] for x in main_ok} for p, (lo, hi) in periods.items()},
+    }
     choice = choose_variant(mean_of["SCREEN"], mean_of["CONFIRM"])
     choice["unavailable_variants"] = unavailable
     chosen = choice["chosen"]
@@ -227,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
         "choice": choice, "parameters": {"validation": v, "rules": rules.__dict__, "variants": variants},
         "pool": {"n": len(pool), "first_start": str(pool.min()), "last_start": str(pool.max())},
         "windows": windows, "sensitivity": sens,
+        "skill_of_chosen": {f"{p} vs {b}": {k: float(x) for k, x in skills[(chosen, b, p)].loc["MEAN"].items()}
+                            for p in periods for b in BASELINES},
         "git_commit": head, "git_dirty_paths": dirty, "prereg_commit": prereg_commit[-1] if prereg_commit else None,
         "prereg_sha256": hashlib.sha256(prereg.group(0).encode()).hexdigest(),
         "data_manifest_sha256": dhash, "data_manifest_ok_files": dcounts, "data_last": last_data,
@@ -240,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
         periods=periods, variants=variants, main_variants=MAIN_VARIANTS, choice=choice, state=state,
         main_set=main_set, feats=feats, outcomes=outcomes, pool=pool, audit=audit, tests=tests, horizon=hz,
         key_features=[f for f in KEY_FEATURES if f in act] + [f for f in act if f.startswith(("P", "X", "E"))][:4],
-        outcome_cols=list(OUTCOME_COLUMNS), baselines=BASELINES, universe=uni))
+        outcome_cols=list(OUTCOME_COLUMNS), baselines=BASELINES, universe=uni, common_diag=common_diag))
     log.info("wrote %s and %s; tests: %s", REPORT, ARTIFACT, tests["summary"])
     return 0 if tests["exit_code"] == 0 else 1
 

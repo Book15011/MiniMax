@@ -56,6 +56,12 @@ def _coverage(notes: dict, artifact: dict, groups_ok: dict, universe: pd.DataFra
     ld = artifact["data_last"]
     lines.append(f"- Latest data: BTC hourly close {ld['btc_last_hourly_close']}; funding print {ld['funding_last']}; "
                  f"OI snapshot {ld['oi_last']}; FRED last observations {ld['fred_last']}.")
+    for k in ("funding_error", "oi_error"):
+        if notes.get(k):
+            lines.append(f"- **{k.split('_')[0].upper()} could not be loaded: {notes[k]} → POSITIONING disabled.**")
+    if notes.get("oi_boundary_conflicts_resolved"):
+        lines.append(f"- Open interest: {notes['oi_boundary_conflicts_resolved']} midnight snapshots appeared in two "
+                     "adjacent daily files with slightly different values; the row from the file of that date was kept.")
     if notes.get("fred_missing"):
         lines.append(f"- **FRED series missing: {notes['fred_missing']} → MACRO group disabled.**")
     lines.append("- Groups with data: " + ", ".join(f"{g}={'yes' if ok else 'NO'}" for g, ok in groups_ok.items()))
@@ -99,9 +105,34 @@ def render(**c) -> str:
                    "lookalikes are NOT predictive of the next 14 days relative to simply using the whole pool.**")
     else:
         out.append(f"- CORE's CONFIRM skill vs (a) is {ch['core_confirm_skill']:+.4f} > 0.")
+    skills, periods = c["skills"], c["periods"]
+    chosen = ch["chosen"]
+    for p in periods:
+        m = skills[(chosen, "all", p)].loc["MEAN"]
+        if np.isfinite(m["skill"]):
+            verdict = ("includes 0: not distinguishable from no skill" if m["lo"] <= 0 <= m["hi"]
+                       else "excludes 0")
+            out.append(f"- {chosen} {p} skill vs (a): {_skill_cell(m)} — the 90% interval {verdict}.")
+    mb = skills[(chosen, "recent", "CONFIRM")].loc["MEAN"]
+    if np.isfinite(mb["skill"]) and mb["skill"] < 0:
+        out.append(f"- vs (b) in CONFIRM: {_skill_cell(mb)} — lookalikes did WORSE than simply using the 25 most "
+                   "recent non-overlapping windows.")
+    per = skills[(chosen, "all", "CONFIRM")].drop(index="MEAN")
+    pos = [y for y, r in per.iterrows() if r["lo"] > 0]
+    neg = [y for y, r in per.iterrows() if r["hi"] < 0]
+    out.append(f"- Per outcome in CONFIRM vs (a): interval above 0 for {pos or 'none'}; below 0 for {neg or 'none'}.")
     out.append("")
 
-    skills, periods = c["skills"], c["periods"]
+    cd = c.get("common_diag")
+    if cd:
+        out += ["Diagnostic, not part of the rule: the candidates were skipped on different early dates (the "
+                "spacing rules cannot fit 25 picks into a short pool), so their SCREEN date sets differ. Mean skill "
+                f"vs (a) on the {cd['n']['SCREEN']} SCREEN / {cd['n']['CONFIRM']} CONFIRM dates common to all "
+                "candidates:", ""]
+        df = pd.DataFrame({p: {v: _skill_cell(s) for v, s in cd["skill"][p].items()} for p in periods})
+        df.index.name = "variant"
+        out += [table(df), ""]
+
     for p in periods:
         out += [f"## Skill — {p} ({_fmt(periods[p][0])} → {_fmt(periods[p][1])})", "",
                 "Mean skill over Y1..Y8 [90% block-bootstrap interval]; > 0 means lookalikes beat the baseline.", ""]
@@ -163,7 +194,10 @@ def render(**c) -> str:
 
     sens = pd.DataFrame(a["sensitivity"]).T
     sens.index.name = "variation"
-    out += ["## Sensitivity (overlap with the main set)", "", table(sens, nd=3), ""]
+    out += ["## Sensitivity (overlap with the main set)", "", table(sens, nd=3), "",
+            "K = 15 and K = 40 are nested in the main pick by construction (same greedy order), so their overlap "
+            "is simply 15/25 and 25/40 when the pick is not cut short; the group-drop rows are the informative ones.",
+            ""]
 
     t = c["tests"]
     trows = pd.DataFrame({"result": t["tests"]}).sort_index()
@@ -189,5 +223,17 @@ def render(**c) -> str:
             "bootstrap (blocks of 4) is meant to absorb that dependence, but the intervals are still approximate.",
             "- Each variant's pool starts when all of its features exist (POSITIONING needs open interest from "
             "2020-09 plus 30 days), so pools differ slightly in their earliest dates.",
+            "",
+            "## Run history",
+            "",
+            "- 2026-09-30, first dry run: open interest failed to load (4 duplicated midnight snapshots with "
+            "conflicting values), so POSITIONING and the three variants using it were wrongly excluded; that run "
+            "chose CORE (CORE CONFIRM skill vs (a) +0.0250). The loader was fixed (keep the row from the file of "
+            "that date) and the build rerun. No rule, parameter, feature or threshold was changed between runs.",
+            "- Erratum in the pre-registration text: it says \"last D = 2026-07-25\". The rule it states (every 7 days "
+            "from 2022-07-01 up to H − 14 days) actually ends on 2026-07-24, which is what was run; the block is "
+            "left unedited.",
+            "- The \"diagnostic\" lines (common-date skill, interval verdicts) were added to the report after the "
+            "first results were seen. They only describe the numbers and do not feed the choice rule.",
             ""]
     return "\n".join(out)
