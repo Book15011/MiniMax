@@ -446,9 +446,11 @@ def main(argv: list[str] | None = None) -> int:
     o += ["## 0.8 Event calendar (proposed view field; not used in the weights)", ""]
     evs = ev_status
     o += [f"- BLS CPI schedule ({events_mod.BLS_URL}): **{evs.get('bls', '?')}** from this server — not reachable, "
-          "so CPI dates/times come from the St. Louis Fed FRED release calendar (release 10, US Central Time).",
-          "- FOMC minutes: Federal Reserve Board monthly event calendars; cross-check against the FOMC calendars' "
-          f"\"Released\" notes: {evs.get('fomc_cross_check')}.",
+          "so CPI dates/times come from the St. Louis Fed FRED release calendar (release 10, US Central Time). "
+          f"Coverage: {evs.get('cpi_coverage', '?')}.",
+          "- FOMC minutes (Federal Reserve Board): dates from the FOMC calendars' \"Minutes (Released …)\" notes, "
+          "times from each minutes press release, not-yet-released minutes from the monthly event calendars. "
+          f"Cross-check: {evs.get('fomc_cross_check')}.",
           f"- Rows: {evs.get('rows')} ({evs.get('counts')}); problems: {evs.get('problems') or 'none'}.",
           f"- Checks: {evs.get('checks')}.",
           "- In the live window: " + ("; ".join(f"{r.event} {r.time_utc:%Y-%m-%d %H:%M} UTC ({r.local})"

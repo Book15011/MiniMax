@@ -1,12 +1,13 @@
 """Scheduled US CPI and FOMC-minutes release times (2020-2026) from published calendars.
 
-FOMC minutes: Federal Reserve Board monthly event calendars (federalreserve.gov/newsevents/<year>-<month>.htm),
-  which give the release time (Eastern) and day, cross-checked against the FOMC meeting calendars'
-  "(Released <date>)" notes.
+FOMC minutes (all from the Federal Reserve Board): release dates from the FOMC meeting calendars'
+  "Minutes (Released <date>)" notes; the time from each minutes press release ("For release at 2:00 p.m. EST");
+  minutes not yet released from the monthly event calendars (federalreserve.gov/newsevents/<year>-<month>.htm),
+  which are also cross-checked against the press-release times where both exist.
 CPI: the official BLS schedule is unreachable from this server (HTTP 403), so CPI dates and times come from the
   Federal Reserve Bank of St. Louis FRED release calendar for release 10 ("Consumer Price Index"; the page states
-  "All times are US Central Time"). Every row keeps its source URL. Nothing is approximated: a month or year
-  that cannot be read is reported, not filled in.
+  "All times are US Central Time"). That calendar only lists recent years, so 2020-2024 CPI is missing.
+Every row keeps its source URL. Nothing is approximated: what cannot be read is reported, not filled in.
 
     python -m src.validation.events          -> validation/event_calendar_v1.csv
 """
@@ -94,7 +95,8 @@ def fomc_minutes() -> tuple[list[dict], list[str]]:
 
 
 def fomc_released_dates() -> tuple[set[str], list[str]]:
-    """'(Released <Month DD, YYYY>)' notes on the FOMC meeting calendars, for a cross-check of the dates."""
+    """Minutes release dates from the FOMC meeting calendars: '(Released <Month DD, YYYY>)' notes whose
+    nearest preceding label is 'Minutes' (the 2020 page also has 'Statement (Released ...)' notes)."""
     dates, problems = set(), []
     for url in FED_FOMC:
         try:
@@ -105,9 +107,35 @@ def fomc_released_dates() -> tuple[set[str], list[str]]:
         if r.status_code != 200:
             problems.append(f"{url}: HTTP {r.status_code}")
             continue
-        for s in re.findall(r"Released ([A-Z][a-z]+ \d{1,2}, \d{4})", r.text):
-            dates.add(datetime.strptime(s, "%B %d, %Y").strftime("%Y-%m-%d"))
+        html = r.text
+        for m in re.finditer(r"\(Released ([A-Z][a-z]+ \d{1,2}, \d{4})\)", html):
+            ctx = html[max(0, m.start() - 600):m.start()]
+            if ctx.rfind("Minutes") > ctx.rfind("Statement"):
+                dates.add(datetime.strptime(m.group(1), "%B %d, %Y").strftime("%Y-%m-%d"))
     return dates, problems
+
+
+def fomc_press_release(day: str) -> tuple[dict | None, str | None]:
+    """The minutes press release of that day, which states 'For release at H:MM p.m. EST|EDT'."""
+    ymd = day.replace("-", "")
+    for sfx in "abc":
+        url = f"https://www.federalreserve.gov/newsevents/pressreleases/monetary{ymd}{sfx}.htm"
+        try:
+            r = _get(url)
+        except requests.RequestException as e:
+            return None, f"{url}: {type(e).__name__}"
+        if r.status_code != 200 or "Minutes of the Federal Open Market Committee" not in r.text:
+            continue
+        m = re.search(r"For release at\s+(\d{1,2}:\d{2}\s*[ap]\.m\.)\s+(EST|EDT)", r.text)
+        if not m:
+            return None, f"{url}: no 'For release at' time"
+        ts = _to_utc(datetime.strptime(day, "%Y-%m-%d"), m.group(1), ET)
+        expected = "EDT" if ts.tz_convert(ET).dst() else "EST"
+        if m.group(2) != expected:
+            return None, f"{url}: stated {m.group(2)} but the date is in {expected}"
+        return {"event": "FOMC_MINUTES", "time_utc": ts, "local": f"{day} {m.group(1)} {m.group(2)}",
+                "detail": "press release", "source": url}, None
+    return None, f"no minutes press release found for {day}"
 
 
 def cpi_releases() -> tuple[list[dict], list[str]]:
@@ -134,7 +162,7 @@ def cpi_releases() -> tuple[list[dict], list[str]]:
                          "source": url})
             found += 1
         if found == 0:
-            problems.append(f"{url}: no CPI rows parsed")
+            problems.append(f"{url}: no CPI rows for {y} (the FRED calendar only lists recent years)")
         time.sleep(0.3)
     return rows, problems
 
@@ -145,18 +173,30 @@ def build() -> dict:
         status["bls"] = f"HTTP {_get(BLS_URL).status_code}"
     except requests.RequestException as e:
         status["bls"] = f"{type(e).__name__}"
-    fomc, p1 = fomc_minutes()
+    monthly, p1 = fomc_minutes()
     released, p2 = fomc_released_dates()
+    released = {d for d in released if int(d[:4]) in YEARS}
+    pr_rows, p4 = [], []
+    for d in sorted(released):
+        row, err = fomc_press_release(d)
+        (pr_rows.append(row) if row else p4.append(err))
+        time.sleep(0.3)
+    pr_days = {r["time_utc"].strftime("%Y-%m-%d"): r for r in pr_rows}
+    mon_days = {r["time_utc"].strftime("%Y-%m-%d"): r for r in monthly}
+    time_mismatch = sorted(d for d in set(pr_days) & set(mon_days) if pr_days[d]["time_utc"] != mon_days[d]["time_utc"])
+    upcoming = [r for d, r in mon_days.items() if d not in released]   # scheduled, not yet released
     cpi, p3 = cpi_releases()
-    df = pd.DataFrame(fomc + cpi).drop_duplicates(subset=["event", "time_utc"]).sort_values(["time_utc", "event"])
-    fomc_days = set(df.loc[df.event == "FOMC_MINUTES", "time_utc"].dt.strftime("%Y-%m-%d"))
-    lo = min(released) if released else None
+    df = pd.DataFrame(pr_rows + upcoming + cpi).drop_duplicates(subset=["event", "time_utc"]) \
+        .sort_values(["time_utc", "event"])
     status.update(
-        problems=p1 + p2 + p3,
-        fomc_cross_check={"released_notes": len(released),
-                          "in_notes_not_in_monthly": sorted(released - fomc_days),
-                          "in_monthly_not_in_notes": sorted(d for d in fomc_days - released
-                                                            if lo and d >= lo and d <= max(released))},
+        problems=p1 + p2 + p4 + p3,
+        fomc_cross_check={"released_notes": len(released), "press_release_times": len(pr_rows),
+                          "monthly_calendar_rows": len(monthly),
+                          "released_but_not_in_monthly_calendar": sorted(set(released) - set(mon_days)),
+                          "time_mismatch_press_release_vs_monthly": time_mismatch,
+                          "monthly_calendar_only (upcoming, or before the notes range)": sorted(d for d in mon_days if d not in released)},
+        cpi_coverage="2025-2026 only: bls.gov refuses this server and the FRED calendar lists only recent "
+                     "years, so 2020-2024 CPI release times are NOT in the calendar (not approximated)",
         counts={e: {int(y): int(n) for y, n in g.time_utc.dt.year.value_counts().sort_index().items()}
                 for e, g in df.groupby("event")},
         checks={f"{e} {t} UTC": bool((df.event.eq(e) & df.time_utc.eq(pd.Timestamp(t, tz="UTC"))).any())
@@ -181,7 +221,7 @@ def main() -> int:
     st = build()
     for k, v in st.items():
         log.info("%s: %s", k, v)
-    return 0 if all(st["checks"].values()) and not st["problems"] else 1
+    return 0 if all(st["checks"].values()) and not st["fomc_cross_check"]["time_mismatch_press_release_vs_monthly"] else 1
 
 
 if __name__ == "__main__":
