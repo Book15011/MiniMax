@@ -37,12 +37,13 @@ src/models/<member>/<model>.py ──► backtest/ (harness) ──► reports/<
 | `backtest/report.py` | Writes `reports/<name>/<stamp>.md` and the `.log` |
 | `backtest/run.py` | `python -m backtest.run --model <name>` · `--list` · `--holdout` (frozen launch model only) |
 | `backtest/compare.py` | `python -m backtest.compare --method <method>`: the pre-registered per-method rule |
+| `backtest/selection.py` | `python -m backtest.selection`: the selection ladder (history, recent and lookalike pickers vs fixed, blend, random and oracle) |
+| `src/validation/fair_crps.py` | `python -m src.validation.fair_crps`: fair-CRPS side check of the validation set (does not change its choice) |
 | `scripts/wt`, `scripts/lock`, `scripts/status` | Worktrees per member and task, single-copy jobs, a status screen |
 | `tests/` | `pytest -q`: downloader, loader, leakage, validation units, harness (metrics by hand, engine accounting, contracts) |
 | `docs/` | `TEAM_PLAN.md` (plan and decisions), `STRATEGY_GUIDE.md`, this map |
 
 **Planned** (build list in `docs/TEAM_PLAN.md` §4.1):
-- `backtest/selection.py`: the selection ladder.
 - `src/api/`: Roostoo client.
 - `src/execution/`: order planner, paper broker.
 - `src/live/`: the bot loop.
@@ -64,6 +65,6 @@ src/models/<member>/<model>.py ──► backtest/ (harness) ──► reports/<
 |---|---|
 | `reports/<model>/<YYYYMMDD-HHMM>.md` | Yes: the record of each run |
 | `reports/<model>/<YYYYMMDD-HHMM>.log` | No |
-| `reports/compare/<method>/…` | `.md` yes, `.log` no |
+| `reports/compare/<method>/…`, `reports/selection/…`, `reports/validation_set_v1_fair_crps/…` | `.md` yes, `.log` no |
 | `reports/validation_set_v1.md`, `validation/validation_set_v1.json` | Yes (written by `src.validation.build`) |
 | `results/<member>/` | No: scratch |

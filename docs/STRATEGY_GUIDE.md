@@ -124,7 +124,17 @@ A selector goes live only if, walking forward week by week from 2022-07, its pic
 | Random | Average of the candidates (the floor) |
 | Oracle | Best in hindsight (the ceiling, shown for headroom only) |
 
-The ladder runs as `python -m backtest.selection` (build item H2).
+The same run also tests three generic pickers against those references:
+- **history:** best on all completed windows.
+- **recent:** best on the last 25.
+- **lookalike:** best on the 25 completed windows whose starting market state is most like today's, using the validation's CORE features and pick rules. This is the orchestrator idea in its simplest form.
+
+"Best" means the highest median composite A.
+
+```bash
+python -m backtest.selection                       # candidates: every momentum and trend model
+python -m backtest.selection --candidates a,b,c    # or an explicit list
+```
 
 ## 7. Launch and upgrades
 

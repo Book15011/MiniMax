@@ -30,6 +30,7 @@ class Evaluation:
     holdout_opened: bool
     lookahead_failures: list[str] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
+    targets: pd.DataFrame | None = None   # decisions: rows = decision times, cols = series ids
 
 
 def _ts(s: str, hour: int | None = None) -> pd.Timestamp:
@@ -88,30 +89,13 @@ def lookahead_check(model: Model, market: Market, targets: pd.DataFrame, params:
     return fails
 
 
-def evaluate(model: Model, market: Market, cfg: dict, holdout: bool = False, use_cache: bool = True,
-             log: logging.Logger | None = None) -> Evaluation:
-    log = log or logging.getLogger(__name__)
+def simulate_windows(market: Market, targets: pd.DataFrame, band: float, cfg: dict,
+                     starts: pd.DatetimeIndex) -> pd.DataFrame:
+    """Run the decisions in `targets` through every window in `starts`; one row of metrics per window."""
     h = cfg["harness"]
-    spec = model.spec
-    params = (cfg.get("models") or {}).get(spec.name, {}) or {}
-    key = cache_key(model, params, cfg, market, holdout)
-    cdir = resolve(h["cache_dir"]) / spec.name
-    wfile, mfile = cdir / f"{key}.parquet", cdir / f"{key}.json"
-    if use_cache and wfile.exists() and mfile.exists():
-        meta = json.loads(mfile.read_text())
-        log.info("%s: cached result %s", spec.name, key)
-        return Evaluation(spec.name, spec, params, pd.read_parquet(wfile), holdout, meta.pop("lookahead_failures"), meta)
-
-    days, hour, lag = h["window_days"], h["grid_hour_utc"], h["execution_lag_hours"]
-    starts = window_starts(market, cfg, holdout)
-    if len(starts) == 0:
-        raise SystemExit("no window starts in range; check harness.first_window and the data")
-    times = decision_times(market.close.index, spec.rebalance_hours, hour, starts[0],
-                           starts[-1] + pd.Timedelta(days=days))
-    log.info("%s: %d decisions %s -> %s, %d windows", spec.name, len(times), times[0], times[-1], len(starts))
-    targets = compute_targets(model, market, times, params)
-    sim = Simulator(market, targets, spec.band, Costs(h["fees"]["taker"], h["fees"]["short"]), lag, hour,
-                    h["activity_guard_offset_hours"])
+    days = h["window_days"]
+    sim = Simulator(market, targets, band, Costs(h["fees"]["taker"], h["fees"]["short"]), h["execution_lag_hours"],
+                    h["grid_hour_utc"], h["activity_guard_offset_hours"])
     rows = []
     for t0 in starts:
         res = sim.run(market.close.index.get_loc(t0), days * 24)
@@ -121,14 +105,42 @@ def evaluate(model: Model, market: Market, cfg: dict, holdout: bool = False, use
         rows.append(m)
     windows = pd.DataFrame(rows, index=starts)
     windows.index.name = "t0"
+    return windows
+
+
+def evaluate(model: Model, market: Market, cfg: dict, holdout: bool = False, use_cache: bool = True,
+             log: logging.Logger | None = None) -> Evaluation:
+    log = log or logging.getLogger(__name__)
+    h = cfg["harness"]
+    spec = model.spec
+    params = (cfg.get("models") or {}).get(spec.name, {}) or {}
+    key = cache_key(model, params, cfg, market, holdout)
+    cdir = resolve(h["cache_dir"]) / spec.name
+    wfile, mfile, tfile = cdir / f"{key}.parquet", cdir / f"{key}.json", cdir / f"{key}_targets.parquet"
+    if use_cache and wfile.exists() and mfile.exists() and tfile.exists():
+        meta = json.loads(mfile.read_text())
+        log.info("%s: cached result %s", spec.name, key)
+        return Evaluation(spec.name, spec, params, pd.read_parquet(wfile), holdout, meta.pop("lookahead_failures"),
+                          meta, pd.read_parquet(tfile))
+
+    days, hour = h["window_days"], h["grid_hour_utc"]
+    starts = window_starts(market, cfg, holdout)
+    if len(starts) == 0:
+        raise SystemExit("no window starts in range; check harness.first_window and the data")
+    times = decision_times(market.close.index, spec.rebalance_hours, hour, starts[0],
+                           starts[-1] + pd.Timedelta(days=days))
+    log.info("%s: %d decisions %s -> %s, %d windows", spec.name, len(times), times[0], times[-1], len(starts))
+    targets = compute_targets(model, market, times, params)
+    windows = simulate_windows(market, targets, spec.band, cfg, starts)
     fails = lookahead_check(model, market, targets, params)
     held = targets.ne(0).sum(axis=1)
     meta = {"cache_key": key, "n_decisions": len(times), "coins_held_median": float(held.median()),
             "coins_ever_held": int((targets != 0).any().sum()), "git": git_state()}
     cdir.mkdir(parents=True, exist_ok=True)
     windows.to_parquet(wfile)
+    targets.loc[:, (targets != 0).any()].to_parquet(tfile)
     mfile.write_text(json.dumps({**meta, "lookahead_failures": fails}, default=str))
-    return Evaluation(spec.name, spec, params, windows, holdout, fails, meta)
+    return Evaluation(spec.name, spec, params, windows, holdout, fails, meta, targets)
 
 
 # ---------------- periods, scenario sets, summaries, must-pass ----------------
