@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Run a command under a named lock so only one copy can run on this server.
+#   scripts/lock <name> -- <command...>
+# Example: scripts/lock download-1m -- python -m src.data.binance_spot_downloader
+set -euo pipefail
+ROOT="$(git -C "$(dirname "$0")/.." rev-parse --path-format=absolute --git-common-dir | xargs dirname)"
+name="${1:-}"; shift || true
+[[ -n "$name" && "${1:-}" == "--" ]] || { echo "usage: scripts/lock <name> -- <command...>" >&2; exit 2; }
+shift
+mkdir -p "$ROOT/run/locks"
+lock="$ROOT/run/locks/$name.lock"; info="$ROOT/run/locks/$name.info"
+exec 9>"$lock"
+if ! flock -n 9; then
+  echo "lock '$name' is held: $(cat "$info" 2>/dev/null || echo 'unknown holder')" >&2
+  exit 75
+fi
+echo "pid=$$ user=${MM_MEMBER:-?} since=$(date -u +%FT%TZ) cmd=$*" > "$info"
+trap 'rm -f "$info"' EXIT
+"$@"
