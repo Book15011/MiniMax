@@ -4,7 +4,7 @@
  "state_time": "2026-09-29 16:00:00+00:00",
  "T_star": "2026-10-03 16:00:00+00:00",
  "holdout_H": "2026-08-08 16:00:00+00:00",
- "git_commit": "19d6ec0a6dfc8b56b3a0603bfb98947c9f9c8649",
+ "git_commit": "3560a0bdc221ab32ebf2473dafe4dc9f0e0c106a",
  "git_dirty_paths": [],
  "prereg_commit": "7cbd03dc9c54f09cf21ddf23cc17228adfcfaab3",
  "prereg_sha256": "e76a4f1289bb49438bc53249b24bb2e4663af6bec592347ed0b695a290a618f5",
@@ -12,7 +12,7 @@
   "validation_artifact_sha256": "1fbe90dc2ebaa5dad74f3a09c7c61165d385fa62362d672fe981af15196ef018",
   "outcomes_sha256": "aadcb2b79d25b8416ec6ebff5f69c185ff019ae51ffac006b99b18421a369461",
   "trend_features_sha256": "0c57f63ea5ca16ebb01bed17ad6b66072662caae5e6d839b3bd50476babcbd50",
-  "event_calendar_sha256": "bcfe1bac5a627a433ca897ee4e5c97ee56ff3f68cc4124e1c74b6ef292e08e83"
+  "event_calendar_sha256": "cc2689945a2d2bd002d1d1cf817aa2eaf2c7c056d6c9cc7ef151226a23d403fb"
  },
  "rules": {
   "outcomes_forecast": [
@@ -832,17 +832,12 @@
   }
  },
  "events": {
-  "calendar_rows": 80,
+  "calendar_rows": 141,
   "status": {
    "bls": "HTTP 403",
    "problems": [
     "https://www.federalreserve.gov/newsevents/2025-november.htm: HTTP 404",
-    "https://www.federalreserve.gov/newsevents/2026-april.htm: HTTP 404",
-    "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2020: no CPI rows for 2020 (the FRED calendar only lists recent years)",
-    "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2021: no CPI rows for 2021 (the FRED calendar only lists recent years)",
-    "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2022: no CPI rows for 2022 (the FRED calendar only lists recent years)",
-    "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2023: no CPI rows for 2023 (the FRED calendar only lists recent years)",
-    "https://fred.stlouisfed.org/releases/calendar?rid=10&y=2024: no CPI rows for 2024 (the FRED calendar only lists recent years)"
+    "https://www.federalreserve.gov/newsevents/2026-april.htm: HTTP 404"
    ],
    "fomc_cross_check": {
     "released_notes": 53,
@@ -863,9 +858,32 @@
      "2026-12-30"
     ]
    },
-   "cpi_coverage": "2025-2026 only: bls.gov refuses this server and the FRED calendar lists only recent years, so 2020-2024 CPI release times are NOT in the calendar (not approximated)",
+   "cpi_bls_file": {
+    "rows": 82,
+    "released": 80,
+    "scheduled": 1,
+    "not_published": [
+     "2025-10"
+    ],
+    "reference_months": "2019-12 .. 2026-09",
+    "sha256": "bad0c2af4187266a8b713aec24a2cea505499bc177efd35c3f0b2bb5b09175e9",
+    "checks": "UTC recomputed from 08:30 ET with DST; weekdays; after the reference month; one row per month",
+    "problems": []
+   },
+   "cpi_cross_check_fred_vs_bls": {
+    "overlap_release_months": "2025-01 .. 2026-10",
+    "matching": 21,
+    "fred_only": [],
+    "bls_only": []
+   },
+   "cpi_coverage": "BLS release list for reference months 2019-12 .. 2026-09 (dates from the BLS news-release archive, supplied as a file because bls.gov refuses this server); not published: ['2025-10']; later scheduled releases from the FRED calendar: ['2026-11-10 13:30', '2026-12-10 13:30']",
    "counts": {
     "CPI": {
+     "2020": 12,
+     "2021": 12,
+     "2022": 12,
+     "2023": 12,
+     "2024": 12,
      "2025": 11,
      "2026": 12
     },
@@ -883,8 +901,8 @@
     "CPI 2026-10-14 12:30 UTC": true,
     "FOMC_MINUTES 2026-10-07 18:00 UTC": true
    },
-   "sha256": "bcfe1bac5a627a433ca897ee4e5c97ee56ff3f68cc4124e1c74b6ef292e08e83",
-   "rows": 80
+   "sha256": "cc2689945a2d2bd002d1d1cf817aa2eaf2c7c056d6c9cc7ef151226a23d403fb",
+   "rows": 141
   },
   "in_live_window": [
    {
@@ -895,7 +913,7 @@
    {
     "event": "CPI",
     "time_utc": "2026-10-14 12:30:00+00:00",
-    "local": "2026-10-14 7:30 am CT"
+    "local": "2026-10-14 08:30 ET"
    }
   ],
   "used_in_weights": false
@@ -928,7 +946,7 @@
     "Y2": 0.31734810261432506,
     "Y5": 0.09035901806117737,
     "Y8": 0.050146558883738424,
-    "CPI": 0,
+    "CPI": 1,
     "FOMC_MINUTES": 0
    },
    {
@@ -1019,7 +1037,7 @@
     "Y2": 0.31708110159327124,
     "Y5": 0.09037814331228795,
     "Y8": 0.041980236612553234,
-    "CPI": 0,
+    "CPI": 1,
     "FOMC_MINUTES": 1
    },
    {
@@ -1032,7 +1050,7 @@
     "Y2": 0.3192803747072119,
     "Y5": 0.08868794807907678,
     "Y8": 0.0775600783552266,
-    "CPI": 0,
+    "CPI": 1,
     "FOMC_MINUTES": 0
    },
    {
@@ -1188,7 +1206,7 @@
     "Y2": 0.38477418447252926,
     "Y5": 0.09109982391949975,
     "Y8": 0.09719723682674486,
-    "CPI": 0,
+    "CPI": 1,
     "FOMC_MINUTES": 0
    },
    {
@@ -3480,5 +3498,5 @@
    "2026-07-25 16:00:00+00:00": 0.0020105742273561745
   }
  },
- "sha256": "cb93fc4a74ba1dd46e33e2f36e85d42e66b067314b381db84b981fdc6816e737"
+ "sha256": "5db6d26a9386edc53ab8a6f2aad7c1953dca680e18f690507eb82ccb6f4b540f"
 }
