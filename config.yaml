@@ -235,3 +235,21 @@ models:
     target_vol: 0.35
   # --- book ---
   # --- baitoey ---
+  baitoey_tg_mom:
+    gate_slow_hours: 200
+    gate_fast_hours: 50
+    gate_ramp: 0.04               # each gate half is fully on 2% above the slow average, fully off 2% below
+    lookback_hours: [24, 48, 72]
+    vol_days: 30
+    min_history_days: 30
+    min_coins: 8
+    top_n: 15
+    k: 4
+    keep_rank: 8
+    min_volume_ratio: 1.0         # last 24h quote volume vs the 30-day daily average
+    max_weight: 0.30
+    target_daily_vol: 0.0125
+    long_only: false
+    btc_floor: 0.10               # long-only risk-off: BTC weight when fully risk-off
+    short_gross: 0.25
+    short_k: 4
