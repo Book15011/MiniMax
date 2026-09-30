@@ -1,0 +1,435 @@
+{
+ "version": "validation_set_v1",
+ "asof_requested": "2026-09-30 00:00:00+00:00",
+ "state_time": "2026-09-29 16:00:00+00:00",
+ "live_start_T_star": "2026-10-03 16:00:00+00:00",
+ "holdout_H": "2026-08-08 16:00:00+00:00",
+ "gap_hours_T_star_minus_state_time": 96.0,
+ "variant": "CORE",
+ "groups": [
+  "TREND",
+  "CYCLE",
+  "VOL",
+  "STRUCTURE"
+ ],
+ "features": [
+  "T1",
+  "T2",
+  "T3",
+  "T4",
+  "C1",
+  "C2",
+  "V1",
+  "V2",
+  "M1",
+  "M2",
+  "M3",
+  "M4"
+ ],
+ "query_features_dropped_nan": [],
+ "choice": {
+  "screen_leader": "CORE",
+  "chosen": "CORE",
+  "reason": "CORE had the highest SCREEN skill vs (a)",
+  "core_confirm_skill": 0.02500835047423,
+  "core_not_predictive": false,
+  "unavailable_variants": []
+ },
+ "parameters": {
+  "validation": {
+   "live_start": "2026-10-03 16:00",
+   "holdout_days": 56,
+   "horizon_days": 14,
+   "pool_earliest": "2020-06-01",
+   "grid_hour_utc": 16,
+   "k": 25,
+   "min_separation_days": 14,
+   "span_days": 90,
+   "max_per_span": 3,
+   "hourly_from_1m": "2025-09-01",
+   "overlap_check": {
+    "symbol": "BTCUSDT",
+    "month": "2026-08"
+   },
+   "segment_gap_days": 7,
+   "renames": [
+    {
+     "old": "MATICUSDT",
+     "new": "POLUSDT"
+    },
+    {
+     "old": "FTMUSDT",
+     "new": "SUSDT"
+    }
+   ],
+   "rename_checks": {
+    "min_overlap_hours": 24,
+    "max_median_abs_log_diff": 0.005,
+    "max_abs_log_diff": 0.02,
+    "max_gap_hours": 168,
+    "max_gap_abs_log_diff": 0.05
+   },
+   "universe": {
+    "top_n": 30,
+    "min_history_days": 90,
+    "volume_days": 30,
+    "exclude": [
+     "PAXGUSDT"
+    ],
+    "stablecoins": [
+     "USDCUSDT",
+     "FDUSDUSDT",
+     "TUSDUSDT",
+     "BUSDUSDT",
+     "DAIUSDT",
+     "USDPUSDT",
+     "PYUSDUSDT",
+     "USD1USDT",
+     "EURUSDT",
+     "AEURUSDT",
+     "USDEUSDT",
+     "USTUSDT"
+    ],
+    "leveraged_regex": "^[A-Z0-9]+(UP|DOWN|BULL|BEAR)USDT$"
+   },
+   "funding_min_coverage": 0.5,
+   "funding_prints_per_day": 3,
+   "oi_max_staleness_hours": 1,
+   "cpi_release_day": 16,
+   "walkforward": {
+    "start": "2022-07-01",
+    "step_days": 7,
+    "screen_end": "2024-06-30",
+    "confirm_start": "2024-07-01",
+    "random_draws": 50,
+    "bootstrap_reps": 2000,
+    "bootstrap_block": 4,
+    "seed": 20261003
+   },
+   "sensitivity_k": [
+    15,
+    40
+   ]
+  },
+  "rules": {
+   "k": 25,
+   "min_separation_days": 14,
+   "span_days": 90,
+   "max_per_span": 3,
+   "horizon_days": 14
+  },
+  "variants": {
+   "CORE": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE"
+   ],
+   "CORE+POSITIONING": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "POSITIONING"
+   ],
+   "CORE+MACRO": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "MACRO"
+   ],
+   "CORE+CALENDAR": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "CALENDAR"
+   ],
+   "CORE+POSITIONING+MACRO": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "POSITIONING",
+    "MACRO"
+   ],
+   "ALL": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "POSITIONING",
+    "MACRO",
+    "CALENDAR"
+   ],
+   "CORE-minus-TREND": [
+    "CYCLE",
+    "VOL",
+    "STRUCTURE"
+   ],
+   "CORE-minus-CYCLE": [
+    "TREND",
+    "VOL",
+    "STRUCTURE"
+   ],
+   "CORE-minus-VOL": [
+    "TREND",
+    "CYCLE",
+    "STRUCTURE"
+   ],
+   "CORE-minus-STRUCTURE": [
+    "TREND",
+    "CYCLE",
+    "VOL"
+   ]
+  }
+ },
+ "pool": {
+  "n": 2246,
+  "first_start": "2020-06-01 16:00:00+00:00",
+  "last_start": "2026-07-25 16:00:00+00:00"
+ },
+ "windows": [
+  {
+   "rank": 1,
+   "start": "2026-05-14 16:00:00+00:00",
+   "end": "2026-05-28 16:00:00+00:00",
+   "distance": 0.125366
+  },
+  {
+   "rank": 2,
+   "start": "2020-07-12 16:00:00+00:00",
+   "end": "2020-07-26 16:00:00+00:00",
+   "distance": 0.126654
+  },
+  {
+   "rank": 3,
+   "start": "2020-06-23 16:00:00+00:00",
+   "end": "2020-07-07 16:00:00+00:00",
+   "distance": 0.136249
+  },
+  {
+   "rank": 4,
+   "start": "2023-04-19 16:00:00+00:00",
+   "end": "2023-05-03 16:00:00+00:00",
+   "distance": 0.161188
+  },
+  {
+   "rank": 5,
+   "start": "2020-07-26 16:00:00+00:00",
+   "end": "2020-08-09 16:00:00+00:00",
+   "distance": 0.175425
+  },
+  {
+   "rank": 6,
+   "start": "2022-04-08 16:00:00+00:00",
+   "end": "2022-04-22 16:00:00+00:00",
+   "distance": 0.177794
+  },
+  {
+   "rank": 7,
+   "start": "2021-09-05 16:00:00+00:00",
+   "end": "2021-09-19 16:00:00+00:00",
+   "distance": 0.178179
+  },
+  {
+   "rank": 8,
+   "start": "2024-10-09 16:00:00+00:00",
+   "end": "2024-10-23 16:00:00+00:00",
+   "distance": 0.178902
+  },
+  {
+   "rank": 9,
+   "start": "2023-02-13 16:00:00+00:00",
+   "end": "2023-02-27 16:00:00+00:00",
+   "distance": 0.191455
+  },
+  {
+   "rank": 10,
+   "start": "2025-08-02 16:00:00+00:00",
+   "end": "2025-08-16 16:00:00+00:00",
+   "distance": 0.19818
+  },
+  {
+   "rank": 11,
+   "start": "2023-03-01 16:00:00+00:00",
+   "end": "2023-03-15 16:00:00+00:00",
+   "distance": 0.199763
+  },
+  {
+   "rank": 12,
+   "start": "2024-02-07 16:00:00+00:00",
+   "end": "2024-02-21 16:00:00+00:00",
+   "distance": 0.203492
+  },
+  {
+   "rank": 13,
+   "start": "2024-10-23 16:00:00+00:00",
+   "end": "2024-11-06 16:00:00+00:00",
+   "distance": 0.203615
+  },
+  {
+   "rank": 14,
+   "start": "2024-05-18 16:00:00+00:00",
+   "end": "2024-06-01 16:00:00+00:00",
+   "distance": 0.209625
+  },
+  {
+   "rank": 15,
+   "start": "2023-12-18 16:00:00+00:00",
+   "end": "2024-01-01 16:00:00+00:00",
+   "distance": 0.212847
+  },
+  {
+   "rank": 16,
+   "start": "2026-05-30 16:00:00+00:00",
+   "end": "2026-06-13 16:00:00+00:00",
+   "distance": 0.215153
+  },
+  {
+   "rank": 17,
+   "start": "2023-07-20 16:00:00+00:00",
+   "end": "2023-08-03 16:00:00+00:00",
+   "distance": 0.215539
+  },
+  {
+   "rank": 18,
+   "start": "2024-01-19 16:00:00+00:00",
+   "end": "2024-02-02 16:00:00+00:00",
+   "distance": 0.216001
+  },
+  {
+   "rank": 19,
+   "start": "2022-11-05 16:00:00+00:00",
+   "end": "2022-11-19 16:00:00+00:00",
+   "distance": 0.218745
+  },
+  {
+   "rank": 20,
+   "start": "2024-07-23 16:00:00+00:00",
+   "end": "2024-08-06 16:00:00+00:00",
+   "distance": 0.220273
+  },
+  {
+   "rank": 21,
+   "start": "2021-11-06 16:00:00+00:00",
+   "end": "2021-11-20 16:00:00+00:00",
+   "distance": 0.227606
+  },
+  {
+   "rank": 22,
+   "start": "2021-04-25 16:00:00+00:00",
+   "end": "2021-05-09 16:00:00+00:00",
+   "distance": 0.229039
+  },
+  {
+   "rank": 23,
+   "start": "2021-11-24 16:00:00+00:00",
+   "end": "2021-12-08 16:00:00+00:00",
+   "distance": 0.231924
+  },
+  {
+   "rank": 24,
+   "start": "2025-05-06 16:00:00+00:00",
+   "end": "2025-05-20 16:00:00+00:00",
+   "distance": 0.235984
+  },
+  {
+   "rank": 25,
+   "start": "2024-12-23 16:00:00+00:00",
+   "end": "2025-01-06 16:00:00+00:00",
+   "distance": 0.238514
+  }
+ ],
+ "sensitivity": {
+  "K=15": {
+   "n": 15,
+   "jaccard": 0.6
+  },
+  "K=40": {
+   "n": 40,
+   "jaccard": 0.625
+  },
+  "drop TREND": {
+   "n": 25,
+   "jaccard": 0.5151515151515151
+  },
+  "drop CYCLE": {
+   "n": 25,
+   "jaccard": 0.5151515151515151
+  },
+  "drop VOL": {
+   "n": 25,
+   "jaccard": 0.19047619047619047
+  },
+  "drop STRUCTURE": {
+   "n": 25,
+   "jaccard": 0.13636363636363635
+  }
+ },
+ "skill_of_chosen": {
+  "SCREEN vs all": {
+   "skill": 0.00738341625287893,
+   "lo": -0.01114372255012898,
+   "hi": 0.02824436566273258,
+   "n_dates": 95.0
+  },
+  "SCREEN vs recent": {
+   "skill": -0.06045549754612592,
+   "lo": -0.1355691578090088,
+   "hi": 0.0005672724518307685,
+   "n_dates": 95.0
+  },
+  "SCREEN vs random": {
+   "skill": 0.035260346546196544,
+   "lo": 0.018891416602976024,
+   "hi": 0.05577081556297835,
+   "n_dates": 95.0
+  },
+  "CONFIRM vs all": {
+   "skill": 0.02500835047423,
+   "lo": -0.006527613983097658,
+   "hi": 0.05344806814003195,
+   "n_dates": 108.0
+  },
+  "CONFIRM vs recent": {
+   "skill": -0.021577046885059653,
+   "lo": -0.051671462392429625,
+   "hi": 0.0043595125579790756,
+   "n_dates": 108.0
+  },
+  "CONFIRM vs random": {
+   "skill": 0.06238038958552902,
+   "lo": 0.030962401619990275,
+   "hi": 0.09065537959801152,
+   "n_dates": 108.0
+  }
+ },
+ "git_commit": "a0cebe6cdd004fa500f3f657c594de33a22d21cd",
+ "git_dirty_paths": [],
+ "prereg_commit": "6aa59149ee49608945fdd4b8ac9f2377d4af1d8b",
+ "prereg_sha256": "c145c75e47b8b6baeed53973a3325705585a7665c43e0be14830fa5b61aa879d",
+ "data_manifest_sha256": "a514e256efebf37259577c0fe51943eff56f97533755612245d32c12f6743159",
+ "data_manifest_ok_files": {
+  "spot_klines_1m": 2664,
+  "spot_klines_1h": 5002,
+  "futures_funding": 1,
+  "futures_metrics": 49,
+  "lob_copy": 2250
+ },
+ "data_last": {
+  "btc_last_hourly_close": "2026-09-30 00:00:00+00:00",
+  "funding_last": "2026-08-31 16:00:00.001000+00:00",
+  "oi_last": "2026-09-29 23:55:00+00:00",
+  "fred_last": {
+   "CPIAUCNS": "2026-08-01",
+   "DFEDTARU": "2026-09-29",
+   "DGS10": "2026-09-28",
+   "DTWEXBGS": "2026-09-25",
+   "SP500": "2026-09-29",
+   "VIXCLS": "2026-09-28",
+   "DCOILWTICO": "2026-09-22"
+  }
+ }
+}
