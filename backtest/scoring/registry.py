@@ -82,7 +82,9 @@ def entry_from(score: dict, runner: str, outputs: dict) -> dict:
             "recency": score["primary"]["recency"], "headline": sel,
             "gates": {g: v["pass"] for g, v in score["gates"].items()}, "eligible": score["eligible"],
             "median_R": score["summary"]["median_R"], "worst10_R": score["summary"]["worst10_R"],
-            "worst_R": score["summary"]["worst_R"], "commit": (score.get("code") or {}).get("commit"), **outputs}
+            "worst_R": score["summary"]["worst_R"], "commit": (score.get("code") or {}).get("commit"),
+            "robust_min": (score.get("robustness") or {}).get("min"), "robust": (score.get("robustness") or {}).get("pass"),
+            "rel_other_bars": (score.get("gate_sensitivity") or {}).get("rel_headline", {}), **outputs}
 
 
 def current(entries: list[dict], tool_version: str) -> list[dict]:
@@ -111,13 +113,15 @@ def leaderboard(entries: list[dict], tool_version: str, conventions: list[str], 
             f"Full runs only, this tool version only; identical results shown once. Sorted by HEADLINE "
             f"{pv} {pc} (primary). Regenerated after every registered run; see docs/EVALUATION.md.", "",
             "| # | Model | Author | Method | Eligible | Gates failed | " +
-            " | ".join(f"{v} {c}" for c in conventions for v in variants) + " | Live-like | Recency | Median R | Worst R |",
-            "|---|---|---|---|---|---|" + "---|" * (len(conventions) * len(variants)) + "---|---|---|---|"]
+            " | ".join(f"{v} {c}" for c in conventions for v in variants) + " | Live-like | Recency | Robust (min layer) | REL, median bar | Median R | Worst R |",
+            "|---|---|---|---|---|---|" + "---|" * (len(conventions) * len(variants)) + "---|---|---|---|---|---|"]
     for k, e in enumerate(rows, 1):
         failed = ", ".join(g for g, ok in e["gates"].items() if not ok) or "none"
         vals = " | ".join(f"{e['headline'][c][v]:+.3f}" for c in conventions for v in variants)
         head.append(f"| {k} | {e['model']} | {e['author']} | {e['method']} | {'yes' if e['eligible'] else 'no'} | "
                     f"{failed} | {vals} | {e['live_like']:+.3f} | {e['recency']:+.3f} | "
+                    f"{('yes ' if e.get('robust') else 'no ') + format(e['robust_min'], '+.2f') if e.get('robust_min') is not None else '—'} | "
+                    f"{format(e['rel_other_bars']['median'], '+.3f') if (e.get('rel_other_bars') or {}).get('median') is not None else '—'} | "
                     f"{e['median_R'] * 100:+.2f}% | {e['worst_R'] * 100:+.2f}% |")
     head += ["", "## Runs per person", "", "| Person | Full runs (this version) | Best eligible HEADLINE | Best HEADLINE (any) |",
              "|---|---|---|---|"]

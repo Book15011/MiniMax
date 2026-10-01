@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.scoring.competition import (REL, add_rel, block_bootstrap, field_median, field_scale, gates, headline,
-                                          return_gate)
+from backtest.scoring.competition import (REL, add_rel, block_bootstrap, field_bar, field_median, field_scale, gates,
+                                          headline, rel_layers, return_gate)
 from backtest.scoring.windows import live_like_weights, recency_weights, thin
 from src.config import load_config
 
@@ -44,6 +44,28 @@ def test_rel_is_the_field_relative_mean_over_variants():
     assert np.mean(list(rel.values())) == pytest.approx(1.0)            # the field averages 1.00 by construction
     with pytest.raises(ValueError, match="positive unit"):
         field_scale({"a": f1 * 0}, w, w, sc)
+
+
+def test_field_bar_statistics():
+    f = pd.DataFrame([[-0.02, 0.00, 0.01, 0.03, -0.01, 0.02]], index=IDX[:1])
+    assert field_bar(f, "median").iloc[0] == pytest.approx(0.005)
+    assert field_bar(f, "max").iloc[0] == pytest.approx(0.03)
+    assert field_bar(f, "q50").iloc[0] == pytest.approx(0.005)
+    with pytest.raises(ValueError):
+        field_bar(f, "mean")
+
+
+def test_rel_layers_put_the_field_at_one_in_every_layer():
+    sc = {"conventions": {"C": {}}, "variants": {"V1": {}, "V2": {}}, "headline": SPLIT}
+    wl, wr = pd.Series([1.0, 2.0, 3.0, 4.0], index=IDX), pd.Series([4.0, 3.0, 2.0, 1.0], index=IDX)
+    f1 = pd.DataFrame({"C.V1.cs": [0.1, 0.0, 0.2, 0.1], "C.V2.cs": [10.0, 0.0, 30.0, 0.0]}, index=IDX)
+    f2 = pd.DataFrame({"C.V1.cs": [0.0, 0.1, 0.1, 0.0], "C.V2.cs": [0.0, 10.0, 10.0, 20.0]}, index=IDX)
+    field = {"a": f1, "b": f2}
+    la, lb = rel_layers(f1, field, wl, wr, sc, "C"), rel_layers(f2, field, wl, wr, sc, "C")
+    for k in ("headline", "live_like", "recency", "flat"):
+        assert (la[k] + lb[k]) / 2 == pytest.approx(1.0)               # the field averages 1.00 in each layer
+    # flat V1: a 0.1, b 0.05 (field 0.075); flat V2: a 10, b 10 (field 10) -> a = (0.1/0.075 + 1) / 2
+    assert la["flat"] == pytest.approx((0.1 / 0.075 + 1.0) / 2)
 
 
 def test_cs_and_weighted_headline():

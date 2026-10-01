@@ -191,7 +191,7 @@ Per window (14 days from cash, hourly equity E_0..E_336 from the harness engine;
 
 Across windows:
 
-- return gate: gate_w = 1 if R_w >= max({gf}, median of the 6 benchmarks' R_w), else 0 · CS_w = gate_w x Composite_w
+- return gate: gate_w = 1 if R_w >= max({gf}, bar_w), bar_w = the {gs} of the 6 benchmarks' R_w that window (about 150 teams in the region, top 20 = top 13%), else 0 · CS_w = gate_w x Composite_w
 - LIVE-LIKE weights from `{ll}` (PART 0), renormalized over the scored windows · RECENCY weight = 0.5^(age / {hl}), age = days from the window's end to T* = {ts}
 - HEADLINE = {a} x (sum w_live CS / sum w_live) + {b} x (sum w_rec CS / sum w_rec)
 - REL: CS_w(REL) = mean over V1–V4 of CS_w(v) / F(v), F(v) = the 6 benchmarks' mean HEADLINE(v); so HEADLINE(REL) = mean over v of HEADLINE(v) / F(v), and 1.00 is the field average
@@ -211,6 +211,9 @@ def write_report(score: dict, ctx: dict, cfg: dict, md: Path, runtime_s: float, 
     wts = score["weights"]
     act = score["activity"]
     gates = score["gates"]
+    rob, sens = score["robustness"], score["gate_sensitivity"]
+    rob_txt = " · ".join(f"{k} {num(rob[k])}" for k in ("headline", "live_like", "recency", "flat"))
+    sens_txt = "".join(f"; REL under the {k} bar {num(v)}" for k, v in sens["rel_headline"].items())
     L = [f"# {m['name']}: competition-style score", "", m["description"], "",
          "| | |", "|---|---|",
          f"| Method · author | {m['method']} · {m['author']} |",
@@ -229,6 +232,9 @@ def write_report(score: dict, ctx: dict, cfg: dict, md: Path, runtime_s: float, 
          f"{' (1.00 = the field average under all four readings)' if pv == REL else ''}, rank {ranks[pc][pv][0]} of {ranks[pc][pv][1]} "
          f"scored runs · **{'eligible' if score['eligible'] else 'NOT eligible'}** "
          f"({'all gates pass' if score['eligible'] else 'fails ' + ', '.join(g for g, v in gates.items() if not v['pass'])}).", "",
+         f"Robustness (REL per layer, 1.00 = field average there): {rob_txt} → "
+         f"**{'robust' if rob['pass'] else 'NOT robust'}** (launch rule: every layer >= {rob['threshold']:.2f}). "
+         f"Return bar: the field's {sens['primary_stat']}{sens_txt}.", "",
          f"Median 14-day R {pct(score['summary']['median_R'])} · worst 10% {pct(score['summary']['worst10_R'])} · "
          f"worst fortnight {pct(score['summary']['worst_R'])} · median MDD {mag(score['summary']['median_MDD'])} "
          f"(liquidated median R {pct(score['returns_liquidated']['median_R'])}).", "",
@@ -300,7 +306,7 @@ def write_report(score: dict, ctx: dict, cfg: dict, md: Path, runtime_s: float, 
     fl, pl = sc["conventions"]["FLOORED"], sc["conventions"].get("POL", {"mdd": "—"})
     g = sc["gates"]
     L += ["## Formulas", "", FORMULAS.format(
-        e0=float(sc["e0"]), liq=sc["liquidation_cost"], cw=sc["composite"], fl=fl, pl=pl, gf=sc["return_gate_floor"],
+        e0=float(sc["e0"]), liq=sc["liquidation_cost"], cw=sc["composite"], fl=fl, pl=pl, gf=sc["return_gate_floor"], gs=sc.get("return_gate_stat", "median"),
         ll=sc["live_like"], hl=sc["recency_half_life_days"], ts=sc["t_star"], a=sc["headline"]["live_like"],
         b=sc["headline"]["recency"], g1=g["G1"]["min_active_days"], g1s=g["G1"]["share_of_windows"],
         g1g=g["G1"]["guard_flag_share"], g3=g["G3"]["min_cell_median_return"], g5=g["G5"]["decisions"]).strip(), "",

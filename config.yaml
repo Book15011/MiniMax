@@ -206,7 +206,7 @@ live:
   history_days: 300             # hourly bars kept: >= the longest lookback (team_trend_2's state needs 240 days)
   process_after_s: 45           # read bar HH:00 this long after the hour
   max_fill_hours: 48            # carry a price forward over at most this many unfilled hours in the model's view
-  order_spacing_s: 10           # pause between orders. UNVERIFIED whether Roostoo caps trades per minute this round
+  order_spacing_s: 3            # pause between orders. Organizers: no cap on trades per minute, only 30 API calls/min (we use <= 20)
   paper_equity: 100000
   binance_rest: https://api.binance.com/api/v3/klines   # blocked on the research server; then the archive
   use_archive: true             # data.base_url daily 1h klines, published the next day
@@ -262,7 +262,11 @@ scoring:
   primary: {variant: REL, convention: FLOORED}   # REL = mean over V1-V4 of HEADLINE(v) / field mean (1.00 = field average)
   field: [team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2, team_mom_ss25]
   btc_hold: team_btc_hold                 # reference for G2 and G6
-  return_gate_floor: 0.0                  # gate_w = 1 if R_w >= max(this, median of the field's R_w)
+  return_gate_floor: 0.0                  # gate_w = 1 if R_w >= max(this, the bar below)
+  return_gate_stat: max                   # the bar: the field's best R_w. about 150 teams in our region (team estimate, 2026-10-01):
+                                          # top 20 = top 13%, and the best of six benchmarks sits near their 86th percentile
+  return_gate_report: [median]            # report-only: REL under these bars as well (median = the 2026-10-01 morning setting)
+  robust_min: 1.0                         # launch rule (Baitoey): REL >= this in the headline, live-like, recency and flat layers
   gates:
     G1: {min_active_days: 10, share_of_windows: 1.0, guard_flag_share: 0.25}
     G3: {min_cell_median_return: -0.10}

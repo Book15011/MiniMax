@@ -94,6 +94,11 @@ def test_two_runs_give_identical_score_json(tmp_path, market):
     assert dumps(s3) == dumps(s1)
     assert s1["windows"]["scored"] == 60 and s1["gates"]["G4"]["ran"]  # MOM_SS25 shorts, so G4 really runs
     assert set(s1["headline"]) == {"FLOORED", "POL"} and set(s1["headline"]["POL"]) == {"V1", "V2", "V3", "V4", "REL"}
+    rob = s1["robustness"]
+    assert set(rob) >= {"headline", "live_like", "recency", "flat", "min", "pass"}
+    assert rob["headline"] == pytest.approx(s1["headline"]["FLOORED"]["REL"]["headline"])
+    assert s1["gate_sensitivity"]["primary_stat"] == CFG["scoring"]["return_gate_stat"]
+    assert set(s1["gate_sensitivity"]["rel_headline"]) == set(CFG["scoring"]["return_gate_report"])
     g4 = s1["gates"]["G4"]
     assert {"long_only_G1", "long_only_G2"} <= set(g4) and g4["pass"] == (g4["long_only_G1"] and g4["long_only_G2"])
 
