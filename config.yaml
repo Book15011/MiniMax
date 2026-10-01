@@ -228,7 +228,9 @@ harness:
   fees: {taker: 0.001, short: 0.001}      # per side; shorts pay 0.1% to open and to close
   spreads_snapshot_glob: data/roostoo_snapshots/ticker_*.json
   default_half_spread_bps: 5              # coins missing from the snapshot (e.g. delisted ones)
-  activity_guard_offset_hours: 20         # force a trade if an HKT day has none by 20:00 HKT
+  activity_guard_offset_hours: 11         # PROPOSED (was 20): if a day has no trade by then, the guard trades at the
+                                          # 04:00 UTC bar (12:00 HKT), mid-day whether days count in UTC or HKT;
+                                          # live, an unconfirmed fill is retried every later hour of the same day
   keep_alive_weight: 0.002              # guard on a day already on target (all cash, one coin): trade 0.2% of equity, reversed next day
   min_active_days: 10
   scenario_sets:
