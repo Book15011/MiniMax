@@ -1,6 +1,7 @@
 """Competition-style score (docs/EVALUATION.md section 3): return gate, CS, HEADLINE, gates, paired comparison.
 
-- Return gate per window: gate_w = 1 if R_w >= max(floor, median of the field's R_w), else 0 (floor 0).
+- Return gate per window: gate_w = 1 if R_w >= max(floor, bar_w), else 0 (floor 0); bar_w = the field's best R_w
+  (config return_gate_stat; median and quantiles are reported for sensitivity).
 - CS_w(v) = gate_w * Composite_w(v), for every variant v and convention.
 - HEADLINE(v) = 0.70 * weighted mean of CS with LIVE-LIKE weights + 0.30 * weighted mean with RECENCY weights.
 - REL, the field-relative score: per window, CS_w(REL) = mean over the variants v of CS_w(v) / F(v), where F(v) is
@@ -25,6 +26,19 @@ def all_variants(sc: dict) -> list[str]:
 def field_median(field_R: pd.DataFrame) -> pd.Series:
     """Median of the field's R in each window (rows = windows, columns = benchmarks)."""
     return field_R.median(axis=1)
+
+
+def field_bar(field_R: pd.DataFrame, stat: str) -> pd.Series:
+    """The field statistic the return gate compares against in each window: 'median', 'max' or 'q<NN>' (NN% quantile).
+    With about 150 teams in the region, top 20 is the top 13%; the best of six benchmarks sits near their 86th
+    percentile, so 'max' is the closest of the three to the real bar."""
+    if stat == "median":
+        return field_R.median(axis=1)
+    if stat == "max":
+        return field_R.max(axis=1)
+    if stat.startswith("q"):
+        return field_R.quantile(float(stat[1:]) / 100.0, axis=1)
+    raise ValueError(f"scoring.return_gate_stat must be 'median', 'max' or 'q<NN>', not {stat!r}")
 
 
 def return_gate(R: pd.Series, field_med: pd.Series, floor: float = 0.0) -> pd.Series:
@@ -63,6 +77,30 @@ def add_rel(df: pd.DataFrame, scale: dict, sc: dict, kind: str) -> pd.DataFrame:
     for c in sc["conventions"]:
         df[f"{c}.{REL}.{kind}"] = sum(df[f"{c}.{v}.{kind}"] / scale[c][v] for v in sc["variants"]) / len(sc["variants"])
     return df
+
+
+LAYERS = ("headline", "live_like", "recency", "flat")
+
+
+def layer_values(cs: pd.Series, w_live: pd.Series, w_rec: pd.Series, split: dict) -> dict:
+    """HEADLINE and its parts, plus the flat (equal-weight) mean over the same windows."""
+    return {**headline(cs, w_live, w_rec, split), "flat": float(np.mean(np.asarray(cs, dtype=float)))}
+
+
+def rel_layers(cs: pd.DataFrame, field_cs: dict[str, pd.DataFrame], w_live: pd.Series, w_rec: pd.Series, sc: dict,
+               conv: str) -> dict:
+    """REL in each layer, each normalized by the field's mean in that same layer (1.00 = field average there):
+    mean over V1-V4 of layer(model, v) / mean over the field of layer(member, v)."""
+    out = {}
+    for layer in LAYERS:
+        ratios = []
+        for v in sc["variants"]:
+            key = f"{conv}.{v}.cs"
+            f = float(np.mean([layer_values(c[key], w_live, w_rec, sc["headline"])[layer] for c in field_cs.values()]))
+            m = layer_values(cs[key], w_live, w_rec, sc["headline"])[layer]
+            ratios.append(m / f if f > 0 else float("nan"))
+        out[layer] = float(np.mean(ratios))
+    return out
 
 
 def regime_grid(R: pd.Series, regime: pd.Series) -> pd.DataFrame:

@@ -14,8 +14,8 @@ import pandas as pd
 
 from backtest.data import Market
 from backtest.evaluate import git_state, holdout_start, window_starts
-from backtest.scoring.competition import (add_rel, all_variants, field_median, field_scale, gates, headline,
-                                          regime_grid, return_gate)
+from backtest.scoring.competition import (add_rel, all_variants, field_bar, field_median, field_scale, gates, headline,
+                                          regime_grid, rel_layers, return_gate)
 from backtest.scoring.evaluate import Run, simulate
 from backtest.scoring.leakage import leakage_gate
 from backtest.scoring.metrics import FLOORS, RATIOS
@@ -150,13 +150,19 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
     field = field_runs(market, cfg, sim, use_cache, log, {model.spec.name: run})
     fieldR = pd.DataFrame({n: r.windows.R for n, r in field.items()})
     med = field_median(fieldR)
+    stat = str(sc.get("return_gate_stat", "median"))
+    bar = field_bar(fieldR, stat)
     floor = float(sc["return_gate_floor"])
     w_live, live_info = live_like_weights(starts, cfg, window_starts(market, cfg, holdout=False))
     w_rec, rec_info = recency_weights(starts, cfg)
-    field_cs = {n: cs_table(r.windows, return_gate(r.windows.R, med, floor), sc).loc[starts] for n, r in field.items()}
-    scale = field_scale(field_cs, w_live, w_rec, sc)
+
+    def gated(bar_s: pd.Series) -> tuple[dict, dict]:
+        fcs = {n: cs_table(r.windows, return_gate(r.windows.R, bar_s, floor), sc).loc[starts] for n, r in field.items()}
+        return fcs, field_scale(fcs, w_live, w_rec, sc)
+
+    field_cs, scale = gated(bar)
     win = add_rel(run.windows, scale, sc, "composite")
-    gate = return_gate(win.R, med, floor)
+    gate = return_gate(win.R, bar, floor)
     cs = add_rel(cs_table(win, gate, sc), scale, sc, "cs")
     head = {c: {v: headline(cs.loc[starts, f"{c}.{v}.cs"], w_live, w_rec, sc["headline"]) for v in all_variants(sc)}
             for c in sc["conventions"]}
@@ -168,8 +174,17 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
     g5 = leakage(run, model, market, cfg, use_cache)
     gres = gates(win.loc[starts], btc.loc[starts], regime.loc[starts], sets["STRESS"].intersection(sim),
                  g4, g5, sc["gates"])
+    pc = prim["convention"]
+    robust = rel_layers(cs.loc[starts], field_cs, w_live, w_rec, sc, pc)
+    robust.update(min=min(robust.values()), threshold=float(sc.get("robust_min", 1.0)))
+    robust["pass"] = bool(robust["min"] >= robust["threshold"])
+    sensitivity = {}
+    for st in sc.get("return_gate_report") or []:
+        fcs_s, scale_s = gated(field_bar(fieldR, st))
+        cs_s = add_rel(cs_table(run.windows, return_gate(run.windows.R, field_bar(fieldR, st), floor), sc), scale_s, sc, "cs")
+        sensitivity[st] = headline(cs_s.loc[starts, f"{pc}.REL.cs"], w_live, w_rec, sc["headline"])["headline"]
     if lo is not None:
-        lo_gate = return_gate(lo.windows.R, med, floor)
+        lo_gate = return_gate(lo.windows.R, bar, floor)
         lo_cs = add_rel(cs_table(lo.windows, lo_gate, sc), scale, sc, "cs")
         key = f"{prim['convention']}.{prim['variant']}.cs"
         g4["headline_primary_long_only"] = headline(lo_cs.loc[starts, key], w_live, w_rec, sc["headline"])["headline"]
@@ -190,8 +205,9 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
     per.insert(2, "w_live", w_live.reindex(per.index))
     per.insert(3, "w_rec", w_rec.reindex(per.index))
     per.insert(4, "field_median_R", med.reindex(per.index))
-    per.insert(5, "gate", gate.reindex(per.index))
-    per.insert(6, "regime", regime.reindex(per.index))
+    per.insert(5, "field_bar_R", bar.reindex(per.index))
+    per.insert(6, "gate", gate.reindex(per.index))
+    per.insert(7, "regime", regime.reindex(per.index))
     for name, s in sets.items():
         per[f"in_{name}"] = per.index.isin(s)
     per_cols = {"start": [t.isoformat() for t in per.index]}
@@ -215,11 +231,13 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
                     "holdout_sealed_from": holdout_start(cfg), "full_run": (stride or int(sc["stride_days"])) == 1},
         "weights": {"live_like": live_info, "recency": rec_info, "headline_split": sc["headline"]},
         "field": {"members": list(sc["field"]), "run_keys": {n: r.key for n, r in field.items()},
-                  "return_gate_floor": sc["return_gate_floor"], "rel_unit": scale},
+                  "return_gate_floor": sc["return_gate_floor"], "return_gate_stat": stat, "rel_unit": scale},
         "primary": {"variant": prim["variant"], "convention": prim["convention"],
                     **head[prim["convention"]][prim["variant"]]},
         "headline": head,
         "eligible": all(g["pass"] for g in gres.values()),
+        "robustness": robust,
+        "gate_sensitivity": {"primary_stat": stat, "rel_headline": sensitivity},
         "gates": gres,
         "summary": summary(win.loc[starts].R, win.loc[starts].MDD),
         "returns_liquidated": summary(win.loc[starts].R_liq, win.loc[starts].MDD),
@@ -241,5 +259,5 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
     }
     ctx = {"run": run, "field": field, "long_only": lo, "starts": starts, "sim": sim, "w_live": w_live,
            "w_rec": w_rec, "gate": gate, "cs": cs, "grid": grid, "sets": sets, "regime": regime, "field_median": med,
-           "field_cs": field_cs, "field_scale": scale}
+           "field_cs": field_cs, "field_scale": scale, "field_bar": bar}
     return json.loads(dumps(score)), ctx
