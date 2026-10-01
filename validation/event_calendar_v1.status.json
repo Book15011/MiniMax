@@ -1,0 +1,71 @@
+{
+ "bls": "HTTP 403",
+ "problems": [
+  "https://www.federalreserve.gov/newsevents/2025-november.htm: HTTP 404",
+  "https://www.federalreserve.gov/newsevents/2026-april.htm: HTTP 404"
+ ],
+ "fomc_cross_check": {
+  "released_notes": 53,
+  "press_release_times": 53,
+  "monthly_calendar_rows": 52,
+  "released_but_not_in_monthly_calendar": [
+   "2022-01-05",
+   "2023-01-04",
+   "2025-01-08",
+   "2025-11-19",
+   "2026-04-08"
+  ],
+  "time_mismatch_press_release_vs_monthly": [],
+  "monthly_calendar_only (upcoming, or before the notes range)": [
+   "2020-01-03",
+   "2026-10-07",
+   "2026-11-18",
+   "2026-12-30"
+  ]
+ },
+ "cpi_bls_file": {
+  "rows": 82,
+  "released": 80,
+  "scheduled": 1,
+  "not_published": [
+   "2025-10"
+  ],
+  "reference_months": "2019-12 .. 2026-09",
+  "sha256": "bad0c2af4187266a8b713aec24a2cea505499bc177efd35c3f0b2bb5b09175e9",
+  "checks": "UTC recomputed from 08:30 ET with DST; weekdays; after the reference month; one row per month",
+  "problems": []
+ },
+ "cpi_cross_check_fred_vs_bls": {
+  "overlap_release_months": "2025-01 .. 2026-10",
+  "matching": 21,
+  "fred_only": [],
+  "bls_only": []
+ },
+ "cpi_coverage": "BLS release list for reference months 2019-12 .. 2026-09 (dates from the BLS news-release archive, supplied as a file because bls.gov refuses this server); not published: ['2025-10']; later scheduled releases from the FRED calendar: ['2026-11-10 13:30', '2026-12-10 13:30']",
+ "counts": {
+  "CPI": {
+   "2020": 12,
+   "2021": 12,
+   "2022": 12,
+   "2023": 12,
+   "2024": 12,
+   "2025": 11,
+   "2026": 12
+  },
+  "FOMC_MINUTES": {
+   "2020": 8,
+   "2021": 8,
+   "2022": 8,
+   "2023": 8,
+   "2024": 8,
+   "2025": 9,
+   "2026": 8
+  }
+ },
+ "checks": {
+  "CPI 2026-10-14 12:30 UTC": true,
+  "FOMC_MINUTES 2026-10-07 18:00 UTC": true
+ },
+ "sha256": "cc2689945a2d2bd002d1d1cf817aa2eaf2c7c056d6c9cc7ef151226a23d403fb",
+ "rows": 141
+}
