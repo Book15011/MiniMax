@@ -264,3 +264,21 @@ def test_guard_fires_at_04_utc_confirms_the_fill_and_retries_the_same_day(tmp_pa
                   ("2026-10-04 06:00", ["FILLED"])]                     # first at 12:00 HKT, retried until it fills
     assert r.state["active_days"] == [str(start)]                       # the day counts only after the real fill
     assert r.broker.h.spot.get("BTC/USD", 0.0) > 0
+
+
+def test_utc_day_guard_trades_on_every_utc_day(tmp_path):
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+
+    def fill_days(utc: bool, d) -> set:
+        r = make_runner(d, "team_btc_hold", flat_store(start, 120))
+        r.h["guard_utc_day"] = utc
+        for k in range(24 * 4):
+            r.process(start + pd.Timedelta(hours=k))
+        logs = [json.loads(x) for f in (d / "logs").glob("*.jsonl") for x in f.read_text().splitlines()]
+        return {e["bar"][:10] for e in logs if any(f["status"] == "FILLED" for f in e.get("fills", []))}
+
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    full = {"2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07"}
+    assert fill_days(True, tmp_path / "a") == full                      # a confirmed trade on every UTC date
+    assert fill_days(False, tmp_path / "b") != full                     # HKT days only: some UTC date has none

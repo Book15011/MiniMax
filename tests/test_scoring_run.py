@@ -129,8 +129,10 @@ def test_keep_alive_makes_cash_active_at_almost_no_cost(tmp_path, market):
     cfg = synth_cfg(tmp_path, market)
     run = simulate(discover()["team_cash"], market, cfg, pd.date_range("2021-02-01 16:00", periods=10, freq="D", tz="UTC"))
     assert (run.windows.active_days == 14).all()
-    # band 0: the next decision unwinds the nudge (a "strategy" day), the guard nudges again the day after
-    assert (run.windows.guard_days >= 7).all()
+    # band 0: the next decision unwinds the nudge (a "strategy" day). Guarding HKT days only, the guard nudges again
+    # the day after; with guard_utc_day it nudges at 04:00 UTC every day (the unwind came before 00:00 UTC)
+    guards = run.trades[run.trades.kind == "guard"].groupby("window_start").size()
+    assert (guards >= (13 if cfg["harness"].get("guard_utc_day") else 7)).all()
     assert run.windows.R.abs().max() < 0.001
     assert run.windows.gross_max.max() <= 1.25 * cfg["harness"]["keep_alive_weight"]   # the nudge, plus its price drift
 
