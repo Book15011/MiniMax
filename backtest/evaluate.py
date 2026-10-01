@@ -60,10 +60,18 @@ def git_state() -> dict:
                                                                                   "--untracked-files=no"))}
 
 
+ENGINE_FILES = ("backtest/engine.py", "backtest/metrics.py", "backtest/evaluate.py", "backtest/data.py",
+                "src/contracts.py")
+
+
 def cache_key(model: Model, params: dict, cfg: dict, market: Market, holdout: bool) -> str:
-    src = inspect.getsource(sys.modules[type(model).__module__])
+    """Changes with the model's code (every src.models module its class is built from), its parameters, the
+    harness config, the data and the code that turns decisions into numbers (ENGINE_FILES)."""
+    mods = sorted({c.__module__ for c in type(model).__mro__ if c.__module__.startswith("src.models")})
+    src = "\n".join(inspect.getsource(sys.modules[m]) for m in mods)
+    engine = {f: hashlib.sha256((REPO_ROOT / f).read_bytes()).hexdigest() for f in ENGINE_FILES}
     blob = json.dumps({"src": src, "params": params, "harness": cfg["harness"], "data": market.notes,
-                       "holdout": holdout}, sort_keys=True, default=str)
+                       "holdout": holdout, "engine": engine}, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 

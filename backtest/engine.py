@@ -5,6 +5,9 @@ Timeline (all UTC, bars indexed by close time):
 - A window starting at t0 is all cash at the close of t0; its first trade is at t0 + lag.
 - Between decisions nothing trades except the activity guard: if an HKT day (24 h from the window start)
   has no trade by `guard_offset_hours` into the day, the engine rebalances exactly to the standing target.
+- Gross exposure never exceeds 100% after a trade. A band-limited rebalance can leave drifted holdings
+  above target while buying new ones in full; then, as src/execution/planner.py does live, reductions
+  happen in full and the increases are scaled down together to fit (fit_gross).
 """
 from __future__ import annotations
 
@@ -32,6 +35,21 @@ class WindowResult:
     max_orders_day: int      # most coins traded in a single HKT day
     max_gross: float         # largest sum |w| right after a trade
     trace: dict | None = None  # only with run(..., trace=True); see Simulator.run
+
+
+def fit_gross(w: np.ndarray, new: np.ndarray, cap: float = 1.0) -> np.ndarray:
+    """Weights `new`, with the increases scaled down so that sum |weights| <= cap.
+
+    Reductions, exits and the closing leg of a flip are kept in full (they free cash); every increase in |w|
+    (new coins, adds, the opening leg of a flip) is scaled by one common factor, like the planner's buys."""
+    if np.abs(new).sum() <= cap + 1e-12:
+        return new
+    same = np.sign(new) == np.sign(w)
+    kept = np.where(same, np.where(np.abs(new) < np.abs(w), new, w), 0.0)
+    add = new - kept
+    need = float(np.abs(add).sum())
+    room = max(0.0, cap - float(np.abs(kept).sum()))
+    return kept + add * min(1.0, room / need) if need > 0 else kept
 
 
 def decision_times(index: pd.DatetimeIndex, every_h: int, anchor_hour: int,
@@ -87,10 +105,11 @@ class Simulator:
         if not exact:
             keep = (np.abs(d) > self.band) | ((tgt == 0.0) & (w != 0.0))
             d = np.where(keep, d, 0.0)
+        new = fit_gross(w, w + d)
+        d = new - w
         moved = np.abs(d) > 1e-12
         if not moved.any():
             return w, 0.0, 0.0, 0
-        new = w + d
         long_vol = np.abs(np.maximum(new, 0.0) - np.maximum(w, 0.0))
         short_vol = np.abs(np.minimum(new, 0.0) - np.minimum(w, 0.0))
         cost = float(long_vol.sum() * self.costs.taker + short_vol.sum() * self.costs.short
