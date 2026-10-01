@@ -53,13 +53,19 @@ What commit 2 changes in the engine:
 - The ranking of these models is the same under all three guard settings.
 - `baitoey_mr_4h` passes G6 by 0.01 pp with the guard at 13:00, and fails it by 0.05–0.06 pp with either 04:00 variant: it was on a knife edge already.
 
-## 4. Open points
+## 4. Decisions (Book, 2026-10-01)
+
+- **Approved:** the clock-time fix (commits 1 and 2), the guard changes (commits 3 and 4), and rescoring every model on this code before the Oct 3 16:00 UTC rerun.
+- **Answered:** one trade per day counts as a trading day, so the keep-alive trade counts.
+- **Still open:** whether the organizers count days in UTC or HKT. `guard_utc_day` covers both until they answer.
+- **Merging** still goes through `scripts/wt merge` with a reviewer other than the author: Baitoey for commits 1 and 2, Pol for the `src/live` parts of commits 3 and 4. It also comes after the stack this branch sits on (`feature/final` and everything below it) has landed.
+
+## 5. Open points
 - **Who reviews what.** Under AGENTS.md v1 (still the merged version), `src/live/` is Pol's area, so commits 3 and 4 need Pol as reviewer. Under v2, Baitoey can review them.
 - **The fill check applies to every order.** It sits in `Runner.trade`, so it covers decision rebalances too, not only the guard. The keep-alive and guard orders are where it matters most.
 - **Hourly models get no live guard.** The runner skips the guard in any hour that had a decision (line 208), so a model with `rebalance_hours` 1 never gets one. No such model is registered. Not changed.
 - **Model views count rows.** In the backtest, `view.tail(n)` reaches back more than n hours across a gap; the live store forward-fills. This is small and not changed.
 - **UNVERIFIED:**
-  - whether the organizers count active days in UTC or HKT
-  - whether keep-alive trades count as "strategy trades"
+  - whether the organizers count active days in UTC or HKT (asked; `guard_utc_day` covers both meanwhile)
   - that the EC2 clock is NTP-synced
 - **Timing.** If any of this merges before the Oct 3 16:00 UTC rerun, the tool version changes, so every model must be rescored on the new version.
