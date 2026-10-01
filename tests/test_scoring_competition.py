@@ -57,7 +57,9 @@ def test_stride_keeps_the_newest_window_and_renormalizes(tmp_path):
     w, info = live_like_weights(kept, cfg)
     # kept raw weights 0.2, 0.1, 0.1 (sum 0.4) -> 0.5, 0.25, 0.25
     assert w.tolist() == pytest.approx([0.5, 0.25, 0.25])
-    assert info["dropped_by_stride"] == 3 and info["mass_dropped_by_stride"] == pytest.approx(0.6)
+    assert info["dropped_by_stride"] == 3 and info["mass_dropped"] == pytest.approx(0.6)
+    w2, info2 = live_like_weights(kept, cfg, pool=pool.delete(0))      # a start the harness cannot run is listed apart
+    assert info2["not_in_harness_pool"] == [str(pool[0])] and info2["dropped_by_stride"] == 2
     cs = pd.Series([1.0, 2.0, 3.0], index=kept)
     flat = pd.Series(1.0, index=kept)
     # live layer = 0.5*1 + 0.25*2 + 0.25*3 = 1.75; recency layer with flat weights = 2 -> 0.7*1.75 + 0.3*2 = 1.825

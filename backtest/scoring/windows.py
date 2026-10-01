@@ -53,7 +53,9 @@ def effective_n(w: pd.Series) -> float:
     return float(1.0 / (w ** 2).sum())
 
 
-def live_like_weights(starts: pd.DatetimeIndex, cfg: dict) -> tuple[pd.Series, dict]:
+def live_like_weights(starts: pd.DatetimeIndex, cfg: dict, pool: pd.DatetimeIndex | None = None) -> tuple[pd.Series, dict]:
+    """Weights of the scored windows, renormalized. File windows the harness cannot run (no bar at the start, e.g.
+    an exchange outage) are listed; with a stride, the thinned-out ones are counted."""
     path = cfg["scoring"]["live_like"]
     art = json.loads(resolve(path).read_text())
     if art["weights"].get("direction_factor_applied"):
@@ -65,10 +67,13 @@ def live_like_weights(starts: pd.DatetimeIndex, cfg: dict) -> tuple[pd.Series, d
         raise ValueError(f"{path} has no weight for {len(missing)} scored windows, e.g. {missing[:3].tolist()}; "
                          "rebuild it for the same pool")
     used = normalized(w.reindex(starts))
+    not_in_pool = w.index[:0] if pool is None else w.index.difference(pool)
     info = {"source": path, "file_sha256": sha256(path), "artifact_sha256": art.get("sha256"),
             "asof": art.get("asof"), "n_in_file": int(len(w)), "n_used": int(len(used)),
-            "dropped_by_stride": int(len(w.index.difference(starts))),
-            "mass_dropped_by_stride": float(1.0 - w.reindex(starts).sum() / w.sum()),
+            "not_in_harness_pool": [str(t) for t in not_in_pool],
+            "mass_not_in_harness_pool": float(w.reindex(not_in_pool).sum() / w.sum()),
+            "dropped_by_stride": int(len(w.index.difference(starts).difference(not_in_pool))),
+            "mass_dropped": float(1.0 - w.reindex(starts).sum() / w.sum()),
             "effective_n": effective_n(used), "events_used_in_weights": art.get("events", {}).get("used_in_weights")}
     return used, info
 

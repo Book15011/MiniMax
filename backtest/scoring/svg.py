@@ -102,7 +102,7 @@ def lines(title: str, subtitle: str, x, series: list[tuple[str, np.ndarray, int]
     c = Chart(w, h, title, subtitle)
     allv = np.concatenate([np.asarray(s[1], float) for s in series])
     lo, hi = padded(float(np.nanmin(np.append(allv, 0.0))), float(np.nanmax(np.append(allv, 0.0))))
-    box = (70, 70, w - 110, h - 50)
+    box = (70, 84, w - 110, h - 50)
     sx, sy = c.axes(box, (float(x[0]), float(x[-1])), (lo, hi), xfmt=lambda v: f"{v:g}", yfmt=yfmt,
                     xticks=xticks, xlabel=xlabel)
     for label, y, slot in series:
@@ -215,7 +215,7 @@ def stacked_columns(title: str, subtitle: str, labels: list[str], stacks: list[t
                     xlabel: str, w: int = 720, h: int = 300) -> str:
     """Columns of shares that add up to 1; stacks [(name, values, slot)], slot 0 = the neutral 'none' grey."""
     c = Chart(w, h, title, subtitle)
-    box = (70, 70, w - 30, h - 50)
+    box = (70, 84, w - 30, h - 50)
     n = len(labels)
     sx, sy = c.axes(box, (0, n), (0.0, 1.0), xfmt=lambda t: "", yfmt=lambda t: f"{t * 100:.0f}%", xticks=[],
                     yticks=[0, 0.25, 0.5, 0.75, 1.0], xlabel=xlabel)
