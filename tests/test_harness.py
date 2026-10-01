@@ -119,6 +119,18 @@ def test_all_cash_is_inactive_and_flat():
     assert res.active_days == 0 and res.turnover == 0 and np.allclose(res.equity, 1.0)
 
 
+def test_keep_alive_trades_daily_when_already_on_target():
+    mk = market_from({"A": [100.0] * N, "BTCUSDT": [100.0] * N})
+    i0 = 16
+    times = decision_times(mk.close.index, 24, 16, mk.close.index[i0], mk.close.index[i0 + HOURS])
+    for w, gross in (({}, 0.0), ({"A": 1.0}, 1.0)):            # all cash: buys BTC · fully in A: trims A
+        tg = compute_targets(Const(w), mk, times, {})
+        res = Simulator(mk, tg, 0.0, Costs(0.001, 0.001), 1, 16, 20, keep_alive=0.002).run(i0, HOURS, trace=True)
+        assert res.active_days == 14
+        assert all(abs(g - gross) <= 0.002 + 1e-12 for g in res.trace["gross"][1:])
+        assert res.equity[-1] > 1 - 0.0011 - 14 * 0.002 * 0.001       # entry fee plus 14 tiny keep-alive fees
+
+
 def test_fit_gross_keeps_reductions_and_scales_increases():
     w = np.array([0.55, 0.45, 0.0, -0.1])
     new = np.array([0.55, 0.0, 0.5, -0.2])       # A drifted but within band; B exits; C new; short D grows

@@ -101,20 +101,21 @@ A selector can call other models' `targets()` inside its own `targets()`: they'r
 `--score` scores the model the way the competition probably will. The full definition, with every constant and the team sign-off checklist, is in `docs/EVALUATION.md`.
 
 1. **Each window gets a composite:** 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar.
-   - The official formula is unpublished, so four readings are computed: V1 daily_raw (primary), V2 daily_annual, V3 hourly_annual, V4 total_calmar.
+   - The official formula is unpublished, so four readings are computed: V1 daily_raw, V2 daily_annual, V3 hourly_annual, V4 total_calmar.
    - Each reading is computed under two denominator conventions: FLOORED (primary) and POL (this harness's).
+   - **REL (proposed primary):** each reading's HEADLINE divided by the six benchmarks' average, then averaged over the four readings. 1.00 = the field average; 1.30 = 30% better than a typical competitor under every reading at once.
 2. **Return gate:** a window counts only if the model's 14-day return is ≥ 0 and ≥ the median of six benchmarks: BTC_HOLD, EW_DAILY, ROT_EW, ROT_IV, TREND_2 and MOM_SS25, in `src/models/baselines/`.
 3. **HEADLINE** = 0.70 × the gated composite weighted by live-likeness (PART 0) + 0.30 × the same weighted by recency (half-life 60 days).
 4. **Gates G1–G6.** All must pass for the model to be eligible:
    - G1: ≥ 10 active days in every window
    - G2: worst fortnight better than BTC hold
    - G3: no regime cell with median return below −10%
-   - G4: still runs with shorts disabled
+   - G4: with shorts disabled, still runs and still passes G1 and G2
    - G5: no look-ahead or I/O
    - G6: survives the 20 STRESS windows at least as well as BTC hold
 
 **Reading `<stamp>-score.md`:**
-- The summary line gives HEADLINE V1 FLOORED, its rank among all scored runs, and whether the model is eligible.
+- The summary line gives the primary HEADLINE (REL FLOORED), its rank among all scored runs, and whether the model is eligible.
 - The tables give the other variants and conventions, why each gate passed or failed, the layer scores, and the benchmarks on the same windows.
 - The charts follow.
 

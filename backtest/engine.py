@@ -5,6 +5,10 @@ Timeline (all UTC, bars indexed by close time):
 - A window starting at t0 is all cash at the close of t0; its first trade is at t0 + lag.
 - Between decisions nothing trades except the activity guard: if an HKT day (24 h from the window start)
   has no trade by `guard_offset_hours` into the day, the engine rebalances exactly to the standing target.
+  If the book is already exactly on target (all cash, or one coin that cannot drift), the guard makes a
+  keep-alive trade instead: `keep_alive` of equity more BTC, or that much less of the largest holding when
+  there is no room. The next guard reverses it, so the book stays on target within that small amount and
+  every day has a trade. The live bot does the same.
 - Gross exposure never exceeds 100% after a trade. A band-limited rebalance can leave drifted holdings
   above target while buying new ones in full; then, as src/execution/planner.py does live, reductions
   happen in full and the increases are scaled down together to fit (fit_gross).
@@ -79,14 +83,20 @@ class Simulator:
     """Numpy views of prices and standing targets, for fast repeated window runs."""
 
     def __init__(self, market: Market, targets: pd.DataFrame, band: float, costs: Costs,
-                 lag_hours: int = 1, anchor_hour: int = 16, guard_offset_hours: int = 20):
+                 lag_hours: int = 1, anchor_hour: int = 16, guard_offset_hours: int = 20,
+                 keep_alive: float = 0.0, keep_alive_coin: str = "BTCUSDT"):
         active = targets.columns[(targets != 0).any()]
         self.cols = list(active) if len(active) else [market.close.columns[0]]
+        has_coin = keep_alive > 0 and keep_alive_coin in market.close.columns
+        if has_coin and keep_alive_coin not in self.cols:
+            self.cols.append(keep_alive_coin)
+        self.ka = keep_alive if has_coin else 0.0
+        self.ka_i = self.cols.index(keep_alive_coin) if has_coin else -1
         idx = market.close.index
         self.index = idx
         px = market.close[self.cols].ffill()
         self.R = px.pct_change(fill_method=None).fillna(0.0).to_numpy()
-        tg = targets[self.cols]
+        tg = targets.reindex(columns=self.cols).fillna(0.0)
         dec = idx.get_indexer(tg.index)
         if (dec < 0).any():
             raise ValueError("target times must be panel bar times")
@@ -116,6 +126,16 @@ class Simulator:
                      + np.abs(d) @ self.half)
         # fees are taken from the book pro rata, so weights relative to the new equity equal `new` (gross stays <= 1)
         return new, float(np.abs(d).sum()), cost, int(moved.sum())
+
+    def _nudge(self, w: np.ndarray) -> np.ndarray:
+        """Keep-alive target: `ka` more of the keep-alive coin, or `ka` less of the largest holding if no room."""
+        t = w.copy()
+        if np.abs(w).sum() + self.ka <= 1.0 + 1e-12:
+            t[self.ka_i] += self.ka
+        else:
+            k = int(np.argmax(np.abs(w)))
+            t[k] -= np.sign(w[k]) * min(self.ka, abs(w[k]))
+        return t
 
     def run(self, i0: int, hours: int, trace: bool = False) -> WindowResult:
         """trace=True also returns, for the scoring layer (backtest/scoring), the hourly gross and net exposure,
@@ -150,6 +170,8 @@ class Simulator:
             if first or guard or self.is_dec[j]:
                 w0 = w
                 w, tv, cost, n = self._trade(w, self.T[j], exact=first or guard)
+                if not n and guard and self.ka:
+                    w, tv, cost, n = self._trade(w, self._nudge(w), exact=True)
                 if n:
                     if tr is not None:
                         by_guard = guard and not (self.is_dec[j] and self._trade(w0, self.T[j], exact=False)[3])
