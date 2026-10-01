@@ -3,8 +3,14 @@
 Timeline (all UTC, bars indexed by close time):
 - A decision taken at bar t uses data up to and including bar t, and trades at the close of bar t + lag.
 - A window starting at t0 is all cash at the close of t0; its first trade is at t0 + lag.
+- Clock time, not bar counts: the simulator steps through every hour of the panel's span. An hour with no bar
+  (an exchange outage or maintenance) has no price: the book keeps its last value, and a trade due then (a
+  decision's fill, the first trade, the guard) waits for the next hour that has a bar. Decisions are made at their
+  clock hours even when that hour's bar is missing; the model then sees the bars before it. So windows, days and
+  the guard always sit on the same clock hours as the live bot's.
 - Between decisions nothing trades except the activity guard: if an HKT day (24 h from the window start)
-  has no trade by `guard_offset_hours` into the day, the engine rebalances exactly to the standing target.
+  has no trade by `guard_offset_hours` into the day, the engine rebalances exactly to the standing target
+  (at the first hour at or after that offset that has a bar).
   If the book is already exactly on target (all cash, or one coin that cannot drift), the guard makes a
   keep-alive trade instead: `keep_alive` of equity more BTC, or that much less of the largest holding when
   there is no room. The next guard reverses it, so the book stays on target within that small amount and
@@ -56,22 +62,43 @@ def fit_gross(w: np.ndarray, new: np.ndarray, cap: float = 1.0) -> np.ndarray:
     return kept + add * min(1.0, room / need) if need > 0 else kept
 
 
+HOUR = pd.Timedelta(hours=1)
+CARRY_HOURS = 48       # as live.max_fill_hours: the live store carries a price over at most this many missing hours
+
+
+def view_frames(close: pd.DataFrame, qv: pd.DataFrame, t: pd.Timestamp) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """What a model may see at decision time t: every bar closed at or before t. If t itself has no bar (an
+    exchange outage), the hours from the last bar up to t are added with each coin's last price carried forward
+    and no volume, as the live bot's hourly store does, so the view always ends at t like the live one."""
+    i = int(close.index.searchsorted(t, side="right")) - 1
+    if i < 0:
+        raise ValueError(f"decision time {t} is before the first bar of the panel")
+    c, q = close.iloc[: i + 1], qv.iloc[: i + 1]
+    if c.index[-1] == t:
+        return c, q
+    extra = pd.date_range(c.index[-1] + HOUR, t, freq="h")
+    last = c.iloc[-CARRY_HOURS:].ffill().iloc[-1].to_numpy()
+    c = pd.concat([c, pd.DataFrame(np.tile(last, (len(extra), 1)), index=extra, columns=c.columns)])
+    q = pd.concat([q, pd.DataFrame(np.nan, index=extra, columns=q.columns)])
+    return c, q
+
+
 def decision_times(index: pd.DatetimeIndex, every_h: int, anchor_hour: int,
                    start: pd.Timestamp, end: pd.Timestamp) -> pd.DatetimeIndex:
-    sel = index[(index >= start) & (index <= end)]
+    """Clock hours in [start, end] (within the panel's span) on the decision grid, with or without a bar."""
+    lo, hi = max(start, index[0]).ceil("h"), min(end, index[-1]).floor("h")
+    sel = pd.date_range(lo, hi, freq="h")
     return sel[((sel.hour - anchor_hour) % every_h) == 0]
 
 
 def compute_targets(model: Model, market: Market, times: pd.DatetimeIndex, params: dict) -> pd.DataFrame:
     """Run the model at every decision time on a view truncated at that time. Rows = times, cols = all series."""
     close, qv = market.close, market.quote_volume
-    pos = close.index.get_indexer(times)
-    if (pos < 0).any():
-        raise ValueError("decision times must be bar close times present in the panel")
     rows, prev = [], pd.Series(dtype=float)
-    for t, i in zip(times, pos):
-        view = MarketView(t=t, close=close.iloc[: i + 1], quote_volume=qv.iloc[: i + 1],
-                          universe=universe_at(market, t), params=params, prev_targets=prev)
+    for t in times:
+        c, q = view_frames(close, qv, t)
+        view = MarketView(t=t, close=c, quote_volume=q, universe=universe_at(market, t), params=params,
+                          prev_targets=prev)
         w = check_targets(model.targets(view), view, model.spec)
         rows.append(w)
         prev = w
@@ -92,14 +119,16 @@ class Simulator:
             self.cols.append(keep_alive_coin)
         self.ka = keep_alive if has_coin else 0.0
         self.ka_i = self.cols.index(keep_alive_coin) if has_coin else -1
-        idx = market.close.index
+        bars = market.close.index
+        idx = pd.date_range(bars[0], bars[-1], freq="h")          # every clock hour of the panel's span
         self.index = idx
-        px = market.close[self.cols].ffill()
-        self.R = px.pct_change(fill_method=None).fillna(0.0).to_numpy()
+        self.has_bar = idx.isin(bars)                              # only these hours have a price to trade at
+        px = market.close[self.cols].reindex(idx).ffill()
+        self.R = px.pct_change(fill_method=None).fillna(0.0).to_numpy()   # 0 in a gap; the move lands on the next bar
         tg = targets.reindex(columns=self.cols).fillna(0.0)
         dec = idx.get_indexer(tg.index)
         if (dec < 0).any():
-            raise ValueError("target times must be panel bar times")
+            raise ValueError("target times must be clock hours inside the panel's span")
         self.is_dec = np.zeros(len(idx), dtype=bool)
         self.is_dec[dec] = True
         standing = np.full((len(idx), len(self.cols)), np.nan)
@@ -150,8 +179,10 @@ class Simulator:
         E = np.empty(hours + 1)
         E[0] = 1.0
         traded = np.zeros(n_days, dtype=bool)
+        guard_done = np.zeros(n_days, dtype=bool)
         orders = np.zeros(n_days, dtype=int)
         turnover = fees = max_gross = 0.0
+        due = entry = False                                        # a decision fill or the first trade not yet made
         tr = None
         if trace:
             tr = {"cols": self.cols, "gross": np.zeros(hours + 1), "net": np.zeros(hours + 1), "trades": [],
@@ -165,17 +196,25 @@ class Simulator:
                 w = w * (1.0 + r) / (1.0 + pr)
             j = i - self.lag
             day = min((h - 1) // 24, n_days - 1)
-            first = h == 1
-            guard = (not traded[day]) and ((h - 1) % 24 == self.guard)
-            if first or guard or self.is_dec[j]:
+            entry |= h == 1
+            due |= h == 1 or bool(self.is_dec[j])
+            guard = (not traded[day]) and (not guard_done[day]) and ((h - 1) % 24 >= self.guard)
+            if not self.has_bar[i]:                                # no price this hour: nothing fills, due trades wait
+                E[h] = eq
+                if tr is not None:
+                    tr["gross"][h], tr["net"][h] = float(np.abs(w).sum()), float(w.sum())
+                continue
+            if guard:
+                guard_done[day] = True
+            if due or guard:
                 w0 = w
-                w, tv, cost, n = self._trade(w, self.T[j], exact=first or guard)
+                w, tv, cost, n = self._trade(w, self.T[j], exact=entry or guard)
                 if not n and guard and self.ka:
                     w, tv, cost, n = self._trade(w, self._nudge(w), exact=True)
                 if n:
                     if tr is not None:
-                        by_guard = guard and not (self.is_dec[j] and self._trade(w0, self.T[j], exact=False)[3])
-                        tr["trades"].append((h, "entry" if first else "guard" if by_guard else "decision",
+                        by_guard = guard and not (due and self._trade(w0, self.T[j], exact=False)[3])
+                        tr["trades"].append((h, "entry" if entry else "guard" if by_guard else "decision",
                                              w0, w, eq, cost))
                         tr["guard_day" if by_guard else "strategy_day"][day] = True
                     eq *= 1.0 - cost
@@ -184,6 +223,7 @@ class Simulator:
                     traded[day] = True
                     orders[day] += n
                     max_gross = max(max_gross, float(np.abs(w).sum()))
+                due = entry = False
             E[h] = eq
             if tr is not None:
                 tr["gross"][h], tr["net"][h] = float(np.abs(w).sum()), float(w.sum())

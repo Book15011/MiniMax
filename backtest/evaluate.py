@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from backtest.data import Market, universe_at
-from backtest.engine import Costs, Simulator, compute_targets, decision_times
+from backtest.engine import Costs, Simulator, compute_targets, decision_times, view_frames
 from backtest.metrics import window_metrics
 from src.config import REPO_ROOT, resolve
 from src.contracts import MarketView, Model
@@ -94,15 +94,14 @@ def lookahead_check(model: Model, market: Market, targets: pd.DataFrame, params:
     """Re-run the model at a few decision times: it must reproduce the stored decision exactly
     (deterministic, no hidden state). Views are truncated at t by construction, so the future is unreachable."""
     rng = np.random.default_rng(seed)
-    idx = market.close.index
     fails = []
     for k in sorted(rng.choice(len(targets), size=min(n, len(targets)), replace=False)):
         t = targets.index[k]
-        i = idx.get_loc(t)
         prev = targets.iloc[k - 1] if k > 0 else pd.Series(dtype=float)
         prev = prev[prev != 0.0]
-        view = MarketView(t=t, close=market.close.iloc[: i + 1], quote_volume=market.quote_volume.iloc[: i + 1],
-                          universe=universe_at(market, t), params=params, prev_targets=prev)
+        c, q = view_frames(market.close, market.quote_volume, t)
+        view = MarketView(t=t, close=c, quote_volume=q, universe=universe_at(market, t), params=params,
+                          prev_targets=prev)
         w = model.targets(view).astype(float)
         w = w[w != 0.0].reindex(targets.columns).fillna(0.0)
         if not np.allclose(w.to_numpy(), targets.iloc[k].to_numpy(), atol=1e-12):
@@ -136,7 +135,7 @@ def evaluate(model: Model, market: Market, cfg: dict, holdout: bool = False, use
                     h["activity_guard_offset_hours"], float(h.get("keep_alive_weight", 0.0)))
     rows = []
     for t0 in starts:
-        res = sim.run(market.close.index.get_loc(t0), days * 24)
+        res = sim.run(sim.index.get_loc(t0), days * 24)
         m = window_metrics(res.equity, days)
         m.update(active_days=res.active_days, turnover=res.turnover, fees=res.fees,
                  max_orders_day=res.max_orders_day, max_gross=res.max_gross)

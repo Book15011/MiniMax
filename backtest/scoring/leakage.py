@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from backtest.data import Market, universe_at
+from backtest.engine import view_frames
 from backtest.evaluate import lookahead_check
 from src.contracts import MarketView, Model
 
@@ -61,15 +62,16 @@ def future_noise_check(model: Model, market: Market, targets: pd.DataFrame, para
     fails = []
     for k in picks:
         t = targets.index[k]
-        i = idx.get_loc(t)
+        i = int(idx.searchsorted(t, side="right")) - 1     # last bar at or before t (t may be a gap hour)
         close, qv = market.close.copy(), market.quote_volume.copy()
         n_after = len(idx) - i - 1
         if n_after:
             last = close.iloc[: i + 1].ffill().iloc[-1].fillna(1.0).to_numpy()
             close.iloc[i + 1:] = last * np.exp(np.cumsum(rng.normal(0.0, sigma, (n_after, close.shape[1])), axis=0))
             qv.iloc[i + 1:] = rng.lognormal(10.0, 1.0, (n_after, qv.shape[1]))
-        view = MarketView(t=t, close=close.iloc[: i + 1], quote_volume=qv.iloc[: i + 1], universe=universe_at(market, t),
-                          params=params, prev_targets=_prev(targets, k))
+        c, q = view_frames(close, qv, t)
+        view = MarketView(t=t, close=c, quote_volume=q, universe=universe_at(market, t), params=params,
+                          prev_targets=_prev(targets, k))
         w = model.targets(view).astype(float)
         w = w[w != 0.0].reindex(targets.columns).fillna(0.0)
         if not np.allclose(w.to_numpy(), targets.iloc[k].to_numpy(), rtol=0.0, atol=1e-12):
