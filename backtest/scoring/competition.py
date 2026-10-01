@@ -166,11 +166,22 @@ def _leak_detail(leak: dict) -> str:
     return "; ".join(parts)
 
 
+def block_indices(n: int, block: int, rng: np.random.Generator) -> np.ndarray:
+    """One circular block-bootstrap resample of positions 0..n-1: blocks of `block` consecutive positions that wrap
+    around the end, drawn until n positions are filled. Every position is drawn equally often. Plain moving blocks
+    reach the newest window from a single block position (against `block` positions for a middle one), and the
+    newest windows carry most of the RECENCY weight (2026-10-01 review: the last 56 windows hold 48% of it)."""
+    nb = -(-n // block)
+    starts = rng.integers(0, n, size=nb)
+    return ((starts[:, None] + np.arange(block)[None, :]) % n).ravel()[:n]
+
+
 def block_bootstrap(d: pd.Series, w_live: pd.Series, w_rec: pd.Series, split: dict, block: int, reps: int,
                     level: float, seed: int) -> dict:
-    """Paired HEADLINE difference d = CS_a - CS_b per window (windows in time order). Moving blocks of `block`
-    consecutive windows are drawn with replacement until the series is full; each draw recomputes the weighted
-    HEADLINE of d with the drawn windows' own weights. Returns the point estimate and the central `level` interval."""
+    """Paired HEADLINE difference d = CS_a - CS_b per window (windows in time order). Circular blocks of `block`
+    consecutive windows (block_indices) are drawn with replacement until the series is full; each draw recomputes the
+    weighted HEADLINE of d with the drawn windows' own weights. Returns the point estimate and the central `level`
+    interval."""
     d = d.sort_index()
     x = d.to_numpy(dtype=float)
     wl = w_live.reindex(d.index).to_numpy(dtype=float)
@@ -178,11 +189,9 @@ def block_bootstrap(d: pd.Series, w_live: pd.Series, w_rec: pd.Series, split: di
     n = len(x)
     L = min(block, n)
     rng = np.random.default_rng(seed)
-    nb = -(-n // L)
     stats = np.empty(reps)
     for b in range(reps):
-        starts = rng.integers(0, n - L + 1, size=nb)
-        ix = (starts[:, None] + np.arange(L)[None, :]).ravel()[:n]
+        ix = block_indices(n, L, rng)
         stats[b] = (split["live_like"] * (x[ix] * wl[ix]).sum() / wl[ix].sum()
                     + split["recency"] * (x[ix] * wr[ix]).sum() / wr[ix].sum())
     point = split["live_like"] * weighted_mean(x, wl) + split["recency"] * weighted_mean(x, wr)

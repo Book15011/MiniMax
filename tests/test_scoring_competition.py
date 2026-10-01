@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.scoring.competition import (REL, add_rel, block_bootstrap, field_bar, field_median, field_scale, gates,
+from backtest.scoring.competition import (REL, add_rel, block_bootstrap, block_indices, field_bar, field_median, field_scale, gates,
                                           headline, rel_layers, return_gate)
 from backtest.scoring.windows import live_like_weights, recency_weights, thin
 from src.config import load_config
@@ -152,3 +152,13 @@ def test_block_bootstrap_brackets_the_truth():
     noise = pd.Series(np.random.default_rng(3).normal(0, 1, 400), index=idx)
     r = block_bootstrap(noise, w, w, SPLIT, 14, 1000, 0.9, 1)
     assert r["lo"] < r["diff"] < r["hi"] and r["lo"] < 0 < r["hi"]
+
+
+def test_circular_blocks_draw_the_newest_window_as_often_as_any_other():
+    rng = np.random.default_rng(1)
+    n, L = 300, 56
+    counts = np.zeros(n)
+    for _ in range(4000):
+        np.add.at(counts, block_indices(n, L, rng), 1)
+    rate = counts / counts.mean()
+    assert 0.9 < rate[-1] < 1.1 and 0.9 < rate[0] < 1.1 and 0.9 < rate[n // 2] < 1.1
