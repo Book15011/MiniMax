@@ -9,6 +9,9 @@
 - Book = sum over sleeves of weight x sleeve targets, netted per coin, then scaled down if gross > 1.
 - Sleeves keep their own vol targets and filters; mixing methods that win in different markets (cross-sectional
   momentum, time-series trend, a BTC core) is what smooths the book.
+- A sleeve may set `override:` (e.g. a 4-hour bar for mean reversion); the anchored `params:` stay one copy.
+- `prev: own` (switches): the active sleeve gets the combination's own previous targets. With one sleeve at a time the
+  book is that sleeve's position, so this is exact; sleeves keep or drop those holdings by their own rules.
 - Switch (optional `switch:` block): a sleeve with `when: up` or `when: down` runs only in that BTC trend state,
   the state team_trend_2 uses (40-day EMA of hourly closes, +-3% hysteresis, replayed every 6 h over
   `state_days`; out of trend when undecided). Holding one method fully instead of a blend: the competition's
@@ -21,11 +24,12 @@ import dataclasses
 import pandas as pd
 
 from src.contracts import MarketView, ModelSpec
+from src.models.baitoey import baitoey_mr_bbrsi, baitoey_rot_max
 from src.models.baselines import team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2
 from src.models.pol import pol_mom_ss, pol_trend_ls
 
 SLEEVES = {m.MODEL.spec.name: m.MODEL for m in (team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2,
-                                                 pol_mom_ss, pol_trend_ls)}
+                                                 pol_mom_ss, pol_trend_ls, baitoey_rot_max, baitoey_mr_bbrsi)}
 
 
 def _clean(w: pd.Series) -> pd.Series:
@@ -76,7 +80,11 @@ class Combo:
         for name, s in p["sleeves"].items():
             if state is not None and s.get("when", state) != state:
                 continue
-            w = self.sleeve(name, view, s.get("params") or {}, int(p.get("replay_steps", 1)))
+            params = {**(s.get("params") or {}), **(s.get("override") or {})}
+            if p.get("prev") == "own":
+                w = _clean(SLEEVES[name].targets(dataclasses.replace(view, params=params)))
+            else:
+                w = self.sleeve(name, view, params, int(p.get("replay_steps", 1)))
             book = book.add(float(s.get("weight", 1.0)) * w, fill_value=0.0)
         book = book[book.abs() > 1e-12]
         gross = float(book.abs().sum())

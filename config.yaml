@@ -405,7 +405,7 @@ models:
     bar_hours: 24
     rsi_bars: 14
     dip_rsi: 50
-  baitoey_rot_max:                # research/baitoey/prereg/20261001-return-max-rotation.md
+  baitoey_rot_max: &baitoey_rot_max   # research/baitoey/prereg/20261001-return-max-rotation.md
     lookback_days: [3, 7, 14]     # as team_rot_ew
     vol_days: 30
     min_history_days: 30
@@ -474,3 +474,22 @@ models:
     sleeves:
       calm: {<<: *baitoey_mr_bbrsi, bar_hours: 4}    # MR @4h
       trend: *team_rot_ew                             # the ROT_EW rotation
+  # --- pol, after the baitoey blocks (the YAML anchors these switches use are defined above) ---
+  pol_switch_rmax_tl:             # pre-registered: reports/review/20261001-prereg-strict-bar.md
+    prev: own
+    switch: *team_trend_2
+    sleeves:
+      baitoey_rot_max: {when: up, params: *baitoey_rot_max}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
+  pol_switch_rot_mr:
+    prev: own
+    switch: *team_trend_2
+    sleeves:
+      team_rot_ew: {when: up, params: *team_rot_ew}
+      baitoey_mr_bbrsi: {when: down, params: *baitoey_mr_bbrsi, override: {bar_hours: 4}}
+  pol_switch_rmax_mr:
+    prev: own
+    switch: *team_trend_2
+    sleeves:
+      baitoey_rot_max: {when: up, params: *baitoey_rot_max}
+      baitoey_mr_bbrsi: {when: down, params: *baitoey_mr_bbrsi, override: {bar_hours: 4}}

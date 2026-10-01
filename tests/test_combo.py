@@ -101,3 +101,19 @@ def test_switch_runs_only_the_sleeve_of_the_current_state(market):
             want = Mix().targets(dataclasses.replace(v, params={"sleeves": {"team_rot_ew": {"weight": 1.0, "params": rot}}}))
             pd.testing.assert_series_equal(w.sort_index(), want.sort_index())
     assert seen                                                 # the synthetic sample visits at least one state
+
+
+def test_own_prev_reaches_the_active_sleeve_and_replay_does_not(market, monkeypatch):
+    from src.models.pol import _combo
+
+    class Echo:                                                 # returns whatever it held before
+        spec = ModelSpec(name="echo", method="momentum", author="pol")
+
+        def targets(self, view):
+            return view.prev_targets.copy()
+    monkeypatch.setitem(_combo.SLEEVES, "echo", Echo())
+    prev = pd.Series({"BTCUSDT": 0.4})
+    v = dataclasses.replace(view_at(market, "2021-03-01 16:00", {"prev": "own", "sleeves": {"echo": {}}}), prev_targets=prev)
+    assert Mix().targets(v).to_dict() == {"BTCUSDT": 0.4}
+    v = dataclasses.replace(v, params={"sleeves": {"echo": {}}})
+    assert Mix().targets(v).empty                               # replay rebuilds the sleeve's own history: empty
