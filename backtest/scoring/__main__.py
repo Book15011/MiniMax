@@ -5,7 +5,7 @@
 Team-level commands:
 
     python -m backtest.scoring field [--no-cache]            score CASH and the 6 field benchmarks (reference rows)
-    python -m backtest.scoring compare <a> <b> [--no-cache]  HEADLINE difference a - b with a block-bootstrap interval
+    python -m backtest.scoring compare <a> <b> [--no-cache]  HEADLINE_RET difference a - b with a month-bootstrap interval
     python -m backtest.scoring leaderboard                    regenerate the leaderboard from the registry
 """
 from __future__ import annotations
@@ -13,12 +13,14 @@ from __future__ import annotations
 import argparse
 import time
 
+import numpy as np
+
 from backtest.data import load_market
 from backtest.report import open_run, stamp
 from backtest.scoring import registry
-from backtest.scoring.competition import all_variants, block_bootstrap
 from backtest.scoring.evaluate import tool_version
-from backtest.scoring.report import num, score_and_publish
+from backtest.scoring.report import score_and_publish
+from backtest.scoring.returnfirst import BARS, month_multiplicity, tie_test
 from backtest.scoring.score import score_model
 from src.config import load_config
 from src.models import get
@@ -37,6 +39,7 @@ def cmd_field(cfg: dict, use_cache: bool) -> int:
 
 
 def cmd_compare(cfg: dict, a: str, b: str, use_cache: bool) -> int:
+    """HEADLINE_RET(a) - HEADLINE_RET(b) on the full pool, with the leaderboard's paired month bootstrap."""
     sc = cfg["scoring"]
     md, _lg, log = open_run(cfg, "compare/headline")
     t0 = time.time()
@@ -44,29 +47,28 @@ def cmd_compare(cfg: dict, a: str, b: str, use_cache: bool) -> int:
     sa, ca = score_model(get(a), market, cfg, use_cache=use_cache, log=log)
     sb, cb = score_model(get(b), market, cfg, use_cache=use_cache, log=log)
     starts = ca["starts"]
-    pc, pv = sc["primary"]["convention"], sc["primary"]["variant"]
-    cmp = sc["compare"]
-    d = ca["cs"].loc[starts, f"{pc}.{pv}.cs"] - cb["cs"].loc[starts, f"{pc}.{pv}.cs"]
-    res = block_bootstrap(d, ca["w_live"], ca["w_rec"], sc["headline"], int(cmp["block_windows"]), int(cmp["reps"]),
-                          float(cmp["level"]), int(cmp["seed"]))
+    w = ca["w_final"].reindex(starts).to_numpy()
+    if not np.allclose(w, cb["w_final"].reindex(starts).to_numpy(), rtol=0, atol=1e-15):
+        raise SystemExit("the two runs have different weights: score both with the same tool version")
+    inds = {n: c["rf_cols"].loc[starts, [f"hit_{k}" for k in BARS]].to_numpy(dtype=float) for n, c in ((a, ca), (b, cb))}
+    t = sc["tie"]
+    res = tie_test(inds, w, b, month_multiplicity(starts, int(t["reps"]), int(t["seed"])), float(t["level"]))[a]
     verdict = ("a is better (interval above 0)" if res["lo"] > 0 else "b is better (interval below 0)" if res["hi"] < 0
                else "no clear difference (interval includes 0)")
     L = [f"# Compare: {a} vs {b}", "",
-         f"HEADLINE {pv} {pc}: {a} {num(sa['primary']['headline'])} ({'eligible' if sa['eligible'] else 'not eligible'}) · "
-         f"{b} {num(sb['primary']['headline'])} ({'eligible' if sb['eligible'] else 'not eligible'})", "",
-         f"**Difference a - b = {num(res['diff'])}, {res['level']:.0%} interval [{num(res['lo'])}, {num(res['hi'])}]**: {verdict}. "
-         f"{res['share_above_0']:.0%} of resamples are above 0.", "",
-         f"Weighted moving-block bootstrap on the paired per-window CS difference: blocks of {res['block']} consecutive "
-         f"windows, {res['reps']} resamples, seed {res['seed']}, {res['n_windows']} windows; every resample recomputes "
-         "both weighted layers with the drawn windows' own weights.", "",
-         "| Variant | Convention | a | b | a - b |", "|---|---|---|---|---|"]
-    for c in sc["conventions"]:
-        for v in all_variants(sc):
-            x, y = sa["headline"][c][v]["headline"], sb["headline"][c][v]["headline"]
-            L.append(f"| {v} | {c} | {num(x)} | {num(y)} | {num(x - y)} |")
-    L += ["", "| Gate | a | b |", "|---|---|---|"]
+         f"HEADLINE_RET: {a} {sa['primary']['headline']:.3f} ({'eligible' if sa['eligible'] else 'not eligible'}) · "
+         f"{b} {sb['primary']['headline']:.3f} ({'eligible' if sb['eligible'] else 'not eligible'})", "",
+         f"**Difference a - b = {res['diff']:+.3f}, {float(t['level']):.0%} interval [{res['lo']:+.3f}, {res['hi']:+.3f}]**: "
+         f"{verdict}.", "",
+         f"Paired bootstrap over calendar months of the window start: {int(t['reps'])} draws, seed {int(t['seed'])}, "
+         f"{len(starts)} windows; each draw recomputes both HEADLINE_RETs with the drawn windows' final weights.", "",
+         "| | a | b |", "|---|---|---|"]
+    for k in BARS:
+        L.append(f"| HIT {k} | {sa['return_first']['full']['hit'][k]:.3f} | {sb['return_first']['full']['hit'][k]:.3f} |")
+    L.append(f"| CS_HIT | {sa['return_first']['full']['cs_hit']:.3f} | {sb['return_first']['full']['cs_hit']:.3f} |")
     for g in sa["gates"]:
-        L.append(f"| {g} | {'PASS' if sa['gates'][g]['pass'] else 'FAIL'} | {'PASS' if sb['gates'][g]['pass'] else 'FAIL'} |")
+        L.append(f"| {g} ({'hard' if sa['gates'][g]['hard'] else 'report-only'}) | "
+                 f"{'PASS' if sa['gates'][g]['pass'] else 'FAIL'} | {'PASS' if sb['gates'][g]['pass'] else 'FAIL'} |")
     L += ["", f"Tool version `{sa['tool_version']}` · run keys `{sa['model']['run_key']}` / `{sb['model']['run_key']}` · "
           f"runtime {time.time() - t0:.0f} s."]
     md.write_text("\n".join(L) + "\n")

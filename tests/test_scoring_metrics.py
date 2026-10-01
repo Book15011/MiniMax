@@ -117,7 +117,8 @@ def test_mdd_when_the_peak_is_e0():
 def test_hourly_floor_is_the_daily_floor_over_sqrt_24():
     for k in ("s_hourly", "dd_hourly"):
         assert SC["conventions"]["FLOORED"][k] == pytest.approx(0.001 / math.sqrt(24), rel=1e-14)
-    assert SC["primary"] == {"variant": "REL", "convention": "FLOORED"}   # proposed in the 2026-10-01 review
+    assert SC["primary"] == {"variant": "HEADLINE_RET"}                   # scoring v2 (2026-10-02): return first
+    assert SC["risk"]["primary"] == {"variant": "V1", "convention": "FLOORED", "days": "HKT"}   # CS_HIT
 
 
 # ---------------- 5.2: independent implementation, 1,000 random equity series, match to 1e-12 ----------------

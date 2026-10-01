@@ -244,16 +244,36 @@ harness:
 # Competition-style scoring (backtest/scoring/, docs/EVALUATION.md). Every value below is listed in the
 # TEAM SIGN-OFF CHECKLIST of docs/EVALUATION.md and stays "pending team review" until the team confirms it.
 scoring:
-  version: 1                              # bump on any formula change; caches and the leaderboard key on it
+  version: 2                              # bump on any formula change; caches and the leaderboard key on it
+                                          # v2 (2026-10-02): return first, reports/review/20261002-prereg-return-first.md
   e0: 100000                              # USD equity at the start of every window, before the first trade
   hours_per_day: 24
   stride_days: 1                          # 1 = every pool window; a full run takes minutes, so no stride is needed
-  t_star: "2026-10-03 16:00"              # live start (UTC); recency age = days from a window's end to here
-  live_like: validation/live_like_v1.json # PART 0 weights: no CPI filter, no direction reweighting
-  validation_set: validation/validation_set_v1.json   # LOOKALIKE-25, RECENT-25 and the 20 STRESS windows
-  regimes: data/validation/outcomes.parquet           # ex-post 3x3 grid: terciles of BTC return x BTC volatility
-  recency_half_life_days: 60
-  headline: {live_like: 0.70, recency: 0.30}
+  window_hour_utc: 12                     # windows start every day at 12:00 UTC, as the round (2026-10-04 12:00 UTC)
+  include_spent_holdout: true             # the holdout (windows ending after harness.holdout_from) was opened once on
+                                          # 2026-10-01 and is spent; every headline is also reported without it
+  live_like: validation/live_like_v2_prelim.json      # PART 0's method on 12:00 UTC starts (src.validation.prelim_v2)
+  validation_set: validation/validation_set_v2_prelim.json   # LOOKALIKE-25, RECENT-25 and the 20 STRESS windows
+  regimes: results/book/20261002-return-first/validation_v2_prelim/outcomes.parquet   # ex-post 3x3 grid (G3, report-only)
+  recency_half_life_days: 60              # REC = 0.5 ** (age / 60 days), age = days from the start to the latest start
+  headline: {live_like: 0.70, recency: 0.30}   # w = 0.7 LL / sum LL + 0.3 REC / sum REC, then the direction rebalance
+  bars:                                   # on R_liq; a window is UP if BTC's close at its end >= at its start
+    LENIENT:
+      down: -0.014965215                  # the previous edition's #20 cut: mean of -1.4186090% (HK) and -1.5744340% (SG)
+      up: 0.0                             # ASSUMPTION: no data on the general field in rising markets
+    MIDDLE: 0.0
+    STRICT: {stat: median, floor: 0.0}    # max(0, median R_liq of the 6 gate benchmarks): the previous median gate
+  risk:
+    primary: {variant: V1, convention: FLOORED, days: HKT}   # CS_HIT: mean composite over windows clearing LENIENT
+  tie: {reps: 2000, seed: 20261002, level: 0.90, block: calendar_month, cs_tolerance: 0.05}
+  reference_models: [team_cash, team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2, team_mom_ss25]
+  previous_tool_version: 56cb5a2e85d45862 # the leaderboard's "old REL" column (report only)
+  replay:                                 # report only: the previous edition's real windows, ranked among its teams
+    leaderboard_csv: results/pol/20261001-final/past_leaderboards_numeric.csv   # final returns, numbers only
+    windows:
+      - {name: "Round 1 (Mar 21-31)", start: "2026-03-21 12:00", hours: 240, competitions: [455, 456]}
+      - {name: "Final (Apr 4-14)", start: "2026-04-04 12:00", hours: 240, competitions: [469]}
+  rel: {bar_stat: max, bar_floor: 0.0, convention: FLOORED, robust_min: 1.0}   # report-only: the v1 primary
   liquidation_cost: 0.001                 # R_liq charges this on the gross notional still open at the end
   composite: {sortino: 0.4, sharpe: 0.3, calmar: 0.3}
   variants:                               # Sharpe, Sortino = (m / denominator) * sqrt(annualize)
@@ -265,16 +285,12 @@ scoring:
     FLOORED: {s_daily: 0.001, dd_daily: 0.001, mdd: 0.002,
               s_hourly: 0.000204124145231931, dd_hourly: 0.000204124145231931}   # hourly = 0.001 / sqrt(24)
     POL: {s_daily: 0, dd_daily: 0, s_hourly: 0, dd_hourly: 0, mdd: 0.0001}       # as backtest/metrics.py
-  primary: {variant: REL, convention: FLOORED}   # REL = mean over V1-V4 of HEADLINE(v) / field mean (1.00 = field average)
-  field: [team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2, team_mom_ss25]
+  primary: {variant: HEADLINE_RET}        # mean of HIT LENIENT, MIDDLE and STRICT (backtest/scoring/returnfirst.py)
+  field: [team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2, team_mom_ss25]   # the 6 gate benchmarks
   btc_hold: team_btc_hold                 # reference for G2 and G6
-  return_gate_floor: 0.0                  # gate_w = 1 if R_w >= max(this, the bar below)
-  return_gate_stat: max                   # the bar: the field's best R_w. about 150 teams in our region (team estimate, 2026-10-01):
-                                          # top 20 = top 13%, and the best of six benchmarks sits near their 86th percentile
-  return_gate_report: [median]            # report-only: REL under these bars as well (median = the 2026-10-01 morning setting)
-  robust_min: 1.0                         # launch rule (Baitoey): REL >= this in the headline, live-like, recency and flat layers
   gates:
-    G1: {min_active_days: 10, share_of_windows: 1.0, guard_flag_share: 0.25}
+    hard: [G1, G4, G5]                    # eligibility; G2, G3, G6_median and G6_worst are report-only
+    G1: {min_active_days: 10, share_of_windows: 1.0, guard_flag_share: 0.25}   # HKT days (15 buckets for 12:00 starts)
     G3: {min_cell_median_return: -0.10}
     G5: {decisions: 30, seed: 20261003, noise_sigma: 0.01}
   compare: {block_windows: 56, reps: 2000, level: 0.90, seed: 20261003}   # 56: regimes outlast 14-window blocks (EVALUATION.md 7)

@@ -1,11 +1,14 @@
 """Run one model through the harness engine on every scored window and keep what the score needs.
 
-Reuses backtest.engine as is: decisions from compute_targets, fills from Simulator.run(trace=True), which returns
+Decisions come from compute_targets on the model's own grid, plus, as the live bot does, a first decision at each
+window's start with no previous targets (first_decisions). Fills come from Simulator.run(trace=True), which returns
 the same equity as a plain run plus the trades and the hourly exposure. A window is 14 days of clock time: every
-value is read at t0 + k hours (the last one at or before), and a fill belongs to the 24 h day of its timestamp, so
-a missing bar in the panel never stretches the window or shifts a day. Adds, per window (docs/EVALUATION.md 2.5):
-active days and how many came only from the activity guard, fees and spread over E_0, turnover, average and max
-gross exposure, average net exposure, orders, and the most orders in one decision (planner rules).
+value is read at t0 + k hours (the last one at or before), so a missing bar never stretches the window.
+Days are clock days (docs/EVALUATION.md): HKT days with boundaries at 16:00 UTC and UTC days with boundaries at
+00:00 UTC, the window's start and end closing the first and last; a 12:00 UTC start has 15 of each. A fill at clock
+time t belongs to the day that contains t, as the live bot dates it. Adds, per window: active HKT and UTC days and
+how many came only from the activity guard, fees and spread over E_0, turnover, average and max gross exposure,
+average net exposure, orders, and the most orders in one decision (planner rules).
 Results are cached under scoring.cache_dir, keyed by the tool version and the model's code, parameters and mode.
 """
 from __future__ import annotations
@@ -24,9 +27,9 @@ import numpy as np
 import pandas as pd
 
 from backtest.data import Market
-from backtest.engine import Costs, Simulator, compute_targets, decision_times
+from backtest.engine import Costs, Simulator, compute_targets, decide, decision_times
 from backtest.evaluate import git_state, model_modules
-from backtest.scoring.metrics import clock_series, window_metrics
+from backtest.scoring.metrics import clock_series, day_points, window_metrics
 from src.config import REPO_ROOT, resolve
 from src.contracts import MarketView, Model
 
@@ -34,8 +37,11 @@ from src.contracts import MarketView, Model
 # so a report change keeps the cache and the leaderboard.
 TOOL_FILES = ("backtest/engine.py", "backtest/data.py", "backtest/evaluate.py", "src/contracts.py",
               "backtest/scoring/metrics.py", "backtest/scoring/windows.py", "backtest/scoring/evaluate.py",
-              "backtest/scoring/leakage.py", "backtest/scoring/competition.py", "backtest/scoring/score.py")
-NOT_IN_VERSION = ("report", "registry", "leaderboard", "cache_dir", "compare")
+              "backtest/scoring/leakage.py", "backtest/scoring/competition.py", "backtest/scoring/score.py",
+              "backtest/scoring/returnfirst.py")
+# Files the numbers are computed from (weights, window sets, regime labels): their content enters the tool version.
+INPUT_KEYS = ("live_like", "validation_set", "regimes")
+NOT_IN_VERSION = ("report", "registry", "leaderboard", "cache_dir", "compare", "previous_tool_version", "replay")
 HOUR = pd.Timedelta(hours=1)
 TRADE_COLUMNS = ["window_start", "hour", "time_utc", "kind", "series", "w_before", "w_after",
                  "notional_usd", "fee_usd", "spread_usd"]
@@ -85,13 +91,28 @@ def field_fingerprint(cfg: dict) -> dict:
             for n in cfg["scoring"]["field"]}
 
 
+_INPUT_SHA: dict[str, str] = {}
+
+
+def input_hashes(cfg: dict) -> dict[str, str]:
+    """sha256 of the weight, window-set and regime files (re-running PART 0 changes the tool version)."""
+    sc, out = cfg["scoring"], {}
+    for k in INPUT_KEYS:
+        p = resolve(sc[k]) if sc.get(k) else None
+        if p is not None and p.exists():
+            if str(p) not in _INPUT_SHA:
+                _INPUT_SHA[str(p)] = _sha(p.read_bytes())
+            out[k] = _INPUT_SHA[str(p)]
+    return out
+
+
 def tool_version(cfg: dict, market: Market) -> str:
     if not _FILE_SHA:
         _FILE_SHA.update({f: _sha((REPO_ROOT / f).read_bytes()) for f in TOOL_FILES})
     files = dict(_FILE_SHA)
     sc = {k: v for k, v in cfg["scoring"].items() if k not in NOT_IN_VERSION}
     blob = json.dumps({"files": files, "scoring": sc, "harness": cfg["harness"], "data": market.notes,
-                       "field": field_fingerprint(cfg)}, sort_keys=True, default=str)
+                       "field": field_fingerprint(cfg), "inputs": input_hashes(cfg)}, sort_keys=True, default=str)
     return _sha(blob.encode())[:16]
 
 
@@ -128,6 +149,51 @@ def _load(name, spec, params, long_only, key, p) -> Run:
                pd.read_parquet(p["targets.parquet"]), json.loads(p["json"].read_text()))
 
 
+@dataclass
+class FirstDecisions:
+    """A window's own decisions: at its start with no previous targets (as the live bot's first decision), then on
+    the model's grid with previous targets chained from there, until one equals the shared history's decision at
+    the same time (`until`; None = not within the window). From `until` on, the shared decisions apply: a model is a
+    deterministic function of its view and its previous targets, so the two chains are identical from there."""
+    times: list
+    decisions: list
+    until: pd.Timestamp | None
+    calls: int
+
+
+def first_decisions(model: Model, market: Market, starts: pd.DatetimeIndex, times: pd.DatetimeIndex,
+                    shared: list[pd.Series], params: dict, hours: int) -> dict[pd.Timestamp, FirstDecisions]:
+    out = {}
+    for t0 in starts:
+        end = t0 + hours * HOUR
+        w = decide(model, market, t0, params, pd.Series(dtype=float))
+        calls = 1
+        k = int(times.searchsorted(t0, side="left"))
+        if k < len(times) and times[k] == t0:                     # t0 is on the model's own grid
+            if w.equals(shared[k]):
+                out[t0] = FirstDecisions([t0], [w], t0, calls)
+                continue
+            k += 1
+        ts, ws, until = [t0], [w], None
+        while k < len(times) and times[k] < end:
+            w = decide(model, market, times[k], params, ws[-1])
+            calls += 1
+            if w.equals(shared[k]):
+                until = times[k]
+                break
+            ts.append(times[k])
+            ws.append(w)
+            k += 1
+        out[t0] = FirstDecisions(ts, ws, until, calls)
+    return out
+
+
+def bucket_of(ck: int, points: np.ndarray, hours: int) -> int:
+    """Day bucket of a fill at clock offset ck (1..hours) from the window start: the [b, b') that contains it.
+    A fill at the window's very end (ck = hours) is after the window: -1."""
+    return -1 if ck >= hours else int(np.searchsorted(points, ck, side="right")) - 1
+
+
 def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, long_only: bool = False,
              use_cache: bool = True, log: logging.Logger | None = None) -> Run:
     log = log or logging.getLogger(__name__)
@@ -148,18 +214,23 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
     hours = days * 24
     idx = market.close.index
     times = decision_times(idx, spec.rebalance_hours, hour, starts[0], starts[-1] + pd.Timedelta(days=days))
-    targets = compute_targets(m, market, times, params)
+    targets, shared = compute_targets(m, market, times, params, keep_raw=True)
+    firsts = first_decisions(m, market, starts, times, shared, params, hours)
     t_targets = time.time() - t_start
+    extra = sorted({c for f in firsts.values() for w in f.decisions for c in w.index})
     costs = Costs(h["fees"]["taker"], h["fees"]["short"])
     sim = Simulator(market, targets, spec.band, costs, lag, hour, h["activity_guard_offset_hours"],
-                    float(h.get("keep_alive_weight", 0.0)), guard_utc_day=bool(h.get("guard_utc_day", False)))
+                    float(h.get("keep_alive_weight", 0.0)), guard_utc_day=bool(h.get("guard_utc_day", False)),
+                    extra_cols=extra)
     cols = np.array(sim.cols)
     e0 = float(sc["e0"])
     W = len(starts)
     E = np.empty((W, hours + 1))
     G = np.empty((W, hours + 1))
     N = np.empty((W, hours + 1))
-    DAYS = np.zeros((W, days), dtype=np.int8)
+    pts = {t0: (day_points(t0, hours, hour), day_points(t0, hours, 0)) for t0 in starts}
+    n_hkt = max(len(p[0]) - 1 for p in pts.values())
+    DAYS = np.full((W, n_hkt), -1, dtype=np.int8)               # per HKT day: 1 strategy, 2 guard only, 0 none
     rows, trades = [], []
     sidx = sim.index
     for k, t0 in enumerate(starts):
@@ -167,7 +238,10 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
         # read at the clock hour t0 + k h as the last one at or before it (clock_series), so a missing bar never
         # stretches the window or shifts a day, whichever engine produced the steps.
         i0 = sidx.get_loc(t0)
-        res = sim.run(i0, hours, trace=True)
+        f = firsts[t0]
+        until = sidx.get_loc(f.until) if f.until is not None else i0 + hours + 1
+        res = sim.run(i0, hours, trace=True,
+                      first=(np.array([sidx.get_loc(t) for t in f.times]), sim.rows(f.decisions), until))
         tr = res.trace
         at = sidx[i0: i0 + hours + 1]
         E[k] = clock_series(res.equity, at, t0, hours)
@@ -175,17 +249,20 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
         N[k] = clock_series(tr["net"], at, t0, hours)
         cost_e0 = fee_e0 = turnover = 0.0
         n_orders = max_calls = events = 0
-        strat_day = np.zeros(days, dtype=bool)
-        guard_day = np.zeros(days, dtype=bool)
-        utc_days = set()                                       # UTC dates with a fill (report only; G1 counts 24 h days)
+        p_hkt, p_utc = pts[t0]
+        strat_day = np.zeros(len(p_hkt) - 1, dtype=bool)
+        guard_day = np.zeros(len(p_hkt) - 1, dtype=bool)
+        strat_utc = np.zeros(len(p_utc) - 1, dtype=bool)
+        guard_utc = np.zeros(len(p_utc) - 1, dtype=bool)
         for hh, kind, w0, w1, eqb, cost in tr["trades"]:
             when = at[hh]
             ck = int((when - t0) / HOUR)                        # clock hour of the fill, 1 .. 336 inside the window
             if ck > hours:
                 continue                                       # after t0 + 14 days: outside the window
-            day = (ck - 1) // 24                               # the 24 h day (16:00 UTC boundaries) that contains it
-            (guard_day if kind == "guard" else strat_day)[day] = True
-            utc_days.add(when.floor("D"))
+            for pts_, sd, gd in ((p_hkt, strat_day, guard_day), (p_utc, strat_utc, guard_utc)):
+                b = bucket_of(ck, pts_, hours)
+                if b >= 0:
+                    (gd if kind == "guard" else sd)[b] = True
             d = w1 - w0
             fee = (np.abs(np.maximum(w1, 0) - np.maximum(w0, 0)) * costs.taker
                    + np.abs(np.minimum(w1, 0) - np.minimum(w0, 0)) * costs.short)
@@ -200,27 +277,38 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
             for i in np.flatnonzero(np.abs(d) > 1e-12):
                 trades.append((t0, ck, when, kind, cols[i], w0[i], w1[i], abs(d[i]) * eqb * e0,
                                fee[i] * eqb * e0, spread[i] * eqb * e0))
-        DAYS[k] = np.where(strat_day, 1, np.where(guard_day, 2, 0))
+        DAYS[k, : len(strat_day)] = np.where(strat_day, 1, np.where(guard_day, 2, 0))
         strat = int(strat_day.sum())
         guard_only = int((guard_day & ~strat_day).sum())
         rows.append({"active_days": strat + guard_only, "strategy_days": strat, "guard_days": guard_only,
-                     "active_days_utc": len(utc_days),
+                     "day_buckets": len(strat_day), "active_days_utc": int((strat_utc | guard_utc).sum()),
+                     "guard_days_utc": int((guard_utc & ~strat_utc).sum()), "day_buckets_utc": len(strat_utc),
+                     "first_decision_calls": f.calls, "first_decisions_converged": f.until is not None,
                      "costs_e0": cost_e0, "fees_e0": fee_e0, "spread_e0": cost_e0 - fee_e0,
                      "turnover": turnover, "gross_avg": float(G[k, 1:].mean()), "gross_max": float(G[k, 1:].max()),
                      "net_avg": float(N[k, 1:].mean()), "gross_end": float(G[k, -1]), "orders": n_orders,
                      "max_calls_decision": max_calls, "trade_events": events})
     act = pd.DataFrame(rows, index=starts)
-    met = window_metrics(E, act["gross_end"].to_numpy(), sc)
-    met.index = starts
+    parts = []
+    for hr in sorted({t.hour for t in starts}):                # the day boundaries depend on the start hour
+        sel = np.flatnonzero(starts.hour == hr)
+        p_hkt, p_utc = pts[starts[sel[0]]]
+        mt = window_metrics(E[sel], act["gross_end"].to_numpy()[sel], sc, points=p_hkt, extra_days={"UTC": p_utc})
+        mt.index = starts[sel]
+        parts.append(mt)
+    met = pd.concat(parts).reindex(starts)
     windows = pd.concat([met, act], axis=1)
     windows.index.name = "t0"
     tdf = pd.DataFrame(trades, columns=TRADE_COLUMNS)
     held = targets.ne(0).sum(axis=1)
+    calls = sum(f.calls for f in firsts.values())
     meta = {"key": key, "tool_version": tool_version(cfg, market), "model": name, "long_only": long_only,
-            "n_windows": W, "n_decisions": len(times), "coins_held_median": float(held.median()),
-            "git": git_state(), "runtime_s": {"targets": round(t_targets, 1), "total": round(time.time() - t_start, 1)}}
-    log.info("%s%s: %d decisions, %d windows in %.0f s (targets %.0f s)", name, " (long-only)" if long_only else "",
-             len(times), W, meta["runtime_s"]["total"], t_targets)
+            "n_windows": W, "n_decisions": len(times), "first_decision_calls": calls,
+            "first_decisions_not_converged": int(sum(f.until is None for f in firsts.values())),
+            "coins_held_median": float(held.median()), "git": git_state(),
+            "runtime_s": {"targets": round(t_targets, 1), "total": round(time.time() - t_start, 1)}}
+    log.info("%s%s: %d decisions + %d first-decision calls, %d windows in %.0f s (targets %.0f s)", name,
+             " (long-only)" if long_only else "", len(times), calls, W, meta["runtime_s"]["total"], t_targets)
     cdir.mkdir(parents=True, exist_ok=True)
     windows.to_parquet(p["windows.parquet"])
     np.savez_compressed(p["arrays.npz"], equity=E, gross=G, net=N, days=DAYS)

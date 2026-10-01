@@ -1,13 +1,15 @@
-"""Competition-style score (docs/EVALUATION.md section 3): return gate, CS, HEADLINE, gates, paired comparison.
+"""REL, the previous primary (report-only since scoring v2), the gates, and the paired comparison.
 
+The primary score is now return first (backtest.scoring.returnfirst). What stays here, on the same windows:
 - Return gate per window: gate_w = 1 if R_w >= max(floor, bar_w), else 0 (floor 0); bar_w = the field's best R_w
-  (config return_gate_stat; median and quantiles are reported for sensitivity).
+  (config scoring.rel.bar_stat).
 - CS_w(v) = gate_w * Composite_w(v), for every variant v and convention.
 - HEADLINE(v) = 0.70 * weighted mean of CS with LIVE-LIKE weights + 0.30 * weighted mean with RECENCY weights.
 - REL, the field-relative score: per window, CS_w(REL) = mean over the variants v of CS_w(v) / F(v), where F(v) is
   the field members' mean HEADLINE(v). So HEADLINE(REL) = mean over v of HEADLINE(v) / F(v): 1.00 is the field's
   average score under every reading at once, and no single unpublished reading decides alone.
-- Gates G1-G6 (all must pass to be eligible); thresholds in config scoring.gates.
+- Gates: G1, G4 and G5 decide eligibility (scoring.gates.hard); G2, G3 and G6 in two forms (median-of-20 and
+  worst-of-20) are report-only. Thresholds in config scoring.gates.
 - compare: HEADLINE(primary) difference of two models with a weighted moving-block bootstrap interval.
 """
 from __future__ import annotations
@@ -116,16 +118,22 @@ def regime_grid(R: pd.Series, regime: pd.Series) -> pd.DataFrame:
 
 def gates(win: pd.DataFrame, btc: pd.DataFrame, regime: pd.Series, stress: pd.DatetimeIndex, long_only: dict,
           leak: dict, g: dict) -> dict:
-    """win, btc: per-window tables (index = window start) of the model and of BTC_HOLD on the same windows."""
+    """win, btc: per-window tables (index = window start) of the model and of BTC_HOLD on the same windows.
+    Every gate carries "hard": True for the eligibility gates (config scoring.gates.hard), False for report-only."""
     out = {}
     g1 = g["G1"]
     ok = win.active_days >= g1["min_active_days"]
     share = float(ok.mean())
     guard_share = float(win.guard_days.sum() / max(win.active_days.sum(), 1))
+    utc = win.active_days_utc if "active_days_utc" in win else win.active_days
     out["G1"] = {"pass": share >= g1["share_of_windows"],
-                 "detail": f"{share:.1%} of {len(win)} windows have >= {g1['min_active_days']} active days "
-                           f"(need {g1['share_of_windows']:.0%}); worst {int(win.active_days.min())}",
+                 "detail": f"{share:.1%} of {len(win)} windows have >= {g1['min_active_days']} active HKT days "
+                           f"(need {g1['share_of_windows']:.0%}); worst {int(win.active_days.min())} of "
+                           f"{int(win.day_buckets.max()) if 'day_buckets' in win else 14}; UTC days: worst "
+                           f"{int(utc.min())}, {float((utc >= g1['min_active_days']).mean()):.1%} of windows >= "
+                           f"{g1['min_active_days']}",
                  "share": share, "min_active_days": int(win.active_days.min()),
+                 "min_active_days_utc": int(utc.min()), "share_utc": float((utc >= g1["min_active_days"]).mean()),
                  "guard_share_of_active_days": guard_share,
                  "relies_on_guard": guard_share > g1["guard_flag_share"]}
     worst, bworst = float(win.R.min()), float(btc.R.min())
@@ -143,16 +151,22 @@ def gates(win: pd.DataFrame, btc: pd.DataFrame, regime: pd.Series, stress: pd.Da
     out["G5"] = {"pass": leak["pass"], "detail": _leak_detail(leak), **leak}
     s, bs = win.R.reindex(stress), btc.R.reindex(stress)
     if s.isna().any() or bs.isna().any():
-        out["G6"] = {"pass": False, "detail": f"{int(s.isna().sum())} STRESS windows were not scored"}
+        miss = f"{int(s.isna().sum())} STRESS windows were not scored"
+        out["G6_median"] = {"pass": False, "detail": miss}
+        out["G6_worst"] = {"pass": False, "detail": miss}
     else:
         w_ok, m_ok = s.min() >= bs.min(), s.median() >= bs.median()
-        out["G6"] = {"pass": bool(w_ok and m_ok),
-                     "detail": f"STRESS (n={len(s)}): worst {s.min():+.2%} vs BTC_HOLD {bs.min():+.2%}, "
-                               f"median {s.median():+.2%} vs {bs.median():+.2%} (both must be >=)",
-                     "worst": float(s.min()), "median": float(s.median()),
-                     "btc_worst": float(bs.min()), "btc_median": float(bs.median())}
-    for v in out.values():
+        vals = {"worst": float(s.min()), "median": float(s.median()), "btc_worst": float(bs.min()),
+                "btc_median": float(bs.median())}
+        out["G6_median"] = {"pass": bool(w_ok and m_ok),
+                            "detail": f"STRESS (n={len(s)}): worst {s.min():+.2%} vs BTC_HOLD {bs.min():+.2%}, "
+                                      f"median {s.median():+.2%} vs {bs.median():+.2%} (both must be >=)", **vals}
+        out["G6_worst"] = {"pass": bool(w_ok), "detail": f"STRESS (n={len(s)}): worst {s.min():+.2%} vs BTC_HOLD "
+                                                          f"{bs.min():+.2%} (must be >=)", **vals}
+    hard = set(g.get("hard", ("G1", "G2", "G3", "G4", "G5", "G6_median")))
+    for k, v in out.items():
         v["pass"] = bool(v["pass"])
+        v["hard"] = k in hard
     return out
 
 
