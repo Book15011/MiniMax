@@ -9,6 +9,10 @@
 - Book = sum over sleeves of weight x sleeve targets, netted per coin, then scaled down if gross > 1.
 - Sleeves keep their own vol targets and filters; mixing methods that win in different markets (cross-sectional
   momentum, time-series trend, a BTC core) is what smooths the book.
+- Switch (optional `switch:` block): a sleeve with `when: up` or `when: down` runs only in that BTC trend state,
+  the state team_trend_2 uses (40-day EMA of hourly closes, +-3% hysteresis, replayed every 6 h over
+  `state_days`; out of trend when undecided). Holding one method fully instead of a blend: the competition's
+  return gate pays nothing below the bar, and a blend dilutes each method's winning windows.
 """
 from __future__ import annotations
 
@@ -27,6 +31,21 @@ SLEEVES = {m.MODEL.spec.name: m.MODEL for m in (team_btc_hold, team_ew_daily, te
 def _clean(w: pd.Series) -> pd.Series:
     w = w.astype(float)
     return w[w != 0.0]
+
+
+def btc_state(view: MarketView, p: dict, coin: str = "BTCUSDT") -> str:
+    """'up' or 'down': team_trend_2's trend state of `coin` at view.t (p = team_trend_2's parameters)."""
+    span = int(p["ema_days"]) * 24
+    close, _ = view.tail((int(p["state_days"]) + 3 * int(p["ema_days"])) * 24 + 1)
+    if coin not in close:
+        return "down"
+    px = close[coin].dropna()
+    if len(px) < span:
+        return "down"
+    ema = px.ewm(span=span, adjust=False).mean()
+    step = (px.index.hour - px.index[-1].hour) % team_trend_2.MODEL.spec.rebalance_hours == 0
+    pts = (px.index > px.index[-1] - pd.Timedelta(days=int(p["state_days"]))) & step
+    return "up" if team_trend_2.in_trend(px[pts], ema[pts], p["hysteresis"]) else "down"
 
 
 def cut(view: MarketView, hours_back: int, params: dict, prev: pd.Series) -> MarketView:
@@ -52,10 +71,13 @@ class Combo:
         unknown = set(p["sleeves"]) - set(SLEEVES)
         if unknown:
             raise ValueError(f"{self.spec.name}: unknown sleeves {sorted(unknown)}; known: {sorted(SLEEVES)}")
+        state = btc_state(view, p["switch"]) if p.get("switch") else None
         book = pd.Series(dtype=float)
         for name, s in p["sleeves"].items():
+            if state is not None and s.get("when", state) != state:
+                continue
             w = self.sleeve(name, view, s.get("params") or {}, int(p.get("replay_steps", 1)))
-            book = book.add(float(s["weight"]) * w, fill_value=0.0)
+            book = book.add(float(s.get("weight", 1.0)) * w, fill_value=0.0)
         book = book[book.abs() > 1e-12]
         gross = float(book.abs().sum())
         return book / gross if gross > 1.0 else book

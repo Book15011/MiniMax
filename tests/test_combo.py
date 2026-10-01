@@ -14,11 +14,11 @@ from backtest.scoring.leakage import leakage_gate
 from src.config import load_config
 from src.contracts import MarketView, ModelSpec
 from src.models import discover
-from src.models.pol._combo import SLEEVES, Combo
+from src.models.pol._combo import SLEEVES, Combo, btc_state
 from tests.synth import make_market
 
 CFG = load_config()
-COMBOS = sorted(n for n in discover() if n.startswith("pol_combo_"))
+COMBOS = sorted(n for n in discover() if n.startswith(("pol_combo_", "pol_switch_")))
 
 
 @pytest.fixture(scope="module")
@@ -69,7 +69,9 @@ def test_combos_keep_the_contract_and_reach_every_sleeve(name, market):
     idx = market.close.index
     times = decision_times(idx, 24, 16, pd.Timestamp("2021-02-01 16:00", tz="UTC"), pd.Timestamp("2021-03-10 16:00", tz="UTC"))
     tg = compute_targets(model, market, times, p)               # raises on any contract break
-    assert (tg.abs().sum(axis=1) <= 1 + 1e-9).all() and (tg.abs().sum(axis=1) > 0).mean() > 0.5
+    assert (tg.abs().sum(axis=1) <= 1 + 1e-9).all()
+    if "switch" not in p:                                       # a switch to cash may sit out a short sample
+        assert (tg.abs().sum(axis=1) > 0).mean() > 0.5
 
 
 def test_combo_is_view_only_and_deterministic(market):
@@ -81,3 +83,21 @@ def test_combo_is_view_only_and_deterministic(market):
                        {"decisions": 8, "seed": 1, "noise_sigma": 0.01})
     assert out["pass"], out
     assert np.isfinite(compute_targets(model, market, times[:3], p).to_numpy()).all()
+
+
+def test_switch_runs_only_the_sleeve_of_the_current_state(market):
+    trend = CFG["models"]["team_trend_2"]
+    rot = CFG["models"]["team_rot_ew"]
+    seen = set()
+    for t in pd.date_range("2021-02-01 16:00", "2021-04-01 16:00", freq="7D", tz="UTC"):
+        v = view_at(market, str(t), {"switch": trend, "sleeves": {"team_rot_ew": {"when": "up", "params": rot},
+                                                                   "team_btc_hold": {"when": "down"}}})
+        state = btc_state(v, trend)
+        seen.add(state)
+        w = Mix().targets(v)
+        if state == "down":
+            assert w.to_dict() == {"BTCUSDT": 1.0}
+        else:
+            want = Mix().targets(dataclasses.replace(v, params={"sleeves": {"team_rot_ew": {"weight": 1.0, "params": rot}}}))
+            pd.testing.assert_series_equal(w.sort_index(), want.sort_index())
+    assert seen                                                 # the synthetic sample visits at least one state

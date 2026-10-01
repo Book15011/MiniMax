@@ -351,5 +351,16 @@ models:
       team_trend_2: {weight: 0.14285714285714285, params: *team_trend_2}
       pol_mom_ss: {weight: 0.14285714285714285, params: *pol_mom_ss}
       pol_trend_ls: {weight: 0.14285714285714285, params: *pol_trend_ls}
+  pol_switch_rt:                  # orchestrators: one method at a time, by BTC's trend state (team_trend_2's rule)
+    replay_steps: 1
+    switch: *team_trend_2
+    sleeves:
+      team_rot_ew: {when: up, params: *team_rot_ew}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
+  pol_switch_rc:
+    replay_steps: 1
+    switch: *team_trend_2
+    sleeves:
+      team_rot_ew: {when: up, params: *team_rot_ew}
   # --- book ---
   # --- baitoey ---
