@@ -185,6 +185,13 @@ The orchestrator stays a research goal, run in this order:
    - the trend winner has the better combined rank in **both** SCREEN and CONFIRM, in which case it launches.
 3. The holdout (windows ending after 2026-08-08 16:00 UTC) is opened **once**, on Oct 3, for the chosen model. It is reported, and changes the choice only if it reveals a bug (e.g. a rules failure).
 4. The final lookalike re-run on Oct 3 is informational only.
+5. **In-sample label.** Any result that used data after 2026-08-08 16:00 UTC is marked **"in-sample (includes holdout data)"** wherever it is reported (reports, compare tables, README). This covers:
+   - any window ending after that time;
+   - any feature, parameter or weight computed with that data, e.g. the lookalike state and the live-like weights as of Sep 30, which use bars up to Sep 29;
+   - any decision made after looking at such a result.
+
+   Once the holdout is opened on Oct 3, it is in-sample too.
+6. **MOM-SS has no clean out-of-sample test before launch.** Its parameters were set on 2024–2026 data, which overlaps SCREEN, CONFIRM and the holdout. 2020–2023 is unseen *older* data, not a forward test. Its only true out-of-sample test is the live round (Oct 4–17). Report its backtests as in-sample evidence.
 
 ## 5. Risks
 
