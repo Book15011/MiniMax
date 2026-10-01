@@ -11,9 +11,11 @@ Each completed hour bar H (UTC), about `process_after_s` after the hour:
    could fill (the bot was down and Binance's API is unreachable) are carried forward up to `max_fill_hours`,
    as the backtest engine carries prices; without that, a model that needs a full 30 days of bars sees none. The shared planner
    turns targets into orders (the first decision trades every difference, later ones only beyond the band).
-3. Activity guard, as backtest/engine.py: from hour 21 of the HKT day (13:00 UTC) on, if the day has no trade yet,
-   rebalance exactly to the standing targets; if that needs no order, make the keep-alive trade (0.2% of equity
-   more BTC, or that much less of the largest holding).
+3. Activity guard, as backtest/engine.py: from hour `activity_guard_offset_hours` + 1 of the HKT day on (04:00 UTC
+   with the proposed 11), if the day has no confirmed trade yet, rebalance exactly to the standing targets; if that
+   needs no order, make the keep-alive trade (0.2% of equity more BTC, or that much less of the largest holding).
+   A fill counts only when the account's positions moved (an order response alone is not proof), and an
+   unconfirmed guard is retried every later hour of the same day.
 4. Log every step as one JSONL line (git commit stamped, no keys) and save the state atomically.
 Live trades about an hour earlier than the backtest assumes (it lags fills by one bar), so the backtest is the
 conservative side. Restarts resume from the state file; missed hours are not replayed, an overdue decision or
@@ -84,6 +86,21 @@ def keep_alive_targets(h: Holdings, quotes: dict, eq: float, ka: float, cap: flo
     return t
 
 
+def positions(h: Holdings) -> dict[str, tuple[float, float]]:
+    """Coins held and coins shorted per pair, copied: a fill shows up here whatever the order response said."""
+    return {p: (float(h.spot.get(p, 0.0)), float(h.shorts[p].qty) if p in h.shorts else 0.0)
+            for p in set(h.spot) | set(h.shorts)}
+
+
+def confirm_fills(fills: list[dict], before: dict, after: dict) -> list[dict]:
+    """A fill reported FILLED (or only SENT) whose pair's position did not move becomes UNCONFIRMED."""
+    for f in fills:
+        p = f["order"].pair
+        if f["status"] == "FILLED" and before.get(p, (0.0, 0.0)) == after.get(p, (0.0, 0.0)):
+            f["status"] = "UNCONFIRMED"
+    return fills
+
+
 def holdings_to_json(h: Holdings) -> dict:
     return {"usd_free": h.usd_free, "spot": h.spot, "shorts": {p: asdict(s) for p, s in h.shorts.items()}}
 
@@ -150,7 +167,10 @@ class Runner:
               exact: bool) -> list[dict]:
         orders, notes = plan_orders(targets, h, quotes, self.rules, band, self.ex["fee"], self.ex["cash_buffer"],
                                     self.ex["min_trade_usd"], exact=exact)
+        before = positions(h)
         fills = self.broker.execute(orders, quotes, h) if orders else []
+        if fills:                                          # confirm from the account, not from the order response
+            confirm_fills(fills, before, positions(self.broker.holdings(with_shorts=not self.long_only)))
         refused = [f for f in fills if f["status"] == "ERROR" and f["order"].kind == "SHORT_OPEN"
                    and "not allow" in str(f.get("error", "")).lower()]
         if refused and not self.long_only:                 # "this competition does not allow short positions"
@@ -205,8 +225,8 @@ class Runner:
             decided = True
         start = day_start(H, grid)
         into_day = int((H - start) / HOUR)
-        if (not decided and str(start) not in self.state["active_days"]
-                and into_day >= self.h["activity_guard_offset_hours"] + 1):
+        if (not decided and str(start) not in self.state["active_days"]          # every later hour of the day retries
+                and into_day >= self.h["activity_guard_offset_hours"] + 1):        # until a fill is confirmed
             h = self.broker.holdings(with_shorts=not self.long_only)
             fills = self.trade("guard", H, self.state["standing"], h, quotes, 0.0, exact=True)
             if not any(f["status"] == "FILLED" for f in fills):

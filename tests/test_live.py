@@ -187,7 +187,7 @@ def test_cash_model_stays_active_through_guard_and_keep_alive(tmp_path):
     assert kinds.count("keep_alive") >= 1 and "decision" in kinds
     assert all("API" not in json.dumps(e) for e in logs)                # nothing key-like is logged
     ka = [e for e in logs if e["event"] == "keep_alive"][0]
-    assert ka["bar"].startswith("2026-10-04 13:00")                     # hour 21 of the HKT day, as the engine
+    assert ka["bar"].startswith("2026-10-04 04:00")                     # hour 12 of the HKT day (12:00 HKT), as the engine
 
 
 def test_a_gap_in_the_bars_does_not_empty_the_model(tmp_path):
@@ -236,3 +236,31 @@ def test_competition_key_is_refused_off_ec2(monkeypatch, tmp_path):
     monkeypatch.delenv("MM_HOST", raising=False)
     with pytest.raises(SystemExit, match="refused"):
         rmod.build(CFG, Namespace(mode="live", model=None, long_only=False), LOG)
+
+
+class StubbornPaper(PaperAccount):
+    """Answers every order as filled but moves nothing for the first `misses` batches (a fill that never happened)."""
+
+    def __init__(self, *a, misses: int = 2, **k):
+        super().__init__(*a, **k)
+        self.misses = misses
+
+    def execute(self, orders, quotes, h):
+        if self.misses > 0:
+            self.misses -= 1
+            return [{"order": o, "status": "FILLED"} for o in orders]
+        return super().execute(orders, quotes, h)
+
+
+def test_guard_fires_at_04_utc_confirms_the_fill_and_retries_the_same_day(tmp_path):
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+    r = make_runner(tmp_path, "team_cash", flat_store(start, 120))
+    r.broker = StubbornPaper(r.broker.h, r.rules, r.broker.quotes_fn, misses=2)
+    for k in range(24):
+        r.process(start + pd.Timedelta(hours=k))
+    logs = [json.loads(x) for f in (tmp_path / "logs").glob("*.jsonl") for x in f.read_text().splitlines()]
+    ka = [(e["bar"][:16], [f["status"] for f in e["fills"]]) for e in logs if e["event"] == "keep_alive"]
+    assert ka == [("2026-10-04 04:00", ["UNCONFIRMED"]), ("2026-10-04 05:00", ["UNCONFIRMED"]),
+                  ("2026-10-04 06:00", ["FILLED"])]                     # first at 12:00 HKT, retried until it fills
+    assert r.state["active_days"] == [str(start)]                       # the day counts only after the real fill
+    assert r.broker.h.spot.get("BTC/USD", 0.0) > 0
