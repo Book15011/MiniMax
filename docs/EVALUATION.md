@@ -2,7 +2,7 @@
 
 How the team scores every model the same way, as close as we can get to the competition's own scoring. The code is `backtest/scoring/`, on top of the harness in `backtest/` (`docs/STRATEGY_GUIDE.md`). Every constant lives under `scoring:` in `config.yaml`. **Every setting is pending team review** until the checklist at the end is signed off.
 
-- **Status:** tool built, formulas tested. The team rechecks the formulas before relying on them.
+- **Status:** tool built, formulas tested; reviewed by Pol on 2026-10-01 (section 7: what was verified, what changed, the checklist with Pol's column). Book's and Baitoey's sign-off still pending.
 - **The official formula is unpublished** (organizers: "formulas published on Finale Day"). We know only the outline: top 20 by return per region, then 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar. So the score reports four readings of that formula (V1–V4) under two denominator conventions, and picks one as primary.
 - **What it does not change:** the per-method pre-registered rule (`docs/STRATEGY_GUIDE.md` §5) and the launch rule (`docs/TEAM_PLAN.md` §4.3). If the team wants this score to pick the live bot, that rule must be amended by a reviewed merge.
 
@@ -93,7 +93,8 @@ CASH (`team_cash`) is scored as a reference row, not part of the field.
 | Return gate | gate_w = 1 if R_w ≥ max(0, median of the 6 benchmarks' R_w), else 0 | Mirrors "top 20 by return first": a window only scores if the model beat a typical competitor and didn't lose money |
 | CS | CS_w(v) = gate_w × Composite_w(v), for each variant and convention | Risk-adjusted score only where the return cut is passed |
 | HEADLINE | 0.70 × (Σ w_live·CS / Σ w_live) + 0.30 × (Σ w_rec·CS / Σ w_rec) | The two layers answer "how would it do in a market like the coming one" and "how is it doing now" |
-| Primary | HEADLINE(V1, FLOORED) | Pending review. V2–V4 and POL are always shown, with the model's rank among all scored runs under each |
+| REL | HEADLINE(REL) = mean over V1–V4 of HEADLINE(v) / F(v), F(v) = the six benchmarks' mean HEADLINE(v). Per window, CS_w(REL) = mean over v of CS_w(v) / F(v), so the bootstrap and the layers work on it like on any variant | 1.00 = the field average under every reading at once. The readings disagree on what wins (section 7, finding 1); REL needs no bet on one of them |
+| Primary | HEADLINE(REL, FLOORED), proposed in the 2026-10-01 review (was V1 FLOORED) | Pending review. V1–V4 and POL are always shown, with the model's rank among all scored runs under each |
 
 **Gates** (all must pass to be eligible; thresholds in `scoring.gates`):
 
@@ -102,11 +103,11 @@ CASH (`team_cash`) is scored as a reference row, not part of the field.
 | G1 activity | ≥ 10 active days in 100% of windows. Guard-driven days count, but are reported separately, and a model whose guard-only days exceed 25% of its active days is flagged | The competition requires ≥ 10 active days (8 on one source); the guard is a safety net, not a strategy |
 | G2 worst fortnight | worst R over all scored windows > BTC_HOLD's worst | Pol's must-pass check, kept: never worse than simply holding BTC in the worst case |
 | G3 regimes | no 3×3 regime cell with median R below −10% | No market type in which the model reliably loses big |
-| G4 shorts disabled | a second run with every negative target forced to 0 completes cleanly (finite results, every window) | The competition account may not allow shorts; the bot then runs long-only |
+| G4 shorts disabled | a second run with every negative target forced to 0 completes cleanly (finite results, every window) **and passes G1 and G2** | The competition account may not allow shorts; the bot then runs long-only, so that fallback must be active and safe too, not merely run |
 | G5 leakage | at 30 decision times: (1) decisions reproduce exactly (Pol's `lookahead_check`, reused); (2) unchanged when every price and volume after t is replaced by random-walk noise; (3) no file or network access inside `targets()` | (1) alone passes a model that reads past t through the arrays behind the view; (2) catches that (tested); (3) catches a model that reads the panel from disk |
 | G6 STRESS survival | over the 20 STRESS windows: worst R ≥ BTC_HOLD's worst and median R ≥ BTC_HOLD's median | Survive the sharpest drops and rebounds at least as well as holding BTC |
 
-**compare a b:** the paired HEADLINE(primary) difference, with a 90% weighted moving-block bootstrap interval. Blocks of 14 consecutive windows (one window length, so overlapping windows stay together), 2,000 resamples, seed 20261003. Each resample recomputes both weighted layers with the drawn windows' own weights.
+**compare a b:** the paired HEADLINE(primary) difference, with a 90% weighted moving-block bootstrap interval. Blocks of 56 consecutive windows (about two months: regimes outlast one window length, and 14-window blocks gave intervals that were too narrow, section 7 finding 4), 2,000 resamples, seed 20261003. Each resample recomputes both weighted layers with the drawn windows' own weights.
 
 ## 4. Outputs
 
@@ -120,7 +121,7 @@ CASH (`team_cash`) is scored as a reference row, not part of the field.
 | Leaderboard | `results/scoring/leaderboard.md`: regenerated after every registered run. Full runs and the current tool version only, identical results once, each person's run count next to their best score | No |
 | Cache | `results/scoring/cache/<model>/`: per tool version and model code; `--no-cache` recomputes | No |
 
-The **tool version** is a hash of the files that define the numbers (engine, data loader, contract, scoring modules), the `scoring:` and `harness:` config, and the data identity. Any change to these starts a new leaderboard, so scores from different formulas are never ranked together.
+The **tool version** is a hash of the files that define the numbers (engine, data loader, contract, scoring modules), the `scoring:` and `harness:` config, the data identity, and every field member's code and parameters (they set the return gate and the REL unit of every score). Any change to these starts a new leaderboard, so scores from different formulas are never ranked together.
 
 **The report** starts with:
 - the summary: HEADLINE V1–V4 in both conventions with ranks, the gates with reasons, the layer scores, and a comparison with the benchmarks
@@ -147,39 +148,61 @@ The **tool version** is a hash of the files that define the numbers (engine, dat
 - The live formula is unknown; V1–V4 bracket the plausible readings. Treat a model that wins under only one variant with suspicion.
 - The field is a proxy for other teams: six simple strategies, not the real competitors.
 - The planner's minimum-order rule ($10) is not modelled, so models with many tiny rebalances (e.g. EW_DAILY) trade slightly more in the backtest than they would live.
-- **The engine can hold more than 100% gross**, which the live planner cannot.
-  - Cause: after a band-limited rebalance (`backtest/engine.py`), the engine buys a new coin in full, but holdings that drifted above target by less than the band are not trimmed. Cash goes negative.
-  - Live behaviour: `src/execution/planner.py` scales buys down to fit the free cash.
-  - Size: on 2026-10-01 this showed up in 11–19% of windows for ROT_EW, ROT_IV and MOM_SS25 and 4% for TREND_2, up to 112.8% gross. Each report shows the max gross.
-  - Owner: this is the engine owner's call; the scoring does not change the engine's fills.
+- **Fixed on 2026-10-01: the engine no longer exceeds 100% gross.** A band-limited rebalance used to buy a new coin in full while drifted holdings stayed above target (up to 112.8% for the field, 129% for pol_trend_ls). The engine now scales the increases down to fit, as `src/execution/planner.py` does (`backtest.engine.fit_gross`). The planner also keeps a 1% cash buffer, which the engine does not.
+- **Keep-alive trade** (`harness.keep_alive_weight` 0.002): a guard that finds the book exactly on target trades 0.2% of equity (more BTC, or less of the largest holding) and the next guard reverses it, so an all-cash or single-coin book is still active every day. It costs about 0.004% of equity a window, and the live bot must do the same. With a band of 0 (CASH, BTC_HOLD) the next decision unwinds the nudge, so those days count as strategy days.
 - One pool window cannot be run: 2020-12-21 16:00 UTC has no bar in the panel (16:00–18:00 missing). It is listed in score.json; its live-like weight was 1.7e-7.
 - LIVE-LIKE weights come from the 2026-09-30 validation run; rerun PART 0 on Oct 3 (`python -m src.validation.live_like`) and the tool version changes with the file.
 - **UNVERIFIED:** every result that uses windows after 2026-08-08 is in-sample for models tuned on them. The holdout stays sealed here.
+
+## 7. Review, 2026-10-01 (Pol)
+
+The full write-up, with every table, is `reports/review/20261001-scoring-review.md`. In short:
+
+**Verified independently** (not with the engine or `tests/scoring_reference.py`):
+- BTC_HOLD: R, MDD and the V1 and V2 composites recomputed from raw BTC closes on 202 windows: largest difference 8.4e-13.
+- CASH: R and every composite exactly 0 in all 2,245 windows (before the keep-alive). EW_DAILY: 14 active days everywhere, max gross 100.00%.
+- 120 of 120 tests passed on `feature/book-scoring`.
+
+**Findings and changes** (numbers from the field run on tool version `c0f83aa…`, before the changes):
+
+| # | Finding | Evidence | Change |
+|---|---|---|---|
+| 1 | The unpublished reading decides the winner | Calmar's share of the composite: V1 7–9%, V2 60–66%, V3 68–72%, V4 53–59%. #1 is pol_trend_ls under V1 and V4, team_rot_ew under V2 and V3 | REL proposed as the primary |
+| 2 | The leaderboard could rank scores made against different fields | The tool version left out the field members' code and parameters; team_mom_ss25 runs pol_mom_ss's code | Field fingerprint in the tool version |
+| 3 | The engine went above 100% gross after trades | Up to 112.8% for the field; pol_trend_ls in 58% of windows, up to 129% | `fit_gross`, as the planner does. The harness cache now keys on the engine code too |
+| 4 | 14-window bootstrap blocks overstate certainty | ROT_EW − MOM_SS25 interval: block 14 [−0.005, +0.055], 28 [−0.007, +0.058], 56 [−0.016, +0.059], 112 [−0.029, +0.062] | Blocks of 56 |
+| 5 | G4 only checked that the long-only run ran | With G1 and G2 added, pol_mom_ss's long-only fallback had < 10 active days in 7.7% of windows and pol_trend_ls's in 26% (all cash in downtrends) | G4 must pass G1 and G2; the engine's keep-alive trade fixes the cause |
+| 6 | The return gate is mostly "do not lose money" | The field median R is ≤ 0 in 49% of windows (59% live-like weighted), so the bar there is R ≥ 0. Gate pass rates 20–35% | None. The number of teams per region is still unknown (PLAN open question 7) |
+| 7 | A few windows carry the score | The top 1% of windows (22) give about 25% of the weighted CS sum, the top 5% give 59–72%; 6–9 distinct episodes | None: the competition's own skew. Read compare intervals, not point gaps |
+| 8 | Blends score below their best sleeve | Five blends, REL 0.60–1.15 vs 1.32 for team_rot_ew. Faithful: each blend's R tracks its sleeves' average (correlation 0.97–0.99). The gate pays nothing below the bar, and averaging methods whose good windows do not coincide lowers the median R below both | Blends kept as evidence. Two switch orchestrators added; pol_switch_rt leads (REL 1.373) but is not separable from team_rot_ew (1.324, the steadiest across periods and readings) |
+
+**Decision rule.** This score and the per-method rule of `docs/STRATEGY_GUIDE.md` §5 can pick different winners. Proposal: rank eligible models by HEADLINE(REL), and treat a gap whose compare interval includes 0 as a tie, broken by the §5 rule. That needs a reviewed change to `docs/TEAM_PLAN.md` §4.3.
 
 ## TEAM SIGN-OFF CHECKLIST
 
 Every row is **pending team review**. To change a value, edit `config.yaml` → `scoring:` in a reviewed merge; the tool version, and therefore the leaderboard, changes with it.
 
-| # | Setting | Current value | Status |
-|---|---|---|---|
-| 1 | Primary variant | V1 daily_raw | pending team review |
-| 2 | Primary convention | FLOORED (POL always reported) | pending team review |
-| 3 | Floors (FLOORED) | s, dd: 0.001 daily, 0.001/√24 hourly; MDD 0.002 | pending team review |
-| 4 | POL convention | MDD floor 1e-4, s and dd unfloored, zero denominator → 0 | pending team review |
-| 5 | Composite weights | 0.4 Sortino, 0.3 Sharpe, 0.3 Calmar | pending team review |
-| 6 | Annualization | V2 √365 / 365, V3 √8760 / 8760 | pending team review |
-| 7 | HEADLINE split | 0.70 LIVE-LIKE + 0.30 RECENCY | pending team review |
-| 8 | Recency half-life | 60 days, age to T* = 2026-10-03 16:00 UTC | pending team review |
-| 9 | LIVE-LIKE weights | `validation/live_like_v1.json`, no CPI filter, no direction factor | pending team review |
-| 10 | Return gate | R_w ≥ max(0, median R_w of the 6 benchmarks) | pending team review |
-| 11 | Field | BTC_HOLD, EW_DAILY, ROT_EW, ROT_IV, TREND_2, MOM_SS25 (definitions in §3) | pending team review |
-| 12 | G1 | ≥ 10 active days in 100% of windows; flag above 25% guard-only days | pending team review |
-| 13 | G2 | worst R > BTC_HOLD's worst | pending team review |
-| 14 | G3 | no regime cell median R < −10% | pending team review |
-| 15 | G4 | long-only rerun completes cleanly | pending team review |
-| 16 | G5 | 30 decisions: determinism + future noise + no I/O | pending team review |
-| 17 | G6 | STRESS worst ≥ BTC_HOLD's worst and median ≥ BTC_HOLD's median | pending team review |
-| 18 | Stride | 1 day (every pool window) | pending team review |
-| 19 | E_0 and R_liq cost | 100,000 USD; 0.1% on the gross notional open at the end | pending team review |
-| 20 | compare | blocks of 14 windows, 2,000 resamples, 90% interval | pending team review |
-| 21 | Shared files | registry, leaderboard and cache in `results/scoring/` | pending team review |
+| # | Setting | Current value | Status | Pol (2026-10-01) |
+|---|---|---|---|---|
+| 1 | Primary variant | REL (was V1 daily_raw) | pending team review | **Change → REL** (finding 1) |
+| 2 | Primary convention | FLOORED (POL always reported) | pending team review | Agree. Floors bound in 0 windows of the active models |
+| 3 | Floors (FLOORED) | s, dd: 0.001 daily, 0.001/√24 hourly; MDD 0.002 | pending team review | Agree |
+| 4 | POL convention | MDD floor 1e-4, s and dd unfloored, zero denominator → 0 | pending team review | Agree (report only) |
+| 5 | Composite weights | 0.4 Sortino, 0.3 Sharpe, 0.3 Calmar | pending team review | Agree (organizers' weights) |
+| 6 | Annualization | V2 √365 / 365, V3 √8760 / 8760 | pending team review | Agree (24/7 market) |
+| 7 | HEADLINE split | 0.70 LIVE-LIKE + 0.30 RECENCY | pending team review | Agree. Both layers lean on the last two months (live-like = REC_60 forecast) |
+| 8 | Recency half-life | 60 days, age to T* = 2026-10-03 16:00 UTC | pending team review | Agree (PART 0 chose it on CRPS skill) |
+| 9 | LIVE-LIKE weights | `validation/live_like_v1.json`, no CPI filter, no direction factor | pending team review | Agree; rerun on Oct 3 as planned |
+| 10 | Return gate | R_w ≥ max(0, median R_w of the 6 benchmarks) | pending team review | Agree, with finding 6 as a known limit |
+| 11 | Field | BTC_HOLD, EW_DAILY, ROT_EW, ROT_IV, TREND_2, MOM_SS25 (definitions in §3) | pending team review | Agree: matches what other teams' public repos do (vol-targeted momentum, BTC/ETH trend). Now part of the tool version (finding 2) |
+| 12 | G1 | ≥ 10 active days in 100% of windows; flag above 25% guard-only days | pending team review | Agree. The keep-alive trade now counts as a guard day |
+| 13 | G2 | worst R > BTC_HOLD's worst | pending team review | Agree |
+| 14 | G3 | no regime cell median R < −10% | pending team review | Agree |
+| 15 | G4 | long-only rerun completes cleanly and passes G1 and G2 (was: completes) | pending team review | **Change → must also pass G1 and G2** (finding 5) |
+| 16 | G5 | 30 decisions: determinism + future noise + no I/O | pending team review | Agree |
+| 17 | G6 | STRESS worst ≥ BTC_HOLD's worst and median ≥ BTC_HOLD's median | pending team review | Agree |
+| 18 | Stride | 1 day (every pool window) | pending team review | Agree |
+| 19 | E_0 and R_liq cost | 100,000 USD; 0.1% on the gross notional open at the end | pending team review | Agree |
+| 20 | compare | blocks of 56 windows (was 14), 2,000 resamples, 90% interval | pending team review | **Change → blocks of 56** (finding 4) |
+| 21 | Shared files | registry, leaderboard and cache in `results/scoring/` | pending team review | Agree |
+| 22 | Keep-alive trade | `harness.keep_alive_weight` 0.002 (engine and live bot) | pending team review | New (finding 5) |

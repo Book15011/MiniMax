@@ -1,5 +1,5 @@
 """Reference: all cash. The model never trades; the engine's keep-alive trade (0.2% BTC, reversed the next day) still
-makes every day active, as the live bot would, and costs about 0.003% a window. Scores about 0."""
+makes every day active, as the live bot would, and costs about 0.004% a window. Scores about 0."""
 from __future__ import annotations
 
 import pandas as pd
