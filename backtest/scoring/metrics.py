@@ -24,8 +24,19 @@ def as_matrix(E) -> np.ndarray:
     return E[None, :] if E.ndim == 1 else E
 
 
+def clock_series(values, times: pd.DatetimeIndex, t0: pd.Timestamp, hours: int) -> np.ndarray:
+    """Values recorded at `times` (the engine's steps) read at the clock hours t0 + k h, k = 0..hours: each one is the
+    last value at or before that time. A missing bar repeats the previous value; steps after t0 + hours are dropped."""
+    grid = t0 + pd.to_timedelta(np.arange(hours + 1), unit="h")
+    pos = times.searchsorted(grid, side="right") - 1
+    if pos[0] < 0 or times[pos[0]] != t0:
+        raise ValueError(f"the steps must start at the window start {t0}")
+    return np.asarray(values, dtype=float)[pos]
+
+
 def returns(E: np.ndarray, hours_per_day: int = 24) -> tuple[np.ndarray, np.ndarray]:
-    """Daily and hourly returns, one row per window."""
+    """Daily and hourly returns, one row per window. E is on the clock grid (clock_series), so E[:, 24d] is the
+    equity at t0 + 24h * d: never a count of bars."""
     E = as_matrix(E)
     D = E[:, ::hours_per_day]
     return D[:, 1:] / D[:, :-1] - 1.0, E[:, 1:] / E[:, :-1] - 1.0
@@ -59,7 +70,8 @@ def floor_hits(den: np.ndarray, floor: float) -> np.ndarray:
 
 def window_metrics(E, gross_end, sc: dict) -> pd.DataFrame:
     """One row per window: R, R_liq, MDD, the moments, and every ratio of every variant under every convention
-    (columns '<convention>.<variant>.<ratio>'), plus floor hits ('<convention>.hit.<floor>')."""
+    (columns '<convention>.<variant>.<ratio>'), plus floor hits ('<convention>.hit.<floor>').
+    E: one row per window on the clock grid t0 + k h, k = 0..336 (backtest.scoring.evaluate reads it so)."""
     E = as_matrix(E)
     r, h = returns(E, int(sc["hours_per_day"]))
     R = E[:, -1] / E[:, 0] - 1.0

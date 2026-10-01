@@ -1,7 +1,9 @@
 """Run one model through the harness engine on every scored window and keep what the score needs.
 
 Reuses backtest.engine as is: decisions from compute_targets, fills from Simulator.run(trace=True), which returns
-the same equity as a plain run plus the trades and the hourly exposure. Adds, per window (docs/EVALUATION.md 2.5):
+the same equity as a plain run plus the trades and the hourly exposure. A window is 14 days of clock time: every
+value is read at t0 + k hours (the last one at or before), and a fill belongs to the 24 h day of its timestamp, so
+a missing bar in the panel never stretches the window or shifts a day. Adds, per window (docs/EVALUATION.md 2.5):
 active days and how many came only from the activity guard, fees and spread over E_0, turnover, average and max
 gross exposure, average net exposure, orders, and the most orders in one decision (planner rules).
 Results are cached under scoring.cache_dir, keyed by the tool version and the model's code, parameters and mode.
@@ -24,7 +26,7 @@ import pandas as pd
 from backtest.data import Market
 from backtest.engine import Costs, Simulator, compute_targets, decision_times
 from backtest.evaluate import git_state, model_modules
-from backtest.scoring.metrics import window_metrics
+from backtest.scoring.metrics import clock_series, window_metrics
 from src.config import REPO_ROOT, resolve
 from src.contracts import MarketView, Model
 
@@ -34,6 +36,7 @@ TOOL_FILES = ("backtest/engine.py", "backtest/data.py", "backtest/evaluate.py", 
               "backtest/scoring/metrics.py", "backtest/scoring/windows.py", "backtest/scoring/evaluate.py",
               "backtest/scoring/leakage.py", "backtest/scoring/competition.py", "backtest/scoring/score.py")
 NOT_IN_VERSION = ("report", "registry", "leaderboard", "cache_dir", "compare")
+HOUR = pd.Timedelta(hours=1)
 TRADE_COLUMNS = ["window_start", "hour", "time_utc", "kind", "series", "w_before", "w_after",
                  "notional_usd", "fee_usd", "spread_usd"]
 
@@ -158,13 +161,29 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
     N = np.empty((W, hours + 1))
     DAYS = np.zeros((W, days), dtype=np.int8)
     rows, trades = [], []
+    sidx = sim.index
     for k, t0 in enumerate(starts):
-        res = sim.run(idx.get_loc(t0), hours, trace=True)
+        # The window is 14 days of clock time, t0 .. t0 + 336 h. The engine steps through sim.index; every value is
+        # read at the clock hour t0 + k h as the last one at or before it (clock_series), so a missing bar never
+        # stretches the window or shifts a day, whichever engine produced the steps.
+        i0 = sidx.get_loc(t0)
+        res = sim.run(i0, hours, trace=True)
         tr = res.trace
-        E[k], G[k], N[k] = res.equity, tr["gross"], tr["net"]
-        cost_e0 = fee_e0 = 0.0
-        n_orders = max_calls = 0
+        at = sidx[i0: i0 + hours + 1]
+        E[k] = clock_series(res.equity, at, t0, hours)
+        G[k] = clock_series(tr["gross"], at, t0, hours)
+        N[k] = clock_series(tr["net"], at, t0, hours)
+        cost_e0 = fee_e0 = turnover = 0.0
+        n_orders = max_calls = events = 0
+        strat_day = np.zeros(days, dtype=bool)
+        guard_day = np.zeros(days, dtype=bool)
         for hh, kind, w0, w1, eqb, cost in tr["trades"]:
+            when = at[hh]
+            ck = int((when - t0) / HOUR)                        # clock hour of the fill, 1 .. 336 inside the window
+            if ck > hours:
+                continue                                       # after t0 + 14 days: outside the window
+            day = (ck - 1) // 24                               # the 24 h day (16:00 UTC boundaries) that contains it
+            (guard_day if kind == "guard" else strat_day)[day] = True
             d = w1 - w0
             fee = (np.abs(np.maximum(w1, 0) - np.maximum(w0, 0)) * costs.taker
                    + np.abs(np.minimum(w1, 0) - np.minimum(w0, 0)) * costs.short)
@@ -172,21 +191,21 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
             orders = planner_orders(w0, w1)
             cost_e0 += cost * eqb
             fee_e0 += float(fee.sum()) * eqb
+            turnover += float(np.abs(d).sum())
             n_orders += orders
             max_calls = max(max_calls, orders)
-            when = t0 + pd.Timedelta(hours=hh)
+            events += 1
             for i in np.flatnonzero(np.abs(d) > 1e-12):
-                trades.append((t0, hh, when, kind, cols[i], w0[i], w1[i], abs(d[i]) * eqb * e0,
+                trades.append((t0, ck, when, kind, cols[i], w0[i], w1[i], abs(d[i]) * eqb * e0,
                                fee[i] * eqb * e0, spread[i] * eqb * e0))
-        DAYS[k] = np.where(tr["strategy_day"], 1, np.where(tr["guard_day"], 2, 0))
-        strat = int(tr["strategy_day"].sum())
-        guard_only = int((tr["guard_day"] & ~tr["strategy_day"]).sum())
-        assert strat + guard_only == res.active_days
-        rows.append({"active_days": res.active_days, "strategy_days": strat, "guard_days": guard_only,
+        DAYS[k] = np.where(strat_day, 1, np.where(guard_day, 2, 0))
+        strat = int(strat_day.sum())
+        guard_only = int((guard_day & ~strat_day).sum())
+        rows.append({"active_days": strat + guard_only, "strategy_days": strat, "guard_days": guard_only,
                      "costs_e0": cost_e0, "fees_e0": fee_e0, "spread_e0": cost_e0 - fee_e0,
-                     "turnover": res.turnover, "gross_avg": float(G[k, 1:].mean()), "gross_max": float(G[k, 1:].max()),
+                     "turnover": turnover, "gross_avg": float(G[k, 1:].mean()), "gross_max": float(G[k, 1:].max()),
                      "net_avg": float(N[k, 1:].mean()), "gross_end": float(G[k, -1]), "orders": n_orders,
-                     "max_calls_decision": max_calls, "trade_events": len(tr["trades"])})
+                     "max_calls_decision": max_calls, "trade_events": events})
     act = pd.DataFrame(rows, index=starts)
     met = window_metrics(E, act["gross_end"].to_numpy(), sc)
     met.index = starts
