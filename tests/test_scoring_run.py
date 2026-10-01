@@ -16,6 +16,7 @@ from backtest.scoring import registry
 from backtest.scoring.evaluate import LongOnly, planner_orders, simulate, tool_version
 from backtest.scoring.leakage import leakage_gate
 from backtest.scoring.score import dumps, score_model
+from backtest.scoring.windows import pool_starts
 from src.config import load_config
 from src.contracts import MarketView, ModelSpec
 from src.models import discover
@@ -37,7 +38,8 @@ def synth_cfg(tmp_path, market: Market) -> dict:
     cfg = copy.deepcopy(CFG)
     h, sc = cfg["harness"], cfg["scoring"]
     h.update(first_window="2021-02-01", holdout_from="2021-04-15 16:00")
-    pool = pd.date_range("2021-02-01 16:00", "2021-04-01 16:00", freq="D", tz="UTC")
+    sc.update(replay=None)
+    pool = pool_starts(market, cfg)                                    # 12:00 UTC starts, spent holdout included
     rng = np.random.default_rng(5)
     (tmp_path / "ll.json").write_text(json.dumps({"weights": {"all": {str(t): float(w) for t, w in zip(pool, rng.uniform(0.1, 1, len(pool)))},
                                                               "direction_factor_applied": False}}))
@@ -47,7 +49,7 @@ def synth_cfg(tmp_path, market: Market) -> dict:
     terc = lambda: rng.choice(["down", "flat", "up"], len(pool))
     pd.DataFrame({"y1_tercile": terc(), "y2_tercile": rng.choice(["lowvol", "midvol", "highvol"], len(pool))},
                  index=pool).to_parquet(tmp_path / "reg.parquet")
-    sc.update(t_star="2021-04-29 16:00", live_like=str(tmp_path / "ll.json"), validation_set=str(tmp_path / "vs.json"),
+    sc.update(live_like=str(tmp_path / "ll.json"), validation_set=str(tmp_path / "vs.json"),
               regimes=str(tmp_path / "reg.parquet"), cache_dir=str(tmp_path / "cache"),
               registry=str(tmp_path / "registry.jsonl"), leaderboard=str(tmp_path / "lb.md"))
     sc["gates"]["G5"]["decisions"] = 6
@@ -92,15 +94,19 @@ def test_two_runs_give_identical_score_json(tmp_path, market):
     assert dumps(s1) == dumps(s2)
     s3, _ = score_model(model, market, cfg, use_cache=True)            # and the cache returns the same thing
     assert dumps(s3) == dumps(s1)
-    assert s1["windows"]["scored"] == 60 and s1["gates"]["G4"]["ran"]  # MOM_SS25 shorts, so G4 really runs
-    assert set(s1["headline"]) == {"FLOORED", "POL"} and set(s1["headline"]["POL"]) == {"V1", "V2", "V3", "V4", "REL"}
-    rob = s1["robustness"]
-    assert set(rob) >= {"headline", "live_like", "recency", "flat", "min", "pass"}
-    assert rob["headline"] == pytest.approx(s1["headline"]["FLOORED"]["REL"]["headline"])
-    assert s1["gate_sensitivity"]["primary_stat"] == CFG["scoring"]["return_gate_stat"]
-    assert set(s1["gate_sensitivity"]["rel_headline"]) == set(CFG["scoring"]["return_gate_report"])
+    w = s1["windows"]
+    assert w["scored"] == len(ctx["starts"]) and w["post_holdout"] > 0 and s1["gates"]["G4"]["ran"]   # MOM_SS25 shorts
+    assert all(t.hour == 12 for t in ctx["starts"])
+    rf = s1["return_first"]
+    assert set(rf) == {"full", "in_sample"} and rf["in_sample"]["n"] == w["scored"] - w["post_holdout"]
+    assert s1["primary"]["headline"] == rf["full"]["headline_ret"] == pytest.approx(np.mean(list(rf["full"]["hit"].values())))
+    rel = s1["rel"]
+    assert set(rel["headline"]) == {"FLOORED", "POL"} and set(rel["headline"]["POL"]) == {"V1", "V2", "V3", "V4", "REL"}
+    assert rel["robustness"]["headline"] == pytest.approx(rel["headline"]["FLOORED"]["REL"]["headline"])
     g4 = s1["gates"]["G4"]
-    assert {"long_only_G1", "long_only_G2"} <= set(g4) and g4["pass"] == (g4["long_only_G1"] and g4["long_only_G2"])
+    assert g4["hard"] and g4["pass"] and {"long_only_G1", "long_only_G2"} <= set(g4)   # v2: only "runs cleanly" is hard
+    assert {"UTC.FLOORED.V1.composite", "active_days_utc", "day_buckets"} <= set(ctx["run"].windows.columns)
+    assert (ctx["run"].windows.day_buckets == 15).all() and (ctx["run"].windows.day_buckets_utc == 15).all()
 
 
 def test_tool_version_changes_with_the_field(market):
@@ -118,9 +124,13 @@ def test_cash_scores_zero_and_fails_g1(tmp_path, market):
     cfg = synth_cfg(tmp_path, market)
     cfg["harness"]["keep_alive_weight"] = 0.0                          # the pure model; with it, see the next test
     s, ctx = score_model(discover()["team_cash"], market, cfg)
-    for c in s["headline"].values():
+    for c in s["rel"]["headline"].values():
         for v in c.values():
             assert v["headline"] == 0.0 and v["live_like"] == 0.0 and v["recency"] == 0.0
+    # R_liq = 0 everywhere: it clears every bar that is <= 0 (LENIENT, MIDDLE, and STRICT where the field median <= 0)
+    assert s["return_first"]["full"]["hit"]["LENIENT"] == pytest.approx(1.0)
+    assert s["return_first"]["full"]["hit"]["MIDDLE"] == pytest.approx(1.0)
+    assert s["return_first"]["full"]["cs_hit"] == 0.0
     assert not s["gates"]["G1"]["pass"] and not s["eligible"]
     assert (ctx["run"].windows.R == 0).all() and (ctx["run"].windows.active_days == 0).all()
 

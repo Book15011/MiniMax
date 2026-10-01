@@ -109,14 +109,14 @@ def test_stride_keeps_the_newest_window_and_renormalizes(tmp_path):
 
 def test_recency_weight_halves_every_60_days():
     cfg = copy.deepcopy(CFG)
-    t_star = pd.Timestamp(cfg["scoring"]["t_star"], tz="UTC")
-    end_ages = [0, 60, 120]                                            # days from the window's end to T*
-    starts = pd.DatetimeIndex([t_star - pd.Timedelta(days=14 + a) for a in end_ages])
+    latest = pd.Timestamp("2026-09-15 12:00", tz="UTC")
+    ages = [0, 60, 120]                                                # days from the start to the latest start
+    starts = pd.DatetimeIndex([latest - pd.Timedelta(days=a) for a in ages])
     w, info = recency_weights(starts, cfg)
-    by_age = dict(zip(end_ages, w.reindex(starts).to_numpy()))
+    by_age = dict(zip(ages, w.reindex(starts).to_numpy()))
     assert by_age[60] / by_age[0] == pytest.approx(0.5)
     assert by_age[120] / by_age[60] == pytest.approx(0.5)
-    assert info["half_life_days"] == 60
+    assert info["half_life_days"] == 60 and info["age_from"] == str(latest)
 
 
 def toy_window(R, active, guard=0):
@@ -138,10 +138,17 @@ def test_gates_toy():
     assert out["G2"]["pass"]                                           # worst -5% > BTC's worst -20%
     assert out["G3"]["pass"]                                           # lowest cell median -5% > -10%
     # STRESS: worst -5% >= -20% and median (0.02 - 0.05)/2 = -1.5% >= BTC's (0.05 - 0.20)/2 = -7.5%
-    assert out["G6"]["pass"]
+    assert out["G6_median"]["pass"] and out["G6_worst"]["pass"]
+    assert {k for k, v in out.items() if v["hard"]} == {"G1", "G4", "G5"}   # v2: the rest is report-only
     bad = toy_window([0.02, -0.25, 0.01, 0.03], active=9)
     out = gates(bad, btc, regime, stress, ok, leak, g)
-    assert not out["G1"]["pass"] and not out["G2"]["pass"] and not out["G3"]["pass"] and not out["G6"]["pass"]
+    assert not out["G1"]["pass"] and not out["G2"]["pass"] and not out["G3"]["pass"]
+    assert not out["G6_median"]["pass"] and not out["G6_worst"]["pass"]    # worst -25% < BTC's -20%
+    # the two forms differ: BTC's STRESS R +10% and -10%: the model's worst -5% >= -10% (worst-of-20 passes), but its
+    # median -1.5% < BTC's median 0% (median-of-20 fails)
+    hi = toy_window([0.10, -0.10, 0.10, -0.01], active=1)
+    out = gates(win, hi, regime, stress, ok, leak, g)
+    assert out["G6_worst"]["pass"] and not out["G6_median"]["pass"]
 
 
 def test_block_bootstrap_brackets_the_truth():
