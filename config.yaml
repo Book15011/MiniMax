@@ -186,3 +186,52 @@ validation:
   sensitivity_k: [15, 40]
 
 risk: {}   # TBD
+
+# Backtest harness (backtest/). Every model is scored the same way; docs/STRATEGY_GUIDE.md explains each field.
+harness:
+  panel_dir: data/validation              # hourly panel + point-in-time universe written by src.validation.build
+  cache_dir: data/harness                 # cached window results per model (gitignored with data/)
+  reports_dir: reports
+  universe: roostoo                       # roostoo = only coins Roostoo lists (live-realistic); broad = every liquid series
+  grid_hour_utc: 16                       # windows start and daily decisions happen at 00:00 HKT
+  window_days: 14
+  first_window: "2020-06-01"
+  periods:                                # by window start date (inclusive); matches the validation split
+    SCREEN: ["2022-07-01", "2024-06-30"]
+    CONFIRM: ["2024-07-01", "2026-07-25"]
+  holdout_from: "2026-08-08 16:00"        # windows ending after this stay sealed until the launch model is frozen
+  execution_lag_hours: 1                  # a decision at bar t trades at the close of bar t + 1
+  fees: {taker: 0.001, short: 0.001}      # per side; shorts pay 0.1% to open and to close
+  spreads_snapshot_glob: data/roostoo_snapshots/ticker_*.json
+  default_half_spread_bps: 5              # coins missing from the snapshot (e.g. delisted ones)
+  activity_guard_offset_hours: 20         # force a trade if an HKT day has none by 20:00 HKT
+  min_active_days: 10
+  scenario_sets:
+    lookalikes: validation/validation_set_v1.json
+    recent_n: 25
+
+# Model parameters: one block per model, under its author's marker (keeps merges clean).
+models:
+  # --- pol ---
+  pol_mom_ss:
+    lookback_days: [3, 7, 14]
+    vol_days: 30
+    min_history_days: 30
+    min_coins: 8
+    top_n: 15
+    k: 5
+    keep_rank: 10
+    long_gross: 0.75
+    long_vol_cap: 0.5          # annualized; upper bound that assumes the coins are perfectly correlated
+    short_gross: 0.25
+    short_k: 4
+  pol_trend_ls:
+    lookback_days: 21
+    threshold: 0.5
+    vol_days: 30
+    min_history_days: 30
+    min_coins: 8
+    top_n: 15
+    target_vol: 0.35
+  # --- book ---
+  # --- baitoey ---
