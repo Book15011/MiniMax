@@ -1,0 +1,5 @@
+# One-time CONFIRM check of keep_rank 12, chosen on SCREEN by the rule in tg_mom_return.yaml.
+model: baitoey_tg_mom
+references: [pol_mom_ss]
+variants:
+  - {name: "keep while top 12", keep_rank: 12}
