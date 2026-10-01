@@ -364,6 +364,17 @@ models:
       team_rot_ew: {when: up, params: *team_rot_ew}
   # --- book ---
   # --- baitoey ---
+  baitoey_rot_max:                # research/baitoey/prereg/20261001-return-max-rotation.md
+    lookback_days: [3, 7, 14]     # as team_rot_ew
+    vol_days: 30
+    min_history_days: 30
+    k: 4
+    keep_rank: 12
+    weighting: equal
+    target_daily_vol: .inf        # no volatility cap: always fully invested (gross 1.0)
+    btc_gate: false               # D: all cash when BTC closed below its gate_days average gate_confirm_days in a row
+    gate_days: 20
+    gate_confirm_days: 2
   baitoey_breakout:               # variant A of research/baitoey/prereg/20261001-volume-timing.md
     breakout_hours: 72            # enter above the highest close of the previous 72 h ...
     entry_volume_ratio: 1.5       # ... while 24 h quote volume > 1.5 x a normal day of the last 7
