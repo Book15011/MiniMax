@@ -1,0 +1,16 @@
+{
+ "MR": {
+  "run": "MR_4h",
+  "mean_rank": {
+   "MR_4h": 1.25,
+   "MR_24h": 1.75
+  }
+ },
+ "DIP": {
+  "run": "DIP_4h",
+  "mean_rank": {
+   "DIP_4h": 1.25,
+   "DIP_24h": 1.75
+  }
+ }
+}
