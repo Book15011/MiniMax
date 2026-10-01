@@ -280,9 +280,13 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--model", default=None)
     r.add_argument("--once", action="store_true", help="process the latest completed hour, then exit")
     r.add_argument("--long-only", action="store_true", help="force negative targets to 0 (shorts refused)")
+    r.add_argument("--state-dir", default=None, help="another state directory (e.g. a second paper bot)")
+    s.add_argument("--state-dir", default=None)
     a = ap.parse_args(argv)
     cfg = load_config()
     lv = cfg["live"]
+    if a.state_dir:
+        lv["state_dir"] = a.state_dir
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     log = logging.getLogger("live")
     if a.cmd == "seed":

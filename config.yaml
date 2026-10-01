@@ -474,6 +474,9 @@ models:
     sleeves:
       calm: {<<: *baitoey_mr_bbrsi, bar_hours: 4}    # MR @4h
       trend: *team_rot_ew                             # the ROT_EW rotation
+  baitoey_mr_4h:                  # MR_4h registered for the live bot (Pol, 2026-10-01; Baitoey to review)
+    <<: *baitoey_mr_bbrsi
+    bar_hours: 4
   # --- pol, after the baitoey blocks (the YAML anchors these switches use are defined above) ---
   pol_switch_rmax_tl:             # pre-registered: reports/review/20261001-prereg-strict-bar.md
     prev: own
