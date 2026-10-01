@@ -516,3 +516,31 @@ models:
     sleeves:
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
+  # --- pol volume study (exploratory, reports/review/20261002-volume.md) ---
+  pol_vt_mvr: &pol_vt_mvr
+    <<: *baitoey_vt_mom
+    mvr_short_hours: 24
+    mvr_long_days: 30
+    mvr_threshold: 0.85           # universe's 24 h quote volume below 0.85 x its 30-day daily average ...
+    mvr_low_scale: 0.5            # ... holds half the book (same coins)
+    mvr_min_coins: 10
+  pol_mr_cap: &pol_mr_cap
+    <<: *baitoey_mr_bbrsi
+    bar_hours: 4                  # as baitoey_mr_4h
+    cap_volume_hours: 24
+    cap_volume_days: 7
+    cap_volume_ratio: 1.0         # new entries only above the coin's 7-day normal volume
+  pol_switch_vtm_tl:
+    prev: own
+    switch: *team_trend_2
+    sleeves:
+      pol_vt_mvr: {when: up, params: *pol_vt_mvr}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
+  pol_switch3_cap:
+    prev: own
+    switch: *team_trend_2
+    calm: {vol_days: 30, regime_days: 365, calm_quantile: 0.5}
+    sleeves:
+      pol_mr_cap: {when: calm, params: *pol_mr_cap}
+      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
