@@ -40,6 +40,11 @@ def pct(x, d=2) -> str:
     return "—" if x is None or (isinstance(x, float) and not np.isfinite(x)) else f"{x * 100:+.{d}f}%"
 
 
+def mag(x, d=2) -> str:
+    """A non-negative share (drawdown, exposure) without a sign."""
+    return "—" if x is None or (isinstance(x, float) and not np.isfinite(x)) else f"{x * 100:.{d}f}%"
+
+
 def num(x, d=3) -> str:
     return "—" if x is None or (isinstance(x, float) and not np.isfinite(x)) else f"{x:+.{d}f}"
 
@@ -220,7 +225,7 @@ def write_report(score: dict, ctx: dict, cfg: dict, md: Path, runtime_s: float, 
          f"scored runs · **{'eligible' if score['eligible'] else 'NOT eligible'}** "
          f"({'all gates pass' if score['eligible'] else 'fails ' + ', '.join(g for g, v in gates.items() if not v['pass'])}).", "",
          f"Median 14-day R {pct(score['summary']['median_R'])} · worst 10% {pct(score['summary']['worst10_R'])} · "
-         f"worst fortnight {pct(score['summary']['worst_R'])} · median MDD {pct(score['summary']['median_MDD'])} "
+         f"worst fortnight {pct(score['summary']['worst_R'])} · median MDD {mag(score['summary']['median_MDD'])} "
          f"(liquidated median R {pct(score['returns_liquidated']['median_R'])}).", "",
          "| Variant | " + " | ".join(f"{c} | rank" for c in sc["conventions"]) + " | Live-like layer | Recency layer |",
          "|---|" + "---|---|" * len(sc["conventions"]) + "---|---|"]
@@ -243,12 +248,15 @@ def write_report(score: dict, ctx: dict, cfg: dict, md: Path, runtime_s: float, 
         if g == "G4" and v.get("headline_primary_long_only") is not None:
             extra = f" · long-only HEADLINE {num(v['headline_primary_long_only'])}"
         L.append(f"| {g} {names.get(g, '')} | {'PASS' if v['pass'] else '**FAIL**'} | {v['detail']}{extra} |")
-    lay = score["layers_report_only"]
+    lay = score["layers"]
     L += ["", f"### Layer scores ({pv} {pc})", "",
           "| Layer | Role | n | CS | Median R | Worst 10% | Worst | Gate passed |", "|---|---|---|---|---|---|---|---|",
-          f"| LIVE-LIKE | {sc['headline']['live_like']:.0%} of HEADLINE, weighted | {win['scored']} | "
-          f"{num(prim['live_like'])} | | | | |",
-          f"| RECENCY | {sc['headline']['recency']:.0%} of HEADLINE, weighted | {win['scored']} | {num(prim['recency'])} | | | | |"]
+          f"| LIVE-LIKE | {sc['headline']['live_like']:.0%} of HEADLINE, weighted | {win['scored']} "
+          f"(effective {wts['live_like']['effective_n']:.0f}) | {num(prim['live_like'])} | {pct(lay['weighted']['live_like']['median_R'])} | "
+          f"{pct(lay['weighted']['live_like']['worst10_R'])} | {pct(score['summary']['worst_R'])} | {lay['weighted']['live_like']['gate_pass_share']:.0%} |",
+          f"| RECENCY | {sc['headline']['recency']:.0%} of HEADLINE, weighted | {win['scored']} "
+          f"(effective {wts['recency']['effective_n']:.0f}) | {num(prim['recency'])} | {pct(lay['weighted']['recency']['median_R'])} | "
+          f"{pct(lay['weighted']['recency']['worst10_R'])} | {pct(score['summary']['worst_R'])} | {lay['weighted']['recency']['gate_pass_share']:.0%} |"]
     for k, role in (("ALL_flat", "report only, flat mean"), ("RECENT25", "report only"), ("LOOKALIKE25", "report only"),
                     ("STRESS", "gate G6 only")):
         b = lay[k]
@@ -261,10 +269,10 @@ def write_report(score: dict, ctx: dict, cfg: dict, md: Path, runtime_s: float, 
           "|---|---|---|---|---|---|---|---|---|",
           f"| **{m['name']}** | **{num(prim['headline'])}** | {num(score['headline'].get('POL', {}).get(pv, {}).get('headline'))} | "
           f"{pct(score['summary']['median_R'])} | {pct(score['summary']['worst10_R'])} | {pct(score['summary']['worst_R'])} | "
-          f"{pct(score['summary']['median_MDD'])} | {pct(gates['G6'].get('worst'))} | {act['min_active_days']} |"]
+          f"{mag(score['summary']['median_MDD'])} | {pct(gates['G6'].get('worst'))} | {act['min_active_days']} |"]
     for n, f in fh.items():
         L.append(f"| {FIELD_LABELS.get(n, n)} | {num(f['headline'][pc][pv])} | {num(f['headline'].get('POL', {}).get(pv))} | "
-                 f"{pct(f['median_R'])} | {pct(f['worst10_R'])} | {pct(f['worst_R'])} | {pct(f['median_MDD'])} | "
+                 f"{pct(f['median_R'])} | {pct(f['worst10_R'])} | {pct(f['worst_R'])} | {mag(f['median_MDD'])} | "
                  f"{pct(f['stress_worst'])} | {f['min_active']} |")
     hits = score["floor_hits"]
     L += ["", "## Activity, exposure, costs", "",

@@ -77,6 +77,19 @@ def summary(R: pd.Series, mdd: pd.Series) -> dict:
             "median_MDD": float(mdd.median()), "worst_MDD": float(mdd.max())}
 
 
+def wquantile(x: pd.Series, w: pd.Series, q: float) -> float:
+    o = np.argsort(x.to_numpy())
+    c = np.cumsum(w.reindex(x.index).to_numpy()[o])
+    return float(x.to_numpy()[o][np.searchsorted(c / c[-1], q)])
+
+
+def weighted_block(win: pd.DataFrame, gate: pd.Series, w: pd.Series) -> dict:
+    """The distribution behind a weighted HEADLINE layer: weighted median and 10th percentile of R, gate pass share."""
+    return {"median_R": wquantile(win.R, w, 0.5), "worst10_R": wquantile(win.R, w, 0.1),
+            "median_MDD": wquantile(win.MDD, w, 0.5),
+            "gate_pass_share": float((gate * w.reindex(gate.index)).sum() / w.reindex(gate.index).sum())}
+
+
 def layer_block(win: pd.DataFrame, cs: pd.DataFrame, gate: pd.Series, idx: pd.DatetimeIndex, sc: dict) -> dict:
     """Report-only layer: flat means over a window set."""
     if len(idx) == 0:
@@ -129,7 +142,7 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
     win = run.windows
     gate = return_gate(win.R, med, float(sc["return_gate_floor"]))
     cs = cs_table(win, gate, sc)
-    w_live, live_info = live_like_weights(starts, cfg)
+    w_live, live_info = live_like_weights(starts, cfg, window_starts(market, cfg, holdout=False))
     w_rec, rec_info = recency_weights(starts, cfg)
     head = {c: {v: headline(cs.loc[starts, f"{c}.{v}.cs"], w_live, w_rec, sc["headline"]) for v in sc["variants"]}
             for c in sc["conventions"]}
@@ -149,7 +162,9 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
 
     grid = regime_grid(win.R.loc[starts], regime.loc[starts])
     floor_hits = {c: {f: int(win.loc[starts, f"{c}.hit.{f}"].sum()) for f in FLOORS} for c in sc["conventions"]}
-    layers = {"ALL_flat": layer_block(win, cs, gate, starts, sc)}
+    layers = {"ALL_flat": layer_block(win, cs, gate, starts, sc),
+              "weighted": {"live_like": weighted_block(win.loc[starts], gate.loc[starts], w_live),
+                           "recency": weighted_block(win.loc[starts], gate.loc[starts], w_rec)}}
     for name, s in sets.items():
         layers[name] = layer_block(win, cs, gate, s.intersection(sim), sc)
     layers["regime_grid"] = {"median_R": grid["median"].round(12).to_dict(orient="index"),
@@ -206,7 +221,7 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
                      "mean_orders": float(win.loc[starts].orders.mean()),
                      "max_calls_one_decision": int(win.loc[starts].max_calls_decision.max())},
         "floor_hits": floor_hits,
-        "layers_report_only": layers,
+        "layers": layers,
         "ratios": list(RATIOS),
         "per_window": per_cols,
     }

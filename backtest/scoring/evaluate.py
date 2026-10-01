@@ -70,8 +70,13 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+_FILE_SHA: dict[str, str] = {}      # read once per process, so editing a file mid-run cannot mix two versions
+
+
 def tool_version(cfg: dict, market: Market) -> str:
-    files = {f: _sha((REPO_ROOT / f).read_bytes()) for f in TOOL_FILES}
+    if not _FILE_SHA:
+        _FILE_SHA.update({f: _sha((REPO_ROOT / f).read_bytes()) for f in TOOL_FILES})
+    files = dict(_FILE_SHA)
     sc = {k: v for k, v in cfg["scoring"].items() if k not in NOT_IN_VERSION}
     blob = json.dumps({"files": files, "scoring": sc, "harness": cfg["harness"], "data": market.notes},
                       sort_keys=True, default=str)
