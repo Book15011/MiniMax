@@ -40,19 +40,35 @@ Check it once a day:
 - `active_days` grows by one per HKT day;
 - there are no `error` lines.
 
-## When the invite arrives (target: Oct 2)
+## When the invite arrives
+
+The organizers' EC2 is reached **only through Session Manager** (browser shell, no SSH key, no `scp`), and the account allows **one instance** (FAQ Q12, Q14). So the code goes through GitHub, which has to be public for the submission anyway. Decide with the team whether that happens now or the repo stays private with a read-only deploy token until Oct 9 (the submission date on the organizers' listing).
 
 1. **Get the code there with its history**, so every log line's commit means something:
 
    ```bash
-   git -C /home/ubuntu/test/MiniMax bundle create results/pol/minimax.bundle main   # research server
-   # copy minimax.bundle to EC2, then on EC2:
-   git clone minimax.bundle ~/minimax-src && bash ~/minimax-src/deploy/setup_ec2.sh
+   git clone https://github.com/<team>/<repo>.git ~/minimax-src     # in the Session Manager shell
+   bash ~/minimax-src/deploy/setup_ec2.sh
    ```
 
-   `setup_ec2.sh` installs Python, chrony (clock sync) and the pinned packages (`deploy/requirements-lock.txt`, the versions the backtests ran on) into `/opt/minimax`, and installs the systemd unit.
-2. **Seed the bars.** Copy `data/live/close_1h.parquet`, `qv_1h.parquet` and `store_meta.json` from the research server's paper bot to `/opt/minimax/data/live/`. They are current to the hour.
-3. **Keys.** A teammate types `/opt/minimax/.env` by hand, then runs `chmod 600 /opt/minimax/.env`:
+   `setup_ec2.sh` (Ubuntu or Amazon Linux):
+   - installs Python, git and chrony, and points chrony at Amazon Time Sync (169.254.169.123);
+   - installs the pinned packages (`deploy/requirements-lock.txt`, the versions the backtests ran on) into `/opt/minimax`;
+   - installs the systemd unit under the current user;
+   - runs the clock check.
+2. **The clock must say OK.**
+
+   ```bash
+   cd /opt/minimax && .venv/bin/python -m src.live.runner clock
+   ```
+
+   It prints the machine clock, Roostoo's clock, the offset, and the NTP status from `timedatectl` and `chronyc tracking`. It must end with `RESULT OK`: offset ≤ `live.clock_warn_s` (2 s) and NTP synchronized.
+   - The bot already keeps time by Roostoo's clock: machine clock plus the offset, measured every hour, logged as a `clock` event and warned on above 2 s.
+   - Still, a drifting machine clock means something is wrong with the host, so fix it before going live. Roostoo rejects requests more than 60 s off.
+3. **Seed the bars.**
+   - Without SSH, the simplest route is to let the bot fetch them. With Binance's API reachable (step 5), run `python -m src.live.runner run --mode paper --once` once on EC2.
+   - Otherwise, attach the research server's `data/live/{close_1h.parquet,qv_1h.parquet,store_meta.json}` to a GitHub release, or put them in a gist, and download them with `curl`.
+4. **Keys.** A teammate types `/opt/minimax/.env` by hand in the Session Manager shell, then runs `chmod 600 /opt/minimax/.env`:
 
    ```
    ROOSTOO_API_KEY=...
@@ -61,42 +77,46 @@ Check it once a day:
    ```
 
    Never paste a key into a chat, a prompt or a commit.
-4. **Is Binance's API reachable from EC2?**
+5. **Is Binance's API reachable from EC2?**
 
    ```bash
    curl -s -o /dev/null -w '%{http_code}\n' 'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=1'
    ```
 
    200 means exact hourly bars. Anything else means the archive-plus-ticker fallback, which works (it runs that way here) but needs the bot running all the time so no hour goes unrecorded.
-5. **Paper first.** With `live.mode: paper`:
+6. **Paper first.** With `live.mode: paper`:
    - run `cd /opt/minimax && .venv/bin/python -m src.live.runner run --once` and read the JSONL log;
-   - then `sudo systemctl enable --now minimax-bot` and let it run at least a day.
+   - then `sudo systemctl enable --now minimax-bot` and let it run until the switch.
 
-## Going live (Oct 3, before 16:00 UTC = Oct 4 00:00 HKT)
+## Going live (before Oct 4 12:00 UTC = 20:00 HKT)
 
-1. Commit on `main`, reviewed: `live.mode: live`, the chosen `live.model`, and `live.start_at: "2026-10-03 16:00"`.
-2. On EC2:
+The round is Roostoo competition 538: **2026-10-04 12:00 UTC → 2026-10-18 12:00 UTC**, $100,000 start, 0.1% taker and 0.05% maker fees, no leverage (from `/v1/competition_list`).
+
+1. Commit on `main`, reviewed: `live.mode: live`, the chosen `live.model`, and `live.start_at: "2026-10-04 12:00"` (already the default).
+2. On EC2, before 12:00 UTC:
 
    ```bash
-   git -C /opt/minimax pull /path/to/minimax.bundle main
+   cd /opt/minimax && git pull && .venv/bin/python -m src.live.runner clock    # RESULT OK
    sudo systemctl stop minimax-bot
-   mv /opt/minimax/data/live/state.json /opt/minimax/data/live/state-paper.json   # paper and live never share state
+   mv data/live/state.json data/live/state-paper.json      # paper and live never share state
    sudo systemctl start minimax-bot && journalctl -u minimax-bot -f
    ```
 
-3. Started any time before 16:00 UTC, the bot only records bars until the 16:00 bar. Then it makes its first decision and trades every difference from cash.
+3. Started any time before 12:00 UTC, the bot only records bars until the 12:00 bar. Then it makes its first decision and trades every difference from cash. Its next daily decision is at 16:00 UTC, on the research grid.
 
 ## During the round
 
 - **Watch:** `journalctl -u minimax-bot -f`, and `tail -f /opt/minimax/data/live/logs/$(date -u +%Y%m%d).jsonl`.
-- **Change anything** (model, parameters, code): commit on `main` → new bundle → `git pull` on EC2 → `sudo systemctl restart minimax-bot`. A new `live.model` decides at the next hour, and the active days are kept.
+- **Change anything** (model, parameters, code): commit on `main` → `git pull` on EC2 → `sudo systemctl restart minimax-bot`. A new `live.model` decides at the next hour, and the active days are kept.
+- **Never stop the bot or override it by hand** (FAQ Q28: manual intervention is prohibited). The only restarts are deploying a committed change. At the end the system liquidates by itself (Q29).
 - **Emergency exit:** never trade by hand; manual trades are against the rules. Commit `live.model: team_cash` and restart. At the next hour the bot sells everything and stays active through the keep-alive trade.
 - **Shorts refused:** if the exchange answers "does not allow short positions", the bot trades long-only from then on (G4 in `docs/EVALUATION.md` checks that this fallback stays active and safe).
-- **Clock:** the bot measures its offset to Roostoo's server time every hour and signs with it.
+- **Clock:** the bot keeps time by Roostoo's server clock (offset re-measured every hour, `clock` events in the JSONL log). A `warning` or `error` level means the host's NTP has a problem: check `chronyc tracking`.
 
 ## Not verified yet
 
-- Whether Binance's API is reachable from EC2 (step 4).
+- Whether Binance's API is reachable from EC2 (step 5).
+- The EC2 clock (step 2), and whether the launch template is Ubuntu or Amazon Linux (the setup script handles both).
 - The format of `/v6/short_positions`: if the bot cannot read it, it switches to long-only.
 - Fills, fees and limits on the competition account. Run `python -m src.live.selfcheck --orders` with the test key first.
-- Whether Roostoo caps trades per minute this round (the bot spaces orders 10 s apart).
+- Answered: no cap on trades per minute, only 30 API calls/min (FAQ Q22–23); the bot uses ≤ 20 and spaces orders 3 s apart.
