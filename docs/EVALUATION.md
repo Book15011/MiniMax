@@ -90,7 +90,8 @@ CASH (`team_cash`) is scored as a reference row, not part of the field.
 
 | Step | Rule | Why |
 |---|---|---|
-| Return gate | gate_w = 1 if R_w ≥ max(0, median of the 6 benchmarks' R_w), else 0 | Mirrors "top 20 by return first": a window only scores if the model beat a typical competitor and didn't lose money |
+| Return gate | gate_w = 1 if R_w ≥ max(0, **best** of the 6 benchmarks' R_w), else 0 (`return_gate_stat: max`; the median bar is reported alongside) | Mirrors "top 20 by return first". About 150 teams in our region make top 20 the top 13%, and the best of six benchmarks sits near their 86th percentile. The median bar (this morning) was a typical competitor, far too easy |
+| Robustness (launch rule) | REL ≥ 1.00 in each of four layers: HEADLINE, live-like only, recency only, flat (equal weights). Each layer is measured against the field in that same layer | Baitoey's rule: a launch model must not depend on one weighting. It is not an eligibility gate; it is reported in every score and on the leaderboard |
 | CS | CS_w(v) = gate_w × Composite_w(v), for each variant and convention | Risk-adjusted score only where the return cut is passed |
 | HEADLINE | 0.70 × (Σ w_live·CS / Σ w_live) + 0.30 × (Σ w_rec·CS / Σ w_rec) | The two layers answer "how would it do in a market like the coming one" and "how is it doing now" |
 | REL | HEADLINE(REL) = mean over V1–V4 of HEADLINE(v) / F(v), F(v) = the six benchmarks' mean HEADLINE(v). Per window, CS_w(REL) = mean over v of CS_w(v) / F(v), so the bootstrap and the layers work on it like on any variant | 1.00 = the field average under every reading at once. The readings disagree on what wins (section 7, finding 1); REL needs no bet on one of them |
@@ -107,7 +108,7 @@ CASH (`team_cash`) is scored as a reference row, not part of the field.
 | G5 leakage | at 30 decision times: (1) decisions reproduce exactly (Pol's `lookahead_check`, reused); (2) unchanged when every price and volume after t is replaced by random-walk noise; (3) no file or network access inside `targets()` | (1) alone passes a model that reads past t through the arrays behind the view; (2) catches that (tested); (3) catches a model that reads the panel from disk |
 | G6 STRESS survival | over the 20 STRESS windows: worst R ≥ BTC_HOLD's worst and median R ≥ BTC_HOLD's median | Survive the sharpest drops and rebounds at least as well as holding BTC |
 
-**compare a b:** the paired HEADLINE(primary) difference, with a 90% weighted moving-block bootstrap interval. Blocks of 56 consecutive windows (about two months: regimes outlast one window length, and 14-window blocks gave intervals that were too narrow, section 7 finding 4), 2,000 resamples, seed 20261003. Each resample recomputes both weighted layers with the drawn windows' own weights.
+**compare a b:** the paired HEADLINE(primary) difference, with a 90% weighted **circular** block-bootstrap interval. Circular blocks wrap around the end, so the newest windows, which carry most of the recency weight, are drawn as often as any other (plain moving blocks reached the newest window from one position against 56). Blocks of 56 consecutive windows (about two months: regimes outlast one window length, and 14-window blocks gave intervals that were too narrow, section 7 finding 4), 2,000 resamples, seed 20261003. Each resample recomputes both weighted layers with the drawn windows' own weights.
 
 ## 4. Outputs
 
@@ -178,6 +179,13 @@ The full write-up, with every table, is `reports/review/20261001-scoring-review.
 
 **Decision rule.** This score and the per-method rule of `docs/STRATEGY_GUIDE.md` §5 can pick different winners. Proposal: rank eligible models by HEADLINE(REL), and treat a gap whose compare interval includes 0 as a tie, broken by the §5 rule. That needs a reviewed change to `docs/TEAM_PLAN.md` §4.3.
 
+### Afternoon update, 2026-10-01 (Pol, after Baitoey's review)
+
+- **Bar.** About 150 teams in our region (team estimate), so the bar is now the field's best 14-day return, not its median. Low-exposure and vol-capped models fall (ROT_IV 0.87 → 0.12, TREND_2 → 0.24, blends to 0.16–0.63); models that make money in falls or ride uptrends fully invested rise.
+- **Robustness rule** (Baitoey): every layer ≥ 1.00. Her rows used the HEADLINE field unit for every layer (flat 2.63 for ROT_EW); each layer is now measured against the field in that layer.
+- **Circular bootstrap.** Moving blocks of 56 undersampled the newest windows, which hold half the recency weight. The fix moves MR_4h vs pol_switch_rmax_tl from 39% to 71% of resamples above 0.
+- **Results and the pre-registered choice:** `reports/review/20261001-final-selection.md`. Pre-registration: `reports/review/20261001-prereg-strict-bar.md`, committed before scoring.
+
 ## TEAM SIGN-OFF CHECKLIST
 
 Every row is **pending team review**. To change a value, edit `config.yaml` → `scoring:` in a reviewed merge; the tool version, and therefore the leaderboard, changes with it.
@@ -193,7 +201,7 @@ Every row is **pending team review**. To change a value, edit `config.yaml` → 
 | 7 | HEADLINE split | 0.70 LIVE-LIKE + 0.30 RECENCY | pending team review | Agree. Both layers lean on the last two months (live-like = REC_60 forecast) |
 | 8 | Recency half-life | 60 days, age to T* = 2026-10-03 16:00 UTC | pending team review | Agree (PART 0 chose it on CRPS skill) |
 | 9 | LIVE-LIKE weights | `validation/live_like_v1.json`, no CPI filter, no direction factor | pending team review | Agree; rerun on Oct 3 as planned |
-| 10 | Return gate | R_w ≥ max(0, median R_w of the 6 benchmarks) | pending team review | Agree, with finding 6 as a known limit |
+| 10 | Return gate | R_w ≥ max(0, **best** R_w of the 6 benchmarks) (was the median) | pending team review | **Change → field best** (about 150 teams: top 20 = top 13%) |
 | 11 | Field | BTC_HOLD, EW_DAILY, ROT_EW, ROT_IV, TREND_2, MOM_SS25 (definitions in §3) | pending team review | Agree: matches what other teams' public repos do (vol-targeted momentum, BTC/ETH trend). Now part of the tool version (finding 2) |
 | 12 | G1 | ≥ 10 active days in 100% of windows; flag above 25% guard-only days | pending team review | Agree. The keep-alive trade now counts as a guard day |
 | 13 | G2 | worst R > BTC_HOLD's worst | pending team review | Agree |
@@ -203,6 +211,7 @@ Every row is **pending team review**. To change a value, edit `config.yaml` → 
 | 17 | G6 | STRESS worst ≥ BTC_HOLD's worst and median ≥ BTC_HOLD's median | pending team review | Agree |
 | 18 | Stride | 1 day (every pool window) | pending team review | Agree |
 | 19 | E_0 and R_liq cost | 100,000 USD; 0.1% on the gross notional open at the end | pending team review | Agree |
-| 20 | compare | blocks of 56 windows (was 14), 2,000 resamples, 90% interval | pending team review | **Change → blocks of 56** (finding 4) |
+| 20 | compare | circular blocks of 56 windows (was moving blocks of 14), 2,000 resamples, 90% interval | pending team review | **Change → circular blocks of 56** (finding 4 and the afternoon update) |
 | 21 | Shared files | registry, leaderboard and cache in `results/scoring/` | pending team review | Agree |
-| 22 | Keep-alive trade | `harness.keep_alive_weight` 0.002 (engine and live bot) | pending team review | New (finding 5) |
+| 22 | Keep-alive trade | `harness.keep_alive_weight` 0.002 (engine and live bot) | pending team review | New (finding 5). Ask the organizers whether a 0.2% trade reversed the next day counts as an active day (Baitoey) |
+| 23 | Robustness rule | REL ≥ 1.00 in the HEADLINE, live-like, recency and flat layers, each against the field in that layer | pending team review | New (Baitoey's proposal, scale fixed) |
