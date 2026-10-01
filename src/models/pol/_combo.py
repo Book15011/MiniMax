@@ -12,6 +12,7 @@
 - A sleeve may set `override:` (e.g. a 4-hour bar for mean reversion); the anchored `params:` stay one copy.
 - `prev: own` (switches): the active sleeve gets the combination's own previous targets. With one sleeve at a time the
   book is that sleeve's position, so this is exact; sleeves keep or drop those holdings by their own rules.
+- Three states (optional `calm:` block, Baitoey's rule): a calm market is `when: calm` before any trend reading.
 - Switch (optional `switch:` block): a sleeve with `when: up` or `when: down` runs only in that BTC trend state,
   the state team_trend_2 uses (40-day EMA of hourly closes, +-3% hysteresis, replayed every 6 h over
   `state_days`; out of trend when undecided). Holding one method fully instead of a blend: the competition's
@@ -24,12 +25,14 @@ import dataclasses
 import pandas as pd
 
 from src.contracts import MarketView, ModelSpec
-from src.models.baitoey import baitoey_mr_bbrsi, baitoey_rot_max
+from src.models.baitoey import baitoey_mr_bbrsi, baitoey_rot_max, baitoey_vt_mom
+from src.models.baitoey.baitoey_switch_mr import btc_calm
 from src.models.baselines import team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2
 from src.models.pol import pol_mom_ss, pol_trend_ls
 
 SLEEVES = {m.MODEL.spec.name: m.MODEL for m in (team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2,
-                                                 pol_mom_ss, pol_trend_ls, baitoey_rot_max, baitoey_mr_bbrsi)}
+                                                 pol_mom_ss, pol_trend_ls, baitoey_rot_max, baitoey_mr_bbrsi,
+                                                 baitoey_vt_mom)}
 
 
 def _clean(w: pd.Series) -> pd.Series:
@@ -62,6 +65,18 @@ def cut(view: MarketView, hours_back: int, params: dict, prev: pd.Series) -> Mar
 class Combo:
     spec: ModelSpec                    # set by each pol_combo_* subclass
 
+    @staticmethod
+    def state(view: MarketView, p: dict) -> str | None:
+        """None without a switch. With `calm:` (Baitoey's rule: BTC's 30-day volatility below its 1-year median at the
+        decision hour) a calm market is 'calm' whatever the trend; otherwise 'up' or 'down' by btc_state."""
+        if not p.get("switch"):
+            return None
+        c = p.get("calm")
+        if c and "BTCUSDT" in view.close.columns and btc_calm(view.close["BTCUSDT"], int(c["vol_days"]),
+                                                              int(c["regime_days"]), float(c["calm_quantile"])):
+            return "calm"
+        return btc_state(view, p["switch"])
+
     def sleeve(self, name: str, view: MarketView, params: dict, steps: int) -> pd.Series:
         model = SLEEVES[name]
         step = self.spec.rebalance_hours
@@ -75,7 +90,7 @@ class Combo:
         unknown = set(p["sleeves"]) - set(SLEEVES)
         if unknown:
             raise ValueError(f"{self.spec.name}: unknown sleeves {sorted(unknown)}; known: {sorted(SLEEVES)}")
-        state = btc_state(view, p["switch"]) if p.get("switch") else None
+        state = self.state(view, p)
         book = pd.Series(dtype=float)
         for name, s in p["sleeves"].items():
             if state is not None and s.get("when", state) != state:

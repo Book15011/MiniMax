@@ -436,7 +436,7 @@ models:
     min_history_days: 30
     k: 6                          # slots, each 1/k of the book
     target_daily_vol: 0.03        # book scaled down to <= 3%/day estimated volatility
-  baitoey_vt_mom:                 # variants B0, B and C of the same note
+  baitoey_vt_mom: &baitoey_vt_mom   # variants B0, B and C of the same note
     lookback_days: [7, 14]
     vol_days: 30
     min_history_days: 30
@@ -502,3 +502,17 @@ models:
     sleeves:
       baitoey_rot_max: {when: up, params: *baitoey_rot_max}
       baitoey_mr_bbrsi: {when: down, params: *baitoey_mr_bbrsi, override: {bar_hours: 4}}
+  pol_switch3:                    # pre-registered: reports/review/20261001-prereg-realtest.md
+    prev: own
+    switch: *team_trend_2
+    calm: {vol_days: 30, regime_days: 365, calm_quantile: 0.5}   # Baitoey's calm rule with her values (baitoey_switch_mr)
+    sleeves:
+      baitoey_mr_bbrsi: {when: calm, params: *baitoey_mr_bbrsi, override: {bar_hours: 4}}
+      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
+  pol_switch_vt_tl:
+    prev: own
+    switch: *team_trend_2
+    sleeves:
+      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
