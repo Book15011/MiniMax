@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from backtest.scoring.competition import all_variants
 from src.config import REPO_ROOT, resolve
 
 LOCK_NAME = "scoring-registry"
@@ -133,7 +134,7 @@ def leaderboard(entries: list[dict], tool_version: str, conventions: list[str], 
 def write_leaderboard(cfg: dict, tool_version: str) -> Path:
     sc = cfg["scoring"]
     entries, _ = read(sc["registry"])
-    md = leaderboard(entries, tool_version, list(sc["conventions"]), list(sc["variants"]), sc["primary"])
+    md = leaderboard(entries, tool_version, list(sc["conventions"]), all_variants(sc), sc["primary"])
     out = resolve(sc["leaderboard"])
     out.parent.mkdir(parents=True, exist_ok=True)
     with locked():

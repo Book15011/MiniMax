@@ -16,7 +16,7 @@ import time
 from backtest.data import load_market
 from backtest.report import open_run, stamp
 from backtest.scoring import registry
-from backtest.scoring.competition import block_bootstrap
+from backtest.scoring.competition import all_variants, block_bootstrap
 from backtest.scoring.evaluate import tool_version
 from backtest.scoring.report import num, score_and_publish
 from backtest.scoring.score import score_model
@@ -61,7 +61,7 @@ def cmd_compare(cfg: dict, a: str, b: str, use_cache: bool) -> int:
          "both weighted layers with the drawn windows' own weights.", "",
          "| Variant | Convention | a | b | a - b |", "|---|---|---|---|---|"]
     for c in sc["conventions"]:
-        for v in sc["variants"]:
+        for v in all_variants(sc):
             x, y = sa["headline"][c][v]["headline"], sb["headline"][c][v]["headline"]
             L.append(f"| {v} | {c} | {num(x)} | {num(y)} | {num(x - y)} |")
     L += ["", "| Gate | a | b |", "|---|---|---|"]

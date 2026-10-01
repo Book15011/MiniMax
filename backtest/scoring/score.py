@@ -14,7 +14,8 @@ import pandas as pd
 
 from backtest.data import Market
 from backtest.evaluate import git_state, holdout_start, window_starts
-from backtest.scoring.competition import field_median, gates, headline, regime_grid, return_gate
+from backtest.scoring.competition import (add_rel, all_variants, field_median, field_scale, gates, headline,
+                                          regime_grid, return_gate)
 from backtest.scoring.evaluate import Run, simulate
 from backtest.scoring.leakage import leakage_gate
 from backtest.scoring.metrics import FLOORS, RATIOS
@@ -101,8 +102,10 @@ def layer_block(win: pd.DataFrame, cs: pd.DataFrame, gate: pd.Series, idx: pd.Da
             "mean_cs_primary": float(c[f"{p}.cs"].mean()), "median_composite_primary": float(w[f"{p}.composite"].median())}
 
 
-def g4_long_only(model: Model, market: Market, cfg: dict, sim: pd.DatetimeIndex, use_cache: bool,
-                 log: logging.Logger) -> tuple[dict, Run | None]:
+def g4_long_only(model: Model, market: Market, cfg: dict, sim: pd.DatetimeIndex, starts: pd.DatetimeIndex,
+                 btc_worst: float, use_cache: bool, log: logging.Logger) -> tuple[dict, Run | None]:
+    """The live fallback if shorts are refused: it must run cleanly AND still pass G1 (activity) and G2 (worst
+    fortnight better than BTC_HOLD's), because it is the bot that would then trade."""
     if not model.spec.uses_shorts:
         return {"pass": True, "detail": "no shorts: the long-only run is the main run", "ran": False}, None
     try:
@@ -112,10 +115,18 @@ def g4_long_only(model: Model, market: Market, cfg: dict, sim: pd.DatetimeIndex,
     num = lo.windows.select_dtypes("number")
     finite = bool(np.isfinite(num.to_numpy(dtype=float)).all())
     neg = bool((lo.targets < 0).any().any())
-    ok = finite and not neg and len(lo.windows) == len(sim)
-    return {"pass": ok, "ran": True, "run_key": lo.key,
-            "detail": (f"long-only run completed on {len(lo.windows)} windows" if ok else
-                       f"long-only run incomplete: finite={finite}, negative targets={neg}, windows={len(lo.windows)}")}, lo
+    if not (finite and not neg and len(lo.windows) == len(sim)):
+        return {"pass": False, "ran": True, "run_key": lo.key,
+                "detail": f"long-only run incomplete: finite={finite}, negative targets={neg}, windows={len(lo.windows)}"}, lo
+    g1 = cfg["scoring"]["gates"]["G1"]
+    w = lo.windows.loc[starts]
+    share, worst = float((w.active_days >= g1["min_active_days"]).mean()), float(w.R.min())
+    a_ok, w_ok = share >= g1["share_of_windows"], worst > btc_worst
+    return {"pass": a_ok and w_ok, "ran": True, "run_key": lo.key, "long_only_G1": a_ok, "long_only_G2": w_ok,
+            "long_only_worst": worst,
+            "detail": f"long-only run: {share:.1%} of windows have >= {g1['min_active_days']} active days (G1 "
+                      f"{'ok' if a_ok else 'FAILS'}); worst R {worst:+.2%} vs BTC_HOLD {btc_worst:+.2%} "
+                      f"(G2 {'ok' if w_ok else 'FAILS'})"}, lo
 
 
 def leakage(run: Run, model: Model, market: Market, cfg: dict, use_cache: bool) -> dict:
@@ -139,24 +150,27 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
     field = field_runs(market, cfg, sim, use_cache, log, {model.spec.name: run})
     fieldR = pd.DataFrame({n: r.windows.R for n, r in field.items()})
     med = field_median(fieldR)
-    win = run.windows
-    gate = return_gate(win.R, med, float(sc["return_gate_floor"]))
-    cs = cs_table(win, gate, sc)
+    floor = float(sc["return_gate_floor"])
     w_live, live_info = live_like_weights(starts, cfg, window_starts(market, cfg, holdout=False))
     w_rec, rec_info = recency_weights(starts, cfg)
-    head = {c: {v: headline(cs.loc[starts, f"{c}.{v}.cs"], w_live, w_rec, sc["headline"]) for v in sc["variants"]}
+    field_cs = {n: cs_table(r.windows, return_gate(r.windows.R, med, floor), sc).loc[starts] for n, r in field.items()}
+    scale = field_scale(field_cs, w_live, w_rec, sc)
+    win = add_rel(run.windows, scale, sc, "composite")
+    gate = return_gate(win.R, med, floor)
+    cs = add_rel(cs_table(win, gate, sc), scale, sc, "cs")
+    head = {c: {v: headline(cs.loc[starts, f"{c}.{v}.cs"], w_live, w_rec, sc["headline"]) for v in all_variants(sc)}
             for c in sc["conventions"]}
     prim = sc["primary"]
     sets = window_sets(cfg)
     regime = regimes(sim, cfg)
-    g4, lo = g4_long_only(model, market, cfg, sim, use_cache, log)
-    g5 = leakage(run, model, market, cfg, use_cache)
     btc = field[sc["btc_hold"]].windows
+    g4, lo = g4_long_only(model, market, cfg, sim, starts, float(btc.R.loc[starts].min()), use_cache, log)
+    g5 = leakage(run, model, market, cfg, use_cache)
     gres = gates(win.loc[starts], btc.loc[starts], regime.loc[starts], sets["STRESS"].intersection(sim),
                  g4, g5, sc["gates"])
     if lo is not None:
-        lo_gate = return_gate(lo.windows.R, med, float(sc["return_gate_floor"]))
-        lo_cs = cs_table(lo.windows, lo_gate, sc)
+        lo_gate = return_gate(lo.windows.R, med, floor)
+        lo_cs = add_rel(cs_table(lo.windows, lo_gate, sc), scale, sc, "cs")
         key = f"{prim['convention']}.{prim['variant']}.cs"
         g4["headline_primary_long_only"] = headline(lo_cs.loc[starts, key], w_live, w_rec, sc["headline"])["headline"]
 
@@ -201,7 +215,7 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
                     "holdout_sealed_from": holdout_start(cfg), "full_run": (stride or int(sc["stride_days"])) == 1},
         "weights": {"live_like": live_info, "recency": rec_info, "headline_split": sc["headline"]},
         "field": {"members": list(sc["field"]), "run_keys": {n: r.key for n, r in field.items()},
-                  "return_gate_floor": sc["return_gate_floor"]},
+                  "return_gate_floor": sc["return_gate_floor"], "rel_unit": scale},
         "primary": {"variant": prim["variant"], "convention": prim["convention"],
                     **head[prim["convention"]][prim["variant"]]},
         "headline": head,
@@ -226,5 +240,6 @@ def score_model(model: Model, market: Market, cfg: dict, use_cache: bool = True,
         "per_window": per_cols,
     }
     ctx = {"run": run, "field": field, "long_only": lo, "starts": starts, "sim": sim, "w_live": w_live,
-           "w_rec": w_rec, "gate": gate, "cs": cs, "grid": grid, "sets": sets, "regime": regime, "field_median": med}
+           "w_rec": w_rec, "gate": gate, "cs": cs, "grid": grid, "sets": sets, "regime": regime, "field_median": med,
+           "field_cs": field_cs, "field_scale": scale}
     return json.loads(dumps(score)), ctx

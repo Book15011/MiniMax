@@ -244,7 +244,7 @@ scoring:
     FLOORED: {s_daily: 0.001, dd_daily: 0.001, mdd: 0.002,
               s_hourly: 0.000204124145231931, dd_hourly: 0.000204124145231931}   # hourly = 0.001 / sqrt(24)
     POL: {s_daily: 0, dd_daily: 0, s_hourly: 0, dd_hourly: 0, mdd: 0.0001}       # as backtest/metrics.py
-  primary: {variant: V1, convention: FLOORED}
+  primary: {variant: REL, convention: FLOORED}   # REL = mean over V1-V4 of HEADLINE(v) / field mean (1.00 = field average)
   field: [team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2, team_mom_ss25]
   btc_hold: team_btc_hold                 # reference for G2 and G6
   return_gate_floor: 0.0                  # gate_w = 1 if R_w >= max(this, median of the field's R_w)
@@ -252,7 +252,7 @@ scoring:
     G1: {min_active_days: 10, share_of_windows: 1.0, guard_flag_share: 0.25}
     G3: {min_cell_median_return: -0.10}
     G5: {decisions: 30, seed: 20261003, noise_sigma: 0.01}
-  compare: {block_windows: 14, reps: 2000, level: 0.90, seed: 20261003}
+  compare: {block_windows: 56, reps: 2000, level: 0.90, seed: 20261003}   # 56: regimes outlast 14-window blocks (EVALUATION.md 7)
   report: {curves: 25}
   cache_dir: results/scoring/cache        # shared by every worktree (results/ links to the root's results/)
   registry: results/scoring/registry.jsonl     # append-only, one line per full run, written under a lock

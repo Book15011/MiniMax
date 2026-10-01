@@ -3,6 +3,9 @@
 - Return gate per window: gate_w = 1 if R_w >= max(floor, median of the field's R_w), else 0 (floor 0).
 - CS_w(v) = gate_w * Composite_w(v), for every variant v and convention.
 - HEADLINE(v) = 0.70 * weighted mean of CS with LIVE-LIKE weights + 0.30 * weighted mean with RECENCY weights.
+- REL, the field-relative score: per window, CS_w(REL) = mean over the variants v of CS_w(v) / F(v), where F(v) is
+  the field members' mean HEADLINE(v). So HEADLINE(REL) = mean over v of HEADLINE(v) / F(v): 1.00 is the field's
+  average score under every reading at once, and no single unpublished reading decides alone.
 - Gates G1-G6 (all must pass to be eligible); thresholds in config scoring.gates.
 - compare: HEADLINE(primary) difference of two models with a weighted moving-block bootstrap interval.
 """
@@ -10,6 +13,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+REL = "REL"
+
+
+def all_variants(sc: dict) -> list[str]:
+    """The configured readings of the formula, then REL."""
+    return list(sc["variants"]) + [REL]
 
 
 def field_median(field_R: pd.DataFrame) -> pd.Series:
@@ -31,6 +41,28 @@ def headline(cs: pd.Series, w_live: pd.Series, w_rec: pd.Series, split: dict) ->
     live = weighted_mean(cs, w_live.reindex(cs.index))
     rec = weighted_mean(cs, w_rec.reindex(cs.index))
     return {"headline": split["live_like"] * live + split["recency"] * rec, "live_like": live, "recency": rec}
+
+
+def field_scale(field_cs: dict[str, pd.DataFrame], w_live: pd.Series, w_rec: pd.Series, sc: dict) -> dict:
+    """F(v) per convention: the mean HEADLINE(v) of the field members (their CS tables on the scored windows)."""
+    out: dict[str, dict[str, float]] = {}
+    for c in sc["conventions"]:
+        out[c] = {}
+        for v in sc["variants"]:
+            f = float(np.mean([headline(cs[f"{c}.{v}.cs"], w_live, w_rec, sc["headline"])["headline"]
+                               for cs in field_cs.values()]))
+            if not f > 0:
+                raise ValueError(f"the field's mean HEADLINE {c} {v} is {f}; REL needs a positive unit")
+            out[c][v] = f
+    return out
+
+
+def add_rel(df: pd.DataFrame, scale: dict, sc: dict, kind: str) -> pd.DataFrame:
+    """A copy of a per-window table with '<convention>.REL.<kind>' = mean over v of '<convention>.<v>.<kind>' / F(v)."""
+    df = df.copy()
+    for c in sc["conventions"]:
+        df[f"{c}.{REL}.{kind}"] = sum(df[f"{c}.{v}.{kind}"] / scale[c][v] for v in sc["variants"]) / len(sc["variants"])
+    return df
 
 
 def regime_grid(R: pd.Series, regime: pd.Series) -> pd.DataFrame:

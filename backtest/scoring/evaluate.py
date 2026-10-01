@@ -73,13 +73,22 @@ def _sha(data: bytes) -> str:
 _FILE_SHA: dict[str, str] = {}      # read once per process, so editing a file mid-run cannot mix two versions
 
 
+def field_fingerprint(cfg: dict) -> dict:
+    """Code and parameters of every field member. They set the return gate and the REL unit of every score, so a
+    change to any of them (e.g. pol_mom_ss's code behind team_mom_ss25) must start a new leaderboard."""
+    from src.models import get                                # deferred: src.models imports every model module
+    models = cfg.get("models") or {}
+    return {n: {"src": _sha(model_sources(get(n)).encode()), "params": models.get(n) or {}}
+            for n in cfg["scoring"]["field"]}
+
+
 def tool_version(cfg: dict, market: Market) -> str:
     if not _FILE_SHA:
         _FILE_SHA.update({f: _sha((REPO_ROOT / f).read_bytes()) for f in TOOL_FILES})
     files = dict(_FILE_SHA)
     sc = {k: v for k, v in cfg["scoring"].items() if k not in NOT_IN_VERSION}
-    blob = json.dumps({"files": files, "scoring": sc, "harness": cfg["harness"], "data": market.notes},
-                      sort_keys=True, default=str)
+    blob = json.dumps({"files": files, "scoring": sc, "harness": cfg["harness"], "data": market.notes,
+                       "field": field_fingerprint(cfg)}, sort_keys=True, default=str)
     return _sha(blob.encode())[:16]
 
 
