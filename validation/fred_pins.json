@@ -1,0 +1,32 @@
+{
+ "2026-09-30 00:00:00+00:00": {
+  "CPIAUCNS": {
+   "file": "CPIAUCNS__20260930T080310Z.csv",
+   "sha256": "f79e3a78837142293449cee4a1a9b1da7be677fb3e989ffb2ef48e8e7cf4cdd7"
+  },
+  "DCOILWTICO": {
+   "file": "DCOILWTICO__20260930T080328Z.csv",
+   "sha256": "344a4a7cce2b66e4e1d1789b3b15be4a96e24e4cad1d043e5c093be83d51bbcf"
+  },
+  "DFEDTARU": {
+   "file": "DFEDTARU__20260930T080314Z.csv",
+   "sha256": "f700f7a2ff5d411cd823431af292ecdd1247f3e5f4eb0a05d971496edab71cc0"
+  },
+  "DGS10": {
+   "file": "DGS10__20260930T080316Z.csv",
+   "sha256": "f49b5e68f30bcf7a25b1925f3ab7da5965a39c53ea5c406c193d28656fb202da"
+  },
+  "DTWEXBGS": {
+   "file": "DTWEXBGS__20260930T080320Z.csv",
+   "sha256": "fb8c1f47a32780978add3c2134ee89762bd3114d62c355ce9cb86701782e49ed"
+  },
+  "SP500": {
+   "file": "SP500__20260930T080321Z.csv",
+   "sha256": "06cc6544382fb45190a351fdc3c8da103fd5352d5fbbcaaedd36fdf46c8456f8"
+  },
+  "VIXCLS": {
+   "file": "VIXCLS__20260930T080325Z.csv",
+   "sha256": "4866f2856266eb8f46d81f252524d23a1617e7ee7795b05b55223b399bd2f8d4"
+  }
+ }
+}

@@ -59,8 +59,11 @@ def cpi_release(month: pd.Timestamp, release_day: int = 16) -> pd.Timestamp:
     return (month + pd.offsets.MonthBegin(1) + pd.Timedelta(days=release_day - 1)).tz_localize("UTC")
 
 
-def perturb_after(data: MarketData, t: pd.Timestamp, seed: int, release_day: int = 16) -> MarketData:
-    """Randomly alter every piece of data that is NOT usable at t."""
+def perturb_after(data: MarketData, t: pd.Timestamp, seed: int, release_day: int = 16,
+                  lags: dict | None = None) -> MarketData:
+    """Randomly alter every piece of data that is NOT usable at t (daily FRED series with a publication
+    lag of L days are unusable from date(t - L) on)."""
+    lags = lags or {}
     rng = np.random.default_rng(seed)
     close, qv = data.close.copy(), data.quote_volume.copy()
     after = close.index > t
@@ -77,7 +80,7 @@ def perturb_after(data: MarketData, t: pd.Timestamp, seed: int, release_day: int
         if k == "CPIAUCNS":
             late = np.array([cpi_release(m, release_day) > t for m in s.index])
         else:
-            late = s.index >= day
+            late = s.index >= day - pd.Timedelta(days=lags.get(k, 0))
         s[late] = s[late] * rng.uniform(0.5, 2.0, int(late.sum()))
         fred[k] = s
     return MarketData(close, qv, f, oi, fred)

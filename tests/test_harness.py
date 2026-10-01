@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from backtest.data import Market, universe_from_panel
-from backtest.engine import Costs, Simulator, compute_targets, decision_times
+from backtest.engine import Costs, Simulator, compute_targets, decision_times, fit_gross
 from backtest.evaluate import lookahead_check
 from backtest.metrics import max_drawdown, sharpe, sortino, window_metrics
 from src.config import load_config
@@ -117,6 +117,45 @@ def test_guard_makes_every_day_active_even_when_band_blocks():
 def test_all_cash_is_inactive_and_flat():
     res = run_const({"A": [100.0] * N}, {})
     assert res.active_days == 0 and res.turnover == 0 and np.allclose(res.equity, 1.0)
+
+
+def test_keep_alive_trades_daily_when_already_on_target():
+    mk = market_from({"A": [100.0] * N, "BTCUSDT": [100.0] * N})
+    i0 = 16
+    times = decision_times(mk.close.index, 24, 16, mk.close.index[i0], mk.close.index[i0 + HOURS])
+    for w, gross in (({}, 0.0), ({"A": 1.0}, 1.0)):            # all cash: buys BTC · fully in A: trims A
+        tg = compute_targets(Const(w), mk, times, {})
+        res = Simulator(mk, tg, 0.0, Costs(0.001, 0.001), 1, 16, 20, keep_alive=0.002).run(i0, HOURS, trace=True)
+        assert res.active_days == 14
+        assert all(abs(g - gross) <= 0.002 + 1e-12 for g in res.trace["gross"][1:])
+        assert res.equity[-1] > 1 - 0.0011 - 14 * 0.002 * 0.001       # entry fee plus 14 tiny keep-alive fees
+
+
+def test_fit_gross_keeps_reductions_and_scales_increases():
+    w = np.array([0.55, 0.45, 0.0, -0.1])
+    new = np.array([0.55, 0.0, 0.5, -0.2])       # A drifted but within band; B exits; C new; short D grows
+    out = fit_gross(w, new)
+    assert np.abs(out).sum() == pytest.approx(1.0)
+    assert out[0] == 0.55 and out[1] == 0.0       # kept holding and exit untouched
+    assert out[2] / 0.5 == pytest.approx((out[3] + 0.1) / -0.1)   # both increases scaled by one factor
+    assert np.array_equal(fit_gross(w, np.array([0.5, 0.4, 0.0, -0.1])), [0.5, 0.4, 0.0, -0.1])  # fits: unchanged
+    flip = fit_gross(np.array([0.6, 0.4]), np.array([-0.7, 0.4]))  # closing leg in full, opening leg scaled
+    assert flip[1] == 0.4 and flip[0] == pytest.approx(-0.6)
+
+
+def test_band_limited_rotation_never_exceeds_full_gross():
+    """A rallies 10% inside the band while the model rotates B -> C: C is bought only with the free cash."""
+    a = [100.0] * 18 + [110.0] * (N - 18)
+    mk = market_from({"A": a, "B": [100.0] * N, "C": [100.0] * N})
+    i0 = 16
+    times = decision_times(mk.close.index, 24, 16, mk.close.index[i0], mk.close.index[i0 + HOURS])
+    tg = pd.DataFrame(0.0, index=times, columns=mk.close.columns)
+    tg.loc[times[0], ["A", "B"]] = 0.5
+    tg.loc[times[1]:, ["A", "C"]] = 0.5
+    sim = Simulator(mk, tg, 0.05, Costs(0.001, 0.001), lag_hours=1, anchor_hour=16, guard_offset_hours=20)
+    res = sim.run(i0, HOURS, trace=True)
+    assert res.max_gross <= 1.0 + 1e-12
+    assert res.trace["gross"].max() <= 1.0 + 1e-12
 
 
 # ---------------- contracts ----------------

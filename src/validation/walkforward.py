@@ -6,6 +6,7 @@ import logging
 import numpy as np
 import pandas as pd
 
+from src.validation.crps import crps_fair, crps_standard
 from src.validation.guard import OUTCOME_COLUMNS
 from src.validation.selection import (
     MAIN_VARIANTS, PickRules, active_features, pool_index, random_pick, recent_nonoverlapping, select_lookalikes,
@@ -13,15 +14,7 @@ from src.validation.selection import (
 
 log = logging.getLogger(__name__)
 BASELINES = {"all": "ALL of pool_D", "recent": "25 most recent non-overlapping", "random": "25 random (same spacing rules, mean of 50 draws)"}
-
-
-def crps(sample, y: float) -> float:
-    """Empirical CRPS: mean|x_i - y| - 0.5 * mean_{i,j}|x_i - x_j|."""
-    x = np.sort(np.asarray(sample, dtype=float))
-    n = len(x)
-    i = np.arange(n)
-    pair_mean = 2.0 * np.sum((2 * i - n + 1) * x) / n**2
-    return float(np.mean(np.abs(x - y)) - 0.5 * pair_mean)
+crps = crps_standard  # the pre-registered v1 rule scores with the standard CRPS
 
 
 def test_dates(start: str, holdout: pd.Timestamp, horizon_days: int, step_days: int, hour: int) -> pd.DatetimeIndex:
@@ -62,30 +55,42 @@ def run_walkforward(features: pd.DataFrame, outcomes: pd.DataFrame, variants: di
                 rng = np.random.default_rng([seed, int(D.value // 86_400_000_000_000)])
                 draws_pos = [opos[random_pick(pool, rules, rng)].to_numpy() for _ in range(draws)]
                 y_true = O[opos[D]]
-                rand_cache[key] = np.array([[crps(O[p, j], y_true[j]) for j in range(len(Y))] for p in draws_pos]
-                                           ).mean(axis=0)
+                rand_cache[key] = np.array([[(crps(O[p, j], y_true[j]), crps_fair(O[p, j], y_true[j]))
+                                             for j in range(len(Y))] for p in draws_pos]).mean(axis=0)
             y_true = O[opos[D]]
             lp = opos[picks["t0"]].to_numpy()
             ap, rp = opos[pool].to_numpy(), opos[recent].to_numpy()
             for j, y in enumerate(Y):
-                rows.append((name, D, y, crps(O[lp, j], y_true[j]), crps(O[ap, j], y_true[j]),
-                             crps(O[rp, j], y_true[j]), float(rand_cache[key][j])))
+                yt = y_true[j]
+                rows.append((name, D, y, crps(O[lp, j], yt), crps(O[ap, j], yt), crps(O[rp, j], yt),
+                             float(rand_cache[key][j, 0]), crps_fair(O[lp, j], yt), crps_fair(O[ap, j], yt),
+                             crps_fair(O[rp, j], yt), float(rand_cache[key][j, 1])))
             audit.append({**rec, "status": "ok", "pick_max_end": picks["t0"].max() + h,
                           "mean_distance": float(picks["distance"].mean()), "dropped": ",".join(dropped)})
         log.info("walk-forward %s done", name)
-    cr = pd.DataFrame(rows, columns=["variant", "D", "Y", "lookalike", "all", "recent", "random"])
+    cols = ["lookalike", "all", "recent", "random"]
+    cr = pd.DataFrame(rows, columns=["variant", "D", "Y", *cols, *[f"{c}_fair" for c in cols]])
     return cr, pd.DataFrame(audit)
 
 
 def skill(crps_rows: pd.DataFrame, variant: str, baseline: str, lo: pd.Timestamp, hi: pd.Timestamp,
-          n_boot: int, block: int, seed: int) -> pd.DataFrame:
-    """Skill = 1 - sum CRPS_lookalike / sum CRPS_baseline per Y, plus the mean over Y; block-bootstrap 90% CI."""
+          n_boot: int, block: int, seed: int, fair: bool = False) -> pd.DataFrame:
+    """Skill = 1 - sum CRPS_lookalike / sum CRPS_baseline per Y, plus the mean over Y; block-bootstrap 90% CI.
+    fair=True uses the fair-CRPS columns for both sides."""
     d = crps_rows[(crps_rows.variant == variant) & (crps_rows.D >= lo) & (crps_rows.D <= hi)]
     Y = list(OUTCOME_COLUMNS)
     if d.empty:
         return pd.DataFrame(index=Y + ["MEAN"], columns=["skill", "lo", "hi", "n_dates"], dtype=float)
-    L = d.pivot(index="D", columns="Y", values="lookalike")[Y].to_numpy()
-    B = d.pivot(index="D", columns="Y", values=baseline)[Y].to_numpy()
+    sfx = "_fair" if fair else ""
+    L = d.pivot(index="D", columns="Y", values="lookalike" + sfx)[Y].to_numpy()
+    B = d.pivot(index="D", columns="Y", values=baseline + sfx)[Y].to_numpy()
+    return skill_arrays(L, B, Y, n_boot, block, seed)
+
+
+def skill_arrays(L: np.ndarray, B: np.ndarray, labels: list[str], n_boot: int, block: int,
+                 seed: int) -> pd.DataFrame:
+    """L, B: CRPS per (test date, outcome), dates in time order. Moving-block bootstrap over dates."""
+    Y = list(labels)
     n = len(L)
     point = 1 - L.sum(0) / B.sum(0)
     rng = np.random.default_rng(seed)
@@ -95,7 +100,7 @@ def skill(crps_rows: pd.DataFrame, variant: str, baseline: str, lo: pd.Timestamp
     idx = np.minimum(idx, n - 1)
     boot = 1 - L[idx].sum(1) / B[idx].sum(1)
     out = pd.DataFrame({"skill": point, "lo": np.percentile(boot, 5, axis=0), "hi": np.percentile(boot, 95, axis=0)},
-                       index=Y)
+                       index=Y, dtype=float)
     mb = boot.mean(axis=1)
     out.loc["MEAN"] = [point.mean(), np.percentile(mb, 5), np.percentile(mb, 95)]
     out["n_dates"] = n
