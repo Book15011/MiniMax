@@ -130,10 +130,25 @@ def test_day_start_and_keep_alive_targets():
 
 
 def test_short_positions_are_read_or_refused():
-    pair, pos = parse_short({"Pair": "BTC/USD", "Quantity": "0.1", "EntryPrice": "60000", "Collateral": "6000"})
-    assert pair == "BTC/USD" and pos.qty == 0.1 and pos.collateral == 6000.0
+    doc = {"ID": 412, "Pair": "BTC/USD", "EntryPrice": 50000, "ShortQty": 0.2, "Collateral": 10000, "CurrentPrice": 48000,
+           "UnrealizedPNL": 400, "UnrealizedPNLPct": 0.04, "PositionValue": 10400, "CreateTimestamp": 1757980800000,
+           "PositionStatus": "OPEN"}                                    # the API docs' own example
+    pair, pos = parse_short(doc)
+    assert pair == "BTC/USD" and pos.qty == 0.2 and pos.collateral == 10000.0 and pos.entry == 50000.0
+    assert parse_short({**doc, "PositionStatus": "PENDING"}) is None   # a pending LIMIT short holds nothing yet
     with pytest.raises(ShortsUnreadable):
         parse_short({"Pair": "BTC/USD", "Collateral": 1})
+
+
+def test_order_status_follows_each_endpoints_documented_reply():
+    from src.execution.planner import BUY, SHORT_CLOSE, SHORT_OPEN
+    from src.live.broker import order_status
+    assert order_status(BUY, {"Status": "FILLED"}) == "FILLED"
+    assert order_status(BUY, {"OrderDetail": {"Status": "PENDING"}}) == "PENDING"
+    assert order_status(SHORT_OPEN, {"Status": "OPEN", "ShortQty": 0.2}) == "FILLED"
+    assert order_status(SHORT_OPEN, {"Status": "PENDING"}) == "PENDING"
+    assert order_status(SHORT_CLOSE, {"ClosedQty": 0.1, "FullyClosed": False}) == "FILLED"
+    assert order_status(SHORT_CLOSE, {}) == "UNCONFIRMED"
 
 
 # ---------------- the runner, end to end on a fake exchange ----------------

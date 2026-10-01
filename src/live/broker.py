@@ -41,16 +41,32 @@ def _pick(d: dict, *names: str):
     return None
 
 
-def parse_short(p: dict) -> tuple[str, ShortPos]:
-    """One entry of /v6/short_positions. Field names beyond Collateral are UNVERIFIED until the test-key
-    self-check; anything we cannot read raises, so the bot never trades on a misread position."""
+def parse_short(p: dict) -> tuple[str, ShortPos] | None:
+    """One entry of /v6/short_positions, as the API docs (README, Sep 2026) define it: Pair, EntryPrice, ShortQty,
+    Collateral, PositionStatus. None for a position that is not OPEN (a pending LIMIT short); anything we cannot
+    read raises, so the bot never trades on a misread position."""
+    status = _pick(p, "PositionStatus", "Status")
+    if status is not None and str(status).upper() != "OPEN":
+        return None
     pair = _pick(p, "Pair", "Symbol")
-    qty = _pick(p, "Quantity", "Qty", "Amount", "Size", "OpenQuantity")
+    qty = _pick(p, "ShortQty", "Quantity", "Qty", "Amount", "Size", "OpenQuantity")
     entry = _pick(p, "EntryPrice", "AvgPrice", "OpenPrice", "Price")
     coll = _pick(p, "Collateral")
     if pair is None or qty is None or entry is None or coll is None:
         raise ShortsUnreadable(f"short position fields not recognised: {sorted(p)}")
     return str(pair), ShortPos(float(qty), float(coll), float(entry))
+
+
+def order_status(kind: str, r: dict) -> str:
+    """FILLED, PENDING or what the exchange said, from each endpoint's documented reply: place_order returns an
+    OrderDetail with Status FILLED or PENDING; short_open returns Status OPEN (market) or PENDING (limit);
+    short_close returns no status, only ClosedQty. The runner then confirms every fill from the account."""
+    if kind == SHORT_CLOSE:
+        return "FILLED" if float(r.get("ClosedQty") or 0) > 0 else "UNCONFIRMED"
+    status = str(r.get("Status") or (r.get("OrderDetail") or {}).get("Status") or "").upper()
+    if kind == SHORT_OPEN and status == "OPEN":
+        return "FILLED"
+    return status or "UNCONFIRMED"
 
 
 class LiveBroker:
@@ -73,9 +89,9 @@ class LiveBroker:
                 h.spot[f"{coin}/{QUOTE}"] = qty
         if with_shorts:
             for p in self.c.short_positions():
-                pair, pos = parse_short(p)
-                if pos.qty > 0:
-                    h.shorts[pair] = pos
+                got = parse_short(p)
+                if got and got[1].qty > 0:
+                    h.shorts[got[0]] = got[1]
         return h
 
     def execute(self, orders: list[Order], quotes: dict[str, Quote], h: Holdings) -> list[dict]:
@@ -92,8 +108,7 @@ class LiveBroker:
                     r = self.c.short_close(o.pair, close_qty=None if o.quantity is None else fmt(o.quantity))
                 else:
                     raise ValueError(o.kind)
-                status = str(r.get("Status") or r.get("OrderDetail", {}).get("Status") or "SENT").upper()
-                out.append({"order": o, "status": "FILLED" if status in ("FILLED", "SENT") else status, "response": r})
+                out.append({"order": o, "status": order_status(o.kind, r), "response": r})
             except OrderStateUnknown as e:
                 out.append({"order": o, "status": "UNKNOWN", "error": str(e)})
                 self.log.error("order outcome unknown (%s); stopping this batch, the next hour re-plans from the "
