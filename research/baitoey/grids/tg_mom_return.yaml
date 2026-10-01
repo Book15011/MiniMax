@@ -1,0 +1,12 @@
+# RECORD ONLY: variants 1, 2 and 1+2 used knobs (smooth, min_weight, vol_boost_on) that were removed after
+# this test because they failed the rule; this file no longer runs as-is.
+# Ideas to raise net return. Pre-registered: a variant is adopted only if it ties or beats base on >= 3 of the
+# 4 rule scores (median comp. A, median comp. B, worst 10%, share > 0) in SCREEN; among those, best mean rank.
+model: baitoey_tg_mom
+references: [pol_mom_ss]
+variants:
+  - {name: "1 trade half-way (smooth 0.5)", smooth: 0.5, min_weight: 0.01}
+  - {name: "2 vol boost when trend up (x1.6)", vol_boost_on: 0.6}
+  - {name: "3 stickier: keep while top 12", keep_rank: 12}
+  - {name: "4 slower picks: 3/7/14 days", lookback_hours: [72, 168, 336]}
+  - {name: "1+2 combined", smooth: 0.5, min_weight: 0.01, vol_boost_on: 0.6}

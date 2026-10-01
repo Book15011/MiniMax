@@ -1,0 +1,6 @@
+# Plateau check around the keep_rank 12 winner of tg_mom_return.yaml (SCREEN only).
+model: baitoey_tg_mom
+variants:
+  - {name: "keep while top 10", keep_rank: 10}
+  - {name: "keep while top 12", keep_rank: 12}
+  - {name: "keep while top 15", keep_rank: 15}

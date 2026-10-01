@@ -1,0 +1,18 @@
+# One knob at a time around the frozen baitoey_tg_mom settings. SCREEN only.
+model: baitoey_tg_mom
+references: [pol_mom_ss, team_btc_hold]
+variants:
+  - {name: "coins k=2", k: 2, keep_rank: 4}
+  - {name: "coins k=3", k: 3, keep_rank: 6}
+  - {name: "coins k=6", k: 6, keep_rank: 12}
+  - {name: "universe top_n=10", top_n: 10}
+  - {name: "universe top_n=20", top_n: 20}
+  - {name: "band 1%", band: 0.01}
+  - {name: "band 5%", band: 0.05}
+  - {name: "rebalance every 4h", rebalance_hours: 4}
+  - {name: "rebalance every 8h", rebalance_hours: 8}
+  - {name: "rebalance every 12h", rebalance_hours: 12}
+  - {name: "short sleeve 15%", short_gross: 0.15}
+  - {name: "short sleeve 40%", short_gross: 0.40}
+  - {name: "max weight 20%", max_weight: 0.20}
+  - {name: "max weight 40%", max_weight: 0.40}
