@@ -19,7 +19,8 @@ Each completed hour bar H (UTC), about `process_after_s` after the hour:
    fires when the day's only confirmed trades came before 00:00 UTC, so the day counts in UTC and in HKT.
 4. Log every step as one JSONL line (git commit stamped, no keys) and save the state atomically.
 Live trades about an hour earlier than the backtest assumes (it lags fills by one bar), so the backtest is the
-conservative side. Restarts resume from the state file; missed hours are not replayed, an overdue decision or
+conservative side. Hours, days and the start time run on Roostoo's server clock (machine clock plus the offset
+measured every hour); the offset is logged, with a warning above clock_warn_s. Restarts resume from the state file; missed hours are not replayed, an overdue decision or
 guard runs at the next hour. In live mode, before `live.start_at` the bot only records bars. A committed change of
 `live.model` takes effect at the next hour (the new model decides at once; active days are kept); paper and
 live never share a state file. If the exchange refuses a short, the bot trades long-only from then on.
@@ -250,15 +251,34 @@ class Runner:
     def latest_bar(self, now: pd.Timestamp) -> pd.Timestamp:
         return (now - pd.Timedelta(seconds=float(self.lv["process_after_s"]))).floor("h")
 
+    def now(self) -> pd.Timestamp:
+        """Roostoo server time: the machine's UTC clock plus the offset measured against /v3/serverTime. Hours, days
+        and the start time follow the exchange's clock even if the machine drifts."""
+        return pd.Timestamp.now(tz="UTC") + pd.Timedelta(milliseconds=float(self.client.offset_ms))
+
+    def check_clock(self, H: pd.Timestamp | None = None) -> float | None:
+        """Re-measure the offset to Roostoo's clock; log it, warn above clock_warn_s, error above clock_error_s."""
+        try:
+            off = float(self.client.sync_clock())
+        except Exception as e:                             # noqa: BLE001 - keep the last offset and say so
+            self.emit("clock", bar=H, error=f"server time unavailable ({type(e).__name__}); keeping offset "
+                                            f"{self.client.offset_ms:.0f} ms")
+            return None
+        s = abs(off) / 1000.0
+        level = "error" if s > float(self.lv["clock_error_s"]) else "warning" if s > float(self.lv["clock_warn_s"]) else "ok"
+        self.emit("clock", bar=H, offset_ms=round(off), level=level)
+        if level != "ok":
+            self.log.warning("machine clock is %+.1f s off Roostoo's; the bot runs on Roostoo's time (%s)", off / 1000, level)
+        return off
+
     def run(self, once: bool = False) -> None:
-        self.emit("start", long_only=self.long_only, state=self.state_path, clock_offset_ms=self.client.sync_clock(),
+        self.emit("start", long_only=self.long_only, state=self.state_path, clock_offset_ms=self.check_clock(),
                   switched_from=self.switched_from, start_at=self.start_at)
         while True:
-            now = pd.Timestamp.now(tz="UTC")
-            H = self.latest_bar(now)
+            H = self.latest_bar(self.now())
             if self.state["last_bar"] is None or H > pd.Timestamp(self.state["last_bar"]):
                 try:
-                    self.client.sync_clock()
+                    self.check_clock(H)
                     self.process(H)
                 except Exception as e:                     # noqa: BLE001 - log, wait, retry; systemd restarts on crash
                     self.log.exception("hour %s failed", H)
@@ -270,7 +290,29 @@ class Runner:
             if once:
                 return
             nxt = H + HOUR + pd.Timedelta(seconds=float(self.lv["process_after_s"]))
-            time.sleep(max(5.0, min(300.0, (nxt - pd.Timestamp.now(tz="UTC")).total_seconds())))
+            time.sleep(max(5.0, min(300.0, (nxt - self.now()).total_seconds())))
+
+
+def clock_report(cfg: dict, samples: int = 3) -> tuple[bool, list[str]]:
+    """Machine clock vs Roostoo's, and the operating system's own sync status. For EC2 before going live."""
+    import shutil
+    c = RoostooClient(cfg["exchange"]["base_url"], None, 10, 10)
+    offs = sorted(c.sync_clock() for _ in range(samples))
+    off = offs[len(offs) // 2]
+    lines = [f"machine UTC   {pd.Timestamp.now(tz='UTC'):%Y-%m-%d %H:%M:%S.%f} UTC",
+             f"Roostoo time  {pd.Timestamp.now(tz='UTC') + pd.Timedelta(milliseconds=off):%Y-%m-%d %H:%M:%S.%f} UTC",
+             f"offset        {off / 1000:+.3f} s (median of {samples}; Roostoo minus machine)"]
+    synced = None
+    if shutil.which("timedatectl"):
+        r = subprocess.run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"], capture_output=True, text=True)
+        synced = r.stdout.strip() == "yes"
+        lines.append(f"NTP synced    {r.stdout.strip() or 'unknown'} (timedatectl)")
+    if shutil.which("chronyc"):
+        r = subprocess.run(["chronyc", "tracking"], capture_output=True, text=True)
+        lines += [f"chrony        {ln.strip()}" for ln in r.stdout.splitlines() if ln.startswith(("Reference ID", "System time", "Leap status"))]
+    ok = abs(off) / 1000 <= float(cfg["live"]["clock_warn_s"]) and synced is not False
+    lines.append("RESULT        " + ("OK" if ok else f"NOT OK: fix the clock before going live (limit {cfg['live']['clock_warn_s']} s, NTP synced)"))
+    return ok, lines
 
 
 def build(cfg: dict, args, log: logging.Logger) -> Runner:
@@ -308,9 +350,14 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--long-only", action="store_true", help="force negative targets to 0 (shorts refused)")
     r.add_argument("--state-dir", default=None, help="another state directory (e.g. a second paper bot)")
     s.add_argument("--state-dir", default=None)
+    sub.add_parser("clock", help="machine clock vs Roostoo's, and NTP status (run on EC2 before going live)")
     a = ap.parse_args(argv)
     cfg = load_config()
     lv = cfg["live"]
+    if a.cmd == "clock":
+        ok, lines = clock_report(cfg)
+        print("\n".join(lines))
+        return 0 if ok else 1
     if a.state_dir:
         lv["state_dir"] = a.state_dir
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")

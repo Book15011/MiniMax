@@ -149,8 +149,10 @@ class FakeClient:
         return {"TradePairs": {p: {"PricePrecision": 2, "AmountPrecision": 5, "MiniOrder": 1, "CanTrade": True}
                                for p in self.prices}}
 
+    offset_ms = 0.0
+
     def sync_clock(self):
-        return 0.0
+        return self.offset_ms
 
 
 def make_runner(tmp_path, model: str, store: feed.Store, mode="paper", start_at=None) -> Runner:
@@ -282,3 +284,16 @@ def test_utc_day_guard_trades_on_every_utc_day(tmp_path):
     full = {"2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07"}
     assert fill_days(True, tmp_path / "a") == full                      # a confirmed trade on every UTC date
     assert fill_days(False, tmp_path / "b") != full                     # HKT days only: some UTC date has none
+
+
+def test_the_bot_runs_on_roostoo_time_and_flags_a_drifting_clock(tmp_path):
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+    r = make_runner(tmp_path, "team_cash", flat_store(start, 120))
+    r.client.offset_ms = 3_600_000.0                                   # machine one hour behind Roostoo
+    assert abs((r.now() - pd.Timestamp.now(tz="UTC")).total_seconds() - 3600) < 5
+    assert r.check_clock() == 3_600_000.0
+    r.client.offset_ms = 1_500.0
+    r.check_clock()
+    logs = [json.loads(x) for f in (tmp_path / "logs").glob("*.jsonl") for x in f.read_text().splitlines()]
+    levels = [e["level"] for e in logs if e["event"] == "clock"]
+    assert levels == ["error", "ok"]                                    # 3,600 s > clock_error_s; 1.5 s < clock_warn_s
