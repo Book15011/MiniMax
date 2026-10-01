@@ -14,7 +14,7 @@ data.binance.vision ──► src/data (download, verify, load) ──► data/b
 src/models/<member>/<model>.py ──► backtest/ (harness) ──► reports/<model>/<YYYYMMDD-HHMM>.md
                                     │                       reports/compare/<method>/<YYYYMMDD-HHMM>.md
                                     ▼
-             src/api + src/execution + src/live (planned) ──► EC2 bot ──► Roostoo
+             src/api + src/execution + src/live ──► EC2 bot ──► Roostoo
 ```
 
 ## Code
@@ -29,6 +29,7 @@ src/models/<member>/<model>.py ──► backtest/ (harness) ──► reports/<
 | `src/models/baselines/` | Team references, never compete: `team_btc_hold`, `team_cash`, and the scoring field `team_ew_daily`, `team_rot_ew`, `team_rot_iv`, `team_trend_2`, `team_mom_ss25` |
 | `src/models/<member>/` | Each member's models: one file per model, file name = model name |
 | `src/models/pol/_combo.py` | Combinations of existing models: weighted blends (`pol_combo_*`) and BTC-trend switches (`pol_switch_*`); sleeve parameters are YAML anchors to the sleeves' own config blocks |
+| `src/live/` | The bot: `runner.py` (hourly loop, decision, guard and keep-alive, state, JSONL logs), `feed.py` (hourly bars: Binance API, archive, ticker), `broker.py` (Roostoo account or paper), `selfcheck.py`. Runbook: `deploy/README.md` |
 | `src/data/` | Binance archive downloader (locked, append-only manifest, checksums), loader (ms/µs), integrity sweep, FRED, futures, hourly panel |
 | `src/validation/` | Lookalike validation: state features, outcomes, pre-registered selection, walk-forward skill, report |
 | `backtest/data.py` | Loads the hourly panel, point-in-time universe and Roostoo spreads for the harness |
@@ -40,15 +41,13 @@ src/models/<member>/<model>.py ──► backtest/ (harness) ──► reports/<
 | `backtest/compare.py` | `python -m backtest.compare --method <method>`: the pre-registered per-method rule |
 | `backtest/scoring/` | Competition-style score (`docs/EVALUATION.md`): metrics V1–V4 × FLOORED/POL, live-like and recency weights, return gate, HEADLINE, gates G1–G6, leakage check, registry and leaderboard, SVG report. `--score` on `backtest.run`; `python -m backtest.scoring compare/leaderboard/field` |
 | `scripts/wt`, `scripts/lock`, `scripts/status` | Worktrees per member and task, single-copy jobs, a status screen |
-| `tests/` | `pytest -q`: downloader, loader, leakage, validation units, harness (metrics by hand, engine accounting, contracts), scoring (golden values, an independent re-implementation, toy tables, determinism, registry, leakage) |
+| `tests/` | `pytest -q`: downloader, loader, leakage, validation units, harness (metrics by hand, engine accounting, contracts), scoring (golden values, an independent re-implementation, toy tables, determinism, registry, leakage), combinations, the Roostoo client and planner, the live bot (bars, universe = Book's rule, guard, keep-alive, restarts) |
 | `docs/` | `TEAM_PLAN.md` (plan and decisions), `STRATEGY_GUIDE.md`, `EVALUATION.md` (the score and its sign-off checklist), this map |
 
-**Planned** (build list in `docs/TEAM_PLAN.md` §4.1):
-- `backtest/selection.py`: the selection ladder.
-- `src/api/`: Roostoo client.
-- `src/execution/`: order planner, paper broker.
-- `src/live/`: the bot loop.
-- `deploy/`: systemd, EC2 setup.
+| `src/api/`, `src/execution/` | Roostoo client (signing, clock offset, rate limit, no order retries); the order planner shared by paper and live; the paper broker |
+| `deploy/` | The runbook (`README.md`), systemd unit, EC2 setup script, pinned package versions (`requirements-lock.txt`) |
+
+**On other branches:** `backtest/selection.py`, the selection ladder (`feature/selection-ladder`).
 
 ## Data (gitignored, on the server only)
 
@@ -59,6 +58,7 @@ src/models/<member>/<model>.py ──► backtest/ (harness) ──► reports/<
 | `data/validation/` | `panel_close_1h.parquet`, `panel_quote_volume_1h.parquet` (97 series, close-time index), `universe.parquet` (point-in-time top-30 per day), features, outcomes, walk-forward tables |
 | `data/harness/<model>/` | Cached window results, keyed by model code, parameters, harness config and data |
 | `data/roostoo_snapshots/` | Saved `exchangeInfo`, `ticker` and coverage snapshots (the ticker gives the spreads) |
+| `data/live/` | The bot's hourly bars (`close_1h`, `qv_1h`, `store_meta.json`), `state.json` and `logs/<YYYYMMDD>.jsonl` |
 
 ## Outputs
 
