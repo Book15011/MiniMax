@@ -5,7 +5,7 @@
 - Seed: the last `history_days` of the research panel (data/validation), copied once (`seed`).
 - Top-up, in order: Binance REST klines (exact, if reachable: it is blocked on the research server) ->
   the data.binance.vision daily archive (full UTC days, published the next day) -> the Roostoo ticker's last
-  price for the newest bar only (Roostoo-listed coins; quote volume unknown).
+  price and 24-hour quote volume for the newest bar only (Roostoo-listed coins; see fill_ticker_volume).
 - `complete_through` is the newest bar that every source-backed series has; bars after it may be ticker-only.
   The universe is ranked only on complete data, so a ticker-only hour can never change it.
 - An archive day counts as published when BTC's file is; another coin without a file that day had no data.
@@ -153,7 +153,8 @@ def seed(panel_dir: Path, days: int) -> Store:
 
 
 def top_up(store: Store, upto: pd.Timestamp, rest: Callable | None, archive: Callable | None,
-           ticker_closes: Callable[[], dict[str, float]] | None, log: logging.Logger) -> dict:
+           ticker_closes: Callable[[], dict[str, float]] | None, log: logging.Logger,
+           ticker_volumes: Callable[[], dict[str, float]] | None = None) -> dict:
     """Bring every series up to bar `upto` (a completed bar close time). Returns what each source added."""
     added = {"rest": 0, "archive": 0, "ticker": 0, "sources_down": []}
     symbols = list(store.close.columns)
@@ -188,6 +189,7 @@ def top_up(store: Store, upto: pd.Timestamp, rest: Callable | None, archive: Cal
             added["sources_down"].append(str(e))
             log.warning("feed: %s", e)
     store.ticker_only -= {t for t in store.ticker_only if t <= store.complete_through}
+    filled = False
     if store.close.index[-1] < upto or store.close.loc[upto].isna().all():
         if ticker_closes is not None:
             px = ticker_closes()
@@ -198,6 +200,28 @@ def top_up(store: Store, upto: pd.Timestamp, rest: Callable | None, archive: Cal
                     store.close.loc[upto, s] = p
                     added["ticker"] += 1
             store.ticker_only.add(upto)
+            filled = True
     full = pd.date_range(store.close.index[0], store.close.index[-1], freq="h")
     store.close, store.qv = store.close.reindex(full), store.qv.reindex(full)
+    if filled and ticker_volumes is not None:
+        added["ticker_qv"] = fill_ticker_volume(store, upto, ticker_volumes())
     return added
+
+
+def fill_ticker_volume(store: Store, upto: pd.Timestamp, v24: dict[str, float]) -> int:
+    """Quote volume of the ticker-only bar `upto` from each coin's rolling 24-hour quote volume (the Roostoo ticker's
+    UnitTradeValue, which is Binance's own 24 h figure: identical on all 86 shared pairs, checked 2026-10-02).
+
+    The bar gets v24 minus the 23 bars before it, so the 24-hour sum ending at `upto` equals the ticker's figure, which
+    is what the 24-hour volume ratios read. With a hole in those 23 bars it gets v24 / 24. Never negative. The archive
+    or REST replaces it later, like the ticker's price."""
+    n = 0
+    prev = store.qv.loc[upto - pd.Timedelta(hours=23):upto - pd.Timedelta(hours=1)]
+    for s, v in v24.items():
+        if s not in store.qv or not v > 0:
+            continue
+        before = prev[s]
+        est = v - float(before.sum()) if len(before) == 23 and before.notna().all() else v / 24.0
+        store.qv.loc[upto, s] = max(est, 0.0)
+        n += 1
+    return n
