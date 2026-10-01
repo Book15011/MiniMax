@@ -147,6 +147,12 @@ The **tool version** is a hash of the files that define the numbers (engine, dat
 - The live formula is unknown; V1–V4 bracket the plausible readings. Treat a model that wins under only one variant with suspicion.
 - The field is a proxy for other teams: six simple strategies, not the real competitors.
 - The planner's minimum-order rule ($10) is not modelled, so models with many tiny rebalances (e.g. EW_DAILY) trade slightly more in the backtest than they would live.
+- **The engine can hold more than 100% gross**, which the live planner cannot.
+  - Cause: after a band-limited rebalance (`backtest/engine.py`), the engine buys a new coin in full, but holdings that drifted above target by less than the band are not trimmed. Cash goes negative.
+  - Live behaviour: `src/execution/planner.py` scales buys down to fit the free cash.
+  - Size: on 2026-10-01 this showed up in 11–19% of windows for ROT_EW, ROT_IV and MOM_SS25 and 4% for TREND_2, up to 112.8% gross. Each report shows the max gross.
+  - Owner: this is the engine owner's call; the scoring does not change the engine's fills.
+- One pool window cannot be run: 2020-12-21 16:00 UTC has no bar in the panel (16:00–18:00 missing). It is listed in score.json; its live-like weight was 1.7e-7.
 - LIVE-LIKE weights come from the 2026-09-30 validation run; rerun PART 0 on Oct 3 (`python -m src.validation.live_like`) and the tool version changes with the file.
 - **UNVERIFIED:** every result that uses windows after 2026-08-08 is in-sample for models tuned on them. The holdout stays sealed here.
 
