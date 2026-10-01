@@ -1,0 +1,299 @@
+"""The live bot: one registered model, every hour, on Roostoo (paper or live).
+
+    python -m src.live.runner seed                      once: copy the research panel's last history_days to the store
+    python -m src.live.runner run [--once] [--mode paper|live] [--model NAME] [--long-only]
+
+Each completed hour bar H (UTC), about `process_after_s` after the hour:
+1. Top up the hourly store (src/live/feed.py); read quotes and holdings.
+2. Decision: at the model's decision hours (16:00 UTC + k x rebalance_hours), or when one is overdue, the model
+   sees the same MarketView as in the backtest: bars up to H, the universe by Book's rule
+   (src.validation.features) on complete data, cut to Roostoo, and its own previous targets. Hours no source
+   could fill (the bot was down and Binance's API is unreachable) are carried forward up to `max_fill_hours`,
+   as the backtest engine carries prices; without that, a model that needs a full 30 days of bars sees none. The shared planner
+   turns targets into orders (the first decision trades every difference, later ones only beyond the band).
+3. Activity guard, as backtest/engine.py: from hour 21 of the HKT day (13:00 UTC) on, if the day has no trade yet,
+   rebalance exactly to the standing targets; if that needs no order, make the keep-alive trade (0.2% of equity
+   more BTC, or that much less of the largest holding).
+4. Log every step as one JSONL line (git commit stamped, no keys) and save the state atomically.
+Live trades about an hour earlier than the backtest assumes (it lags fills by one bar), so the backtest is the
+conservative side. Restarts resume from the state file; missed hours are not replayed, an overdue decision or
+guard runs at the next hour. In live mode, before `live.start_at` the bot only records bars. A committed change of
+`live.model` takes effect at the next hour (the new model decides at once; active days are kept); paper and
+live never share a state file. If the exchange refuses a short, the bot trades long-only from then on.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import subprocess
+import time
+from dataclasses import asdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from src.api.client import RoostooClient, load_credentials
+from src.api.rules import parse_exchange_info
+from src.config import REPO_ROOT, binance_symbol, load_config, resolve, universe
+from src.contracts import MarketView, check_targets
+from src.execution.planner import Holdings, ShortPos, current_weights, equity, plan_orders
+from src.live import feed
+from src.live.broker import LiveBroker, PaperAccount, ShortsUnreadable, quotes_from_ticker
+from src.models import get
+from src.validation.features import daily_bars, is_allowed
+
+HOUR = pd.Timedelta(hours=1)
+
+
+# ---------------- pure helpers (tested) ----------------
+
+def live_universe(close: pd.DataFrame, qv: pd.DataFrame, t: pd.Timestamp, vcfg: dict, allowed: set[str]) -> tuple:
+    """Book's universe rule (StateEngine.universe) at grid time t, then cut to the Roostoo list as
+    backtest.data.load_market does: top-N eligible series by trailing quote volume, ties by name."""
+    u, hour = vcfg["universe"], vcfg["grid_hour_utc"]
+    close_d, qv_d, exists = daily_bars(close.loc[:t], qv.loc[:t], hour)
+    if t not in close_d.index:
+        return ()
+    hist_before = exists.cumsum().shift(1, fill_value=0).loc[t]
+    ok = exists.loc[t] & (hist_before >= u["min_history_days"])
+    ok &= pd.Series([is_allowed(c, u) for c in close_d.columns], index=close_d.columns)
+    q = qv_d.rolling(u["volume_days"], min_periods=1).sum().loc[t][ok]
+    ranked = sorted(q.index, key=lambda c: (-q[c], c))[: u["top_n"]]
+    return tuple(sorted(c for c in ranked if c in allowed))
+
+
+def day_start(t: pd.Timestamp, grid_hour: int) -> pd.Timestamp:
+    """Start (UTC) of the HKT trading day that contains bar time t."""
+    off = pd.Timedelta(hours=grid_hour)
+    return (t - off).floor("D") + off
+
+
+def keep_alive_targets(h: Holdings, quotes: dict, eq: float, ka: float, cap: float, pair: str = "BTC/USD") -> dict:
+    """backtest.engine.Simulator._nudge on the account: ka more of `pair`, or ka less of the largest holding."""
+    w = current_weights(h, quotes, eq)
+    t = dict(w)
+    if sum(abs(x) for x in w.values()) + ka <= cap:
+        t[pair] = t.get(pair, 0.0) + ka
+    elif w:
+        k = max(w, key=lambda p: abs(w[p]))
+        t[k] = w[k] - np.sign(w[k]) * min(ka, abs(w[k]))
+    return t
+
+
+def holdings_to_json(h: Holdings) -> dict:
+    return {"usd_free": h.usd_free, "spot": h.spot, "shorts": {p: asdict(s) for p, s in h.shorts.items()}}
+
+
+def holdings_from_json(d: dict) -> Holdings:
+    return Holdings(float(d["usd_free"]), {k: float(v) for k, v in d["spot"].items()},
+                    {p: ShortPos(**s) for p, s in d["shorts"].items()})
+
+
+# ---------------- the runner ----------------
+
+class Runner:
+    def __init__(self, cfg: dict, model_name: str, mode: str, broker, client: RoostooClient, state_dir: Path,
+                 log: logging.Logger, long_only: bool = False, rest=None, archive=None):
+        self.cfg, self.mode, self.broker, self.client, self.dir, self.log = cfg, mode, broker, client, state_dir, log
+        self.lv, self.h, self.ex, self.v = cfg["live"], cfg["harness"], cfg["execution"], cfg["validation"]
+        self.model = get(model_name)
+        self.params = (cfg.get("models") or {}).get(model_name, {}) or {}
+        self.long_only = long_only or not self.model.spec.uses_shorts
+        self.pairs = {binance_symbol(p): p for p in universe(cfg)}
+        self.rest, self.archive = rest, archive
+        self.state_path = state_dir / "state.json"
+        self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {
+            "model": model_name, "mode": mode, "last_bar": None, "last_decision": None, "prev_targets": {},
+            "standing": {}, "active_days": [], "paper": None}
+        if self.state["mode"] != mode:
+            raise SystemExit(f"state.json is for {self.state['mode']} mode; move it away to start {mode} fresh")
+        self.switched_from = None
+        if self.state["model"] != model_name:             # a committed model change (e.g. the team_cash exit)
+            self.switched_from = self.state["model"]
+            self.state.update(model=model_name, prev_targets={}, standing={}, last_decision=None)
+        self.long_only = self.long_only or bool(self.state.get("long_only"))
+        self.start_at = (pd.Timestamp(self.lv["start_at"]).tz_localize("UTC")      # live only: paper is a rehearsal
+                         if mode == "live" and self.lv.get("start_at") else None)
+        self.store = feed.Store.load(state_dir)
+        self.rules = parse_exchange_info(client.exchange_info())
+        self.commit = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], cwd=REPO_ROOT, capture_output=True,
+                                     text=True).stdout.strip()
+
+    # -- logging and state
+    def emit(self, event: str, **data) -> None:
+        line = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "event": event, "model": self.model.spec.name,
+                "mode": self.mode, "commit": self.commit, **data}
+        d = self.dir / "logs"
+        d.mkdir(parents=True, exist_ok=True)
+        with open(d / f"{datetime.now(timezone.utc):%Y%m%d}.jsonl", "a") as fh:
+            fh.write(json.dumps(line, default=str) + "\n")
+
+    def save(self) -> None:
+        if self.mode == "paper":
+            self.state["paper"] = holdings_to_json(self.broker.h)
+        tmp = self.state_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.state, indent=1, default=str))
+        tmp.replace(self.state_path)
+
+    # -- one hour
+    def due_decision(self, H: pd.Timestamp) -> bool:
+        rb = self.model.spec.rebalance_hours
+        last = self.state["last_decision"]
+        on_grid = (H.hour - self.h["grid_hour_utc"]) % rb == 0
+        return last is None or on_grid or H - pd.Timestamp(last) >= pd.Timedelta(hours=rb)
+
+    def trade(self, kind: str, H: pd.Timestamp, targets: dict, h: Holdings, quotes: dict, band: float,
+              exact: bool) -> list[dict]:
+        orders, notes = plan_orders(targets, h, quotes, self.rules, band, self.ex["fee"], self.ex["cash_buffer"],
+                                    self.ex["min_trade_usd"], exact=exact)
+        fills = self.broker.execute(orders, quotes, h) if orders else []
+        refused = [f for f in fills if f["status"] == "ERROR" and f["order"].kind == "SHORT_OPEN"
+                   and "not allow" in str(f.get("error", "")).lower()]
+        if refused and not self.long_only:                 # "this competition does not allow short positions"
+            self.long_only = self.state["long_only"] = True
+            self.emit("error", bar=H, error="shorts refused by the exchange; trading long-only from now on")
+        self.emit(kind, bar=H, targets=targets, orders=[asdict(o) for o in orders], notes=notes,
+                  fills=[{k: (asdict(v) if k == "order" else v) for k, v in f.items()} for f in fills])
+        if any(f["status"] == "FILLED" for f in fills):
+            day = str(day_start(H, self.h["grid_hour_utc"]))
+            if day not in self.state["active_days"]:
+                self.state["active_days"].append(day)
+        return fills
+
+    def process(self, H: pd.Timestamp) -> None:
+        ticker = self.client.ticker()
+        quotes = quotes_from_ticker(ticker)
+        closes = {binance_symbol(p): float(q.get("LastPrice") or 0.0) for p, q in ticker.items()}
+        added = feed.top_up(self.store, H, self.rest, self.archive, lambda: closes, self.log)
+        self.store.trim(int(self.lv["history_days"]))
+        self.store.save(self.dir)
+        self.emit("feed", bar=H, added=added, complete_through=self.store.complete_through)
+        try:
+            h = self.broker.holdings(with_shorts=not self.long_only)
+        except ShortsUnreadable as e:
+            self.long_only = True
+            self.emit("error", bar=H, error=f"{e}; trading long-only from now on (UNVERIFIED short format)")
+            h = self.broker.holdings(with_shorts=False)
+        eq = equity(h, quotes)
+        grid = self.h["grid_hour_utc"]
+        decided = False
+        if self.start_at is not None and H < self.start_at:  # before the round: record data, never trade
+            self.emit("snapshot", bar=H, equity=eq, waiting_until=self.start_at)
+            self.state["last_bar"] = str(H)
+            self.save()
+            return
+        if self.due_decision(H):
+            g = day_start(min(H, self.store.complete_through), grid)
+            uni = live_universe(self.store.close, self.store.qv, g, self.v, set(self.pairs))
+            close = self.store.close.loc[:H].ffill(limit=int(self.lv["max_fill_hours"]))   # gaps the sources left
+            view = MarketView(t=H, close=close, quote_volume=self.store.qv.loc[:H], universe=uni,
+                              params=self.params, prev_targets=pd.Series(self.state["prev_targets"], dtype=float))
+            w = check_targets(self.model.targets(view), view, self.model.spec)
+            if self.long_only:
+                w = w.clip(lower=0.0)
+            w = w[w != 0.0]
+            first = self.state["last_decision"] is None
+            self.state.update(prev_targets={k: float(x) for k, x in w.items()}, last_decision=str(H),
+                              standing={self.pairs[s]: float(x) for s, x in w.items() if s in self.pairs})
+            self.emit("decision", bar=H, universe=uni, universe_as_of=g, equity=eq, first=first,
+                      targets=self.state["standing"])
+            self.trade("rebalance", H, self.state["standing"], h, quotes, self.model.spec.band, exact=first)
+            decided = True
+        start = day_start(H, grid)
+        into_day = int((H - start) / HOUR)
+        if (not decided and str(start) not in self.state["active_days"]
+                and into_day >= self.h["activity_guard_offset_hours"] + 1):
+            h = self.broker.holdings(with_shorts=not self.long_only)
+            fills = self.trade("guard", H, self.state["standing"], h, quotes, 0.0, exact=True)
+            if not any(f["status"] == "FILLED" for f in fills):
+                t = keep_alive_targets(h, quotes, equity(h, quotes), float(self.h["keep_alive_weight"]),
+                                       1.0 - float(self.ex["cash_buffer"]))
+                self.trade("keep_alive", H, t, h, quotes, 0.0, exact=True)
+        h = self.broker.holdings(with_shorts=not self.long_only)
+        eq = equity(h, quotes)
+        w = current_weights(h, quotes, eq)
+        self.emit("snapshot", bar=H, equity=eq, usd_free=h.usd_free, gross=sum(abs(x) for x in w.values()),
+                  weights=w, active_days=len(self.state["active_days"]))
+        self.state["last_bar"] = str(H)
+        self.save()
+
+    def latest_bar(self, now: pd.Timestamp) -> pd.Timestamp:
+        return (now - pd.Timedelta(seconds=float(self.lv["process_after_s"]))).floor("h")
+
+    def run(self, once: bool = False) -> None:
+        self.emit("start", long_only=self.long_only, state=self.state_path, clock_offset_ms=self.client.sync_clock(),
+                  switched_from=self.switched_from, start_at=self.start_at)
+        while True:
+            now = pd.Timestamp.now(tz="UTC")
+            H = self.latest_bar(now)
+            if self.state["last_bar"] is None or H > pd.Timestamp(self.state["last_bar"]):
+                try:
+                    self.client.sync_clock()
+                    self.process(H)
+                except Exception as e:                     # noqa: BLE001 - log, wait, retry; systemd restarts on crash
+                    self.log.exception("hour %s failed", H)
+                    self.emit("error", bar=H, error=f"{type(e).__name__}: {e}")
+                    if once:
+                        raise
+                    time.sleep(60)
+                    continue
+            if once:
+                return
+            nxt = H + HOUR + pd.Timedelta(seconds=float(self.lv["process_after_s"]))
+            time.sleep(max(5.0, min(300.0, (nxt - pd.Timestamp.now(tz="UTC")).total_seconds())))
+
+
+def build(cfg: dict, args, log: logging.Logger) -> Runner:
+    lv, ex = cfg["live"], cfg["execution"]
+    state_dir = resolve(lv["state_dir"])
+    if args.mode == "live":
+        creds = load_credentials(REPO_ROOT / ex["env_file"])
+        if creds.env == "competition" and os.environ.get("MM_HOST") != "ec2":
+            raise SystemExit("ROOSTOO_ENV=competition outside EC2: refused (AGENTS.md rule 3)")
+    else:
+        creds = None
+    client = RoostooClient(cfg["exchange"]["base_url"], creds, ex["calls_per_minute"], ex["timeout_s"], log=log)
+    if args.mode == "live":
+        broker = LiveBroker(client, log, float(lv["order_spacing_s"]))
+    else:
+        st = state_dir / "state.json"
+        paper = json.loads(st.read_text()).get("paper") if st.exists() else None
+        h = holdings_from_json(paper) if paper else Holdings(float(lv["paper_equity"]))
+        broker = PaperAccount(h, parse_exchange_info(client.exchange_info()), lambda: quotes_from_ticker(client.ticker()),
+                              float(ex["fee"]))
+    rest = feed.rest_fetcher(lv["binance_rest"]) if lv.get("binance_rest") else None
+    archive = feed.archive_fetcher(cfg["data"]["base_url"]) if lv.get("use_archive", True) else None
+    return Runner(cfg, args.model or lv["model"], args.mode, broker, client, state_dir, log, args.long_only, rest, archive)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("seed", help="copy the research panel's last history_days into the live store")
+    s.add_argument("--panel-dir", default=None)
+    r = sub.add_parser("run", help="run the bot")
+    r.add_argument("--mode", choices=("paper", "live"), default=None)
+    r.add_argument("--model", default=None)
+    r.add_argument("--once", action="store_true", help="process the latest completed hour, then exit")
+    r.add_argument("--long-only", action="store_true", help="force negative targets to 0 (shorts refused)")
+    a = ap.parse_args(argv)
+    cfg = load_config()
+    lv = cfg["live"]
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    log = logging.getLogger("live")
+    if a.cmd == "seed":
+        st = feed.seed(resolve(a.panel_dir or cfg["harness"]["panel_dir"]), int(lv["history_days"]))
+        st.save(resolve(lv["state_dir"]))
+        log.info("seeded %d series x %d hours, complete through %s", st.close.shape[1], len(st.close), st.complete_through)
+        return 0
+    a.mode = a.mode or lv["mode"]
+    build(cfg, a, log).run(once=a.once)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

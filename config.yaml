@@ -197,6 +197,20 @@ execution:
   cash_buffer: 0.01             # keep 1% of equity in USD so buys never fail on rounding
   min_trade_usd: 10             # skip orders smaller than this (dust)
 
+# Live bot (src/live/runner.py, deploy/README.md). Paper trading on the research server; live only on EC2.
+live:
+  model: team_rot_ew            # PENDING the team's launch decision (TEAM_PLAN 4.3; reports/review/20261001-scoring-review.md)
+  mode: paper                   # paper | live
+  start_at: "2026-10-03 16:00"  # UTC (Oct 4 00:00 HKT). Live mode: earlier bars are recorded, never traded. Paper ignores it
+  state_dir: data/live          # hourly store, state.json and JSONL logs (gitignored)
+  history_days: 300             # hourly bars kept: >= the longest lookback (team_trend_2's state needs 240 days)
+  process_after_s: 45           # read bar HH:00 this long after the hour
+  max_fill_hours: 48            # carry a price forward over at most this many unfilled hours in the model's view
+  order_spacing_s: 10           # pause between orders. UNVERIFIED whether Roostoo caps trades per minute this round
+  paper_equity: 100000
+  binance_rest: https://api.binance.com/api/v3/klines   # blocked on the research server; then the archive
+  use_archive: true             # data.base_url daily 1h klines, published the next day
+
 # Backtest harness (backtest/). Every model is scored the same way; docs/STRATEGY_GUIDE.md explains each field.
 harness:
   panel_dir: data/validation              # hourly panel + point-in-time universe written by src.validation.build
