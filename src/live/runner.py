@@ -15,7 +15,8 @@ Each completed hour bar H (UTC), about `process_after_s` after the hour:
    with the proposed 11), if the day has no confirmed trade yet, rebalance exactly to the standing targets; if that
    needs no order, make the keep-alive trade (0.2% of equity more BTC, or that much less of the largest holding).
    A fill counts only when the account's positions moved (an order response alone is not proof), and an
-   unconfirmed guard is retried every later hour of the same day.
+   unconfirmed guard is retried every later hour of the same day. With `harness.guard_utc_day`, the guard also
+   fires when the day's only confirmed trades came before 00:00 UTC, so the day counts in UTC and in HKT.
 4. Log every step as one JSONL line (git commit stamped, no keys) and save the state atomically.
 Live trades about an hour earlier than the backtest assumes (it lags fills by one bar), so the backtest is the
 conservative side. Restarts resume from the state file; missed hours are not replayed, an overdue decision or
@@ -179,6 +180,7 @@ class Runner:
         self.emit(kind, bar=H, targets=targets, orders=[asdict(o) for o in orders], notes=notes,
                   fills=[{k: (asdict(v) if k == "order" else v) for k, v in f.items()} for f in fills])
         if any(f["status"] == "FILLED" for f in fills):
+            self.state["last_fill"] = str(H)
             day = str(day_start(H, self.h["grid_hour_utc"]))
             if day not in self.state["active_days"]:
                 self.state["active_days"].append(day)
@@ -225,7 +227,11 @@ class Runner:
             decided = True
         start = day_start(H, grid)
         into_day = int((H - start) / HOUR)
-        if (not decided and str(start) not in self.state["active_days"]          # every later hour of the day retries
+        no_trade = str(start) not in self.state["active_days"]                   # none yet in this HKT day
+        if self.h.get("guard_utc_day") and H.floor("D") > start:                 # or none since 00:00 UTC
+            last = self.state.get("last_fill")
+            no_trade = no_trade or last is None or pd.Timestamp(last) < H.floor("D")
+        if (not decided and no_trade                                             # every later hour of the day retries
                 and into_day >= self.h["activity_guard_offset_hours"] + 1):        # until a fill is confirmed
             h = self.broker.holdings(with_shorts=not self.long_only)
             fills = self.trade("guard", H, self.state["standing"], h, quotes, 0.0, exact=True)

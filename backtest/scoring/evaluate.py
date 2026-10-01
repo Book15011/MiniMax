@@ -152,7 +152,7 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
     t_targets = time.time() - t_start
     costs = Costs(h["fees"]["taker"], h["fees"]["short"])
     sim = Simulator(market, targets, spec.band, costs, lag, hour, h["activity_guard_offset_hours"],
-                    float(h.get("keep_alive_weight", 0.0)))
+                    float(h.get("keep_alive_weight", 0.0)), guard_utc_day=bool(h.get("guard_utc_day", False)))
     cols = np.array(sim.cols)
     e0 = float(sc["e0"])
     W = len(starts)
@@ -177,6 +177,7 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
         n_orders = max_calls = events = 0
         strat_day = np.zeros(days, dtype=bool)
         guard_day = np.zeros(days, dtype=bool)
+        utc_days = set()                                       # UTC dates with a fill (report only; G1 counts 24 h days)
         for hh, kind, w0, w1, eqb, cost in tr["trades"]:
             when = at[hh]
             ck = int((when - t0) / HOUR)                        # clock hour of the fill, 1 .. 336 inside the window
@@ -184,6 +185,7 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
                 continue                                       # after t0 + 14 days: outside the window
             day = (ck - 1) // 24                               # the 24 h day (16:00 UTC boundaries) that contains it
             (guard_day if kind == "guard" else strat_day)[day] = True
+            utc_days.add(when.floor("D"))
             d = w1 - w0
             fee = (np.abs(np.maximum(w1, 0) - np.maximum(w0, 0)) * costs.taker
                    + np.abs(np.minimum(w1, 0) - np.minimum(w0, 0)) * costs.short)
@@ -202,6 +204,7 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
         strat = int(strat_day.sum())
         guard_only = int((guard_day & ~strat_day).sum())
         rows.append({"active_days": strat + guard_only, "strategy_days": strat, "guard_days": guard_only,
+                     "active_days_utc": len(utc_days),
                      "costs_e0": cost_e0, "fees_e0": fee_e0, "spread_e0": cost_e0 - fee_e0,
                      "turnover": turnover, "gross_avg": float(G[k, 1:].mean()), "gross_max": float(G[k, 1:].max()),
                      "net_avg": float(N[k, 1:].mean()), "gross_end": float(G[k, -1]), "orders": n_orders,

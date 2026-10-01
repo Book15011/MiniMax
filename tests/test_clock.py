@@ -47,10 +47,10 @@ class EvenDay:
         return pd.Series({"BTCUSDT": 1.0}) if int(view.t.timestamp() // 86400) % 2 == 0 else pd.Series(dtype=float)
 
 
-def run(mk: Market, model, keep_alive: float = 0.0, guard: int = 20):
+def run(mk: Market, model, keep_alive: float = 0.0, guard: int = 20, utc: bool = False):
     times = decision_times(mk.close.index, 24, 16, T0, T0 + pd.Timedelta(days=14))
     tg = compute_targets(model, mk, times, {})
-    sim = Simulator(mk, tg, model.spec.band, Costs(FEE, FEE), 1, 16, guard, keep_alive)
+    sim = Simulator(mk, tg, model.spec.band, Costs(FEE, FEE), 1, 16, guard, keep_alive, guard_utc_day=utc)
     i0 = sim.index.get_loc(T0)
     res = sim.run(i0, 336, trace=True)
     fills = [(sim.index[i0 + h], kind) for h, kind, *_ in res.trace["trades"]]
@@ -148,3 +148,15 @@ def test_guard_at_offset_11_trades_at_04_utc():
     guards = [t for t, k in fills if k == "guard"]
     assert guards and all(t.hour == 4 for t in guards)          # the 04:00 UTC bar = 12:00 HKT
     assert res.active_days == 14
+
+
+def test_utc_day_guard_makes_every_utc_day_active_too():
+    # 100% BTC: on target every day, so only the guard's keep-alive trades. Guarding HKT days only leaves a UTC day
+    # empty whenever the previous HKT day's trade fell before 00:00 UTC (the 17:00 UTC decision fill).
+    utc_days = lambda fills: {t.floor("D") for t, _ in fills}
+    window = set(pd.date_range(T0.floor("D"), (T0 + pd.Timedelta(days=14)).floor("D"), freq="D"))   # 15 UTC dates
+    _, res, hkt_only = run(market(), Hold(), keep_alive=0.002, guard=11)
+    assert res.active_days == 14 and len(utc_days(hkt_only)) < 15
+    _, res, both = run(market(), Hold(), keep_alive=0.002, guard=11, utc=True)
+    assert res.active_days == 14 and utc_days(both) == window
+    assert all(t.hour == 4 for t, k in both if k == "guard")

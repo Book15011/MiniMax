@@ -10,7 +10,8 @@ Timeline (all UTC, bars indexed by close time):
   the guard always sit on the same clock hours as the live bot's.
 - Between decisions nothing trades except the activity guard: if an HKT day (24 h from the window start)
   has no trade by `guard_offset_hours` into the day, the engine rebalances exactly to the standing target
-  (at the first hour at or after that offset that has a bar).
+  (at the first hour at or after that offset that has a bar). With `guard_utc_day`, a guard hour after 00:00 UTC
+  also fires when the day's only trades came before 00:00 UTC, so the day counts in UTC as well as in HKT.
   If the book is already exactly on target (all cash, or one coin that cannot drift), the guard makes a
   keep-alive trade instead: `keep_alive` of equity more BTC, or that much less of the largest holding when
   there is no room. The next guard reverses it, so the book stays on target within that small amount and
@@ -111,7 +112,7 @@ class Simulator:
 
     def __init__(self, market: Market, targets: pd.DataFrame, band: float, costs: Costs,
                  lag_hours: int = 1, anchor_hour: int = 16, guard_offset_hours: int = 20,
-                 keep_alive: float = 0.0, keep_alive_coin: str = "BTCUSDT"):
+                 keep_alive: float = 0.0, keep_alive_coin: str = "BTCUSDT", guard_utc_day: bool = False):
         active = targets.columns[(targets != 0).any()]
         self.cols = list(active) if len(active) else [market.close.columns[0]]
         has_coin = keep_alive > 0 and keep_alive_coin in market.close.columns
@@ -138,6 +139,8 @@ class Simulator:
         self.half = market.half_spread.reindex(self.cols).fillna(float(market.half_spread.median())).to_numpy()
         self.band, self.costs, self.lag = band, costs, lag_hours
         self.guard = guard_offset_hours
+        midnight = (24 - anchor_hour) % 24                         # hours from the day start (16:00 UTC) to 00:00 UTC
+        self.guard_since = midnight if guard_utc_day and guard_offset_hours >= midnight else 0
 
     def _trade(self, w: np.ndarray, tgt: np.ndarray, exact: bool) -> tuple[np.ndarray, float, float, int]:
         d = tgt - w
@@ -183,6 +186,7 @@ class Simulator:
         orders = np.zeros(n_days, dtype=int)
         turnover = fees = max_gross = 0.0
         due = entry = False                                        # a decision fill or the first trade not yet made
+        last_fill = -1                                             # hour of the latest fill in this window
         tr = None
         if trace:
             tr = {"cols": self.cols, "gross": np.zeros(hours + 1), "net": np.zeros(hours + 1), "trades": [],
@@ -198,7 +202,7 @@ class Simulator:
             day = min((h - 1) // 24, n_days - 1)
             entry |= h == 1
             due |= h == 1 or bool(self.is_dec[j])
-            guard = (not traded[day]) and (not guard_done[day]) and ((h - 1) % 24 >= self.guard)
+            guard = (last_fill < 24 * day + self.guard_since) and (not guard_done[day]) and ((h - 1) % 24 >= self.guard)
             if not self.has_bar[i]:                                # no price this hour: nothing fills, due trades wait
                 E[h] = eq
                 if tr is not None:
@@ -221,6 +225,7 @@ class Simulator:
                     turnover += tv
                     fees += cost
                     traded[day] = True
+                    last_fill = h
                     orders[day] += n
                     max_gross = max(max_gross, float(np.abs(w).sum()))
                 due = entry = False

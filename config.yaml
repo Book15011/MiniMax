@@ -231,6 +231,8 @@ harness:
   activity_guard_offset_hours: 11         # PROPOSED (was 20): if a day has no trade by then, the guard trades at the
                                           # 04:00 UTC bar (12:00 HKT), mid-day whether days count in UTC or HKT;
                                           # live, an unconfirmed fill is retried every later hour of the same day
+  guard_utc_day: true                     # PROPOSED: the guard also fires when the day has no trade since 00:00 UTC,
+                                          # so every day counts whether the organizers use UTC or HKT days
   keep_alive_weight: 0.002              # guard on a day already on target (all cash, one coin): trade 0.2% of equity, reversed next day
   min_active_days: 10
   scenario_sets:

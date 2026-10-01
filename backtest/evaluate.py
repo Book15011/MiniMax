@@ -132,7 +132,8 @@ def evaluate(model: Model, market: Market, cfg: dict, holdout: bool = False, use
     log.info("%s: %d decisions %s -> %s, %d windows", spec.name, len(times), times[0], times[-1], len(starts))
     targets = compute_targets(model, market, times, params)
     sim = Simulator(market, targets, spec.band, Costs(h["fees"]["taker"], h["fees"]["short"]), lag, hour,
-                    h["activity_guard_offset_hours"], float(h.get("keep_alive_weight", 0.0)))
+                    h["activity_guard_offset_hours"], float(h.get("keep_alive_weight", 0.0)),
+                    guard_utc_day=bool(h.get("guard_utc_day", False)))
     rows = []
     for t0 in starts:
         res = sim.run(sim.index.get_loc(t0), days * 24)
