@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.scoring.competition import block_bootstrap, field_median, gates, headline, return_gate
+from backtest.scoring.competition import (REL, add_rel, block_bootstrap, field_median, field_scale, gates, headline,
+                                          return_gate)
 from backtest.scoring.windows import live_like_weights, recency_weights, thin
 from src.config import load_config
 
@@ -27,6 +28,22 @@ def test_return_gate_against_the_field_median_and_zero():
     R = pd.Series([0.010, 0.004, -0.001, 0.0], index=IDX)
     # 0.010 >= 0.005 -> 1 · 0.004 < 0.005 -> 0 · -0.001 < 0 -> 0 · 0.0 >= 0 -> 1 (ties pass)
     assert return_gate(R, med).tolist() == [1, 0, 0, 1]
+
+
+def test_rel_is_the_field_relative_mean_over_variants():
+    sc = {"conventions": {"C": {}}, "variants": {"V1": {}, "V2": {}}, "headline": SPLIT}
+    w = pd.Series(1.0, index=IDX)
+    # two field members; V2 is on a 100x larger scale than V1, as an annualized reading would be
+    f1 = pd.DataFrame({"C.V1.cs": [0.1, 0.0, 0.2, 0.1], "C.V2.cs": [10.0, 0.0, 30.0, 0.0]}, index=IDX)
+    f2 = pd.DataFrame({"C.V1.cs": [0.0, 0.1, 0.1, 0.0], "C.V2.cs": [0.0, 10.0, 10.0, 20.0]}, index=IDX)
+    F = field_scale({"a": f1, "b": f2}, w, w, sc)
+    # V1: a 0.1, b 0.05 -> F 0.075 · V2: a 10, b 10 -> F 10
+    assert F == {"C": {"V1": pytest.approx(0.075), "V2": pytest.approx(10.0)}}
+    rel = {n: headline(add_rel(f, F, sc, "cs")[f"C.{REL}.cs"], w, w, SPLIT)["headline"] for n, f in (("a", f1), ("b", f2))}
+    assert rel["a"] == pytest.approx((0.1 / 0.075 + 10 / 10) / 2)        # 1.1667
+    assert np.mean(list(rel.values())) == pytest.approx(1.0)            # the field averages 1.00 by construction
+    with pytest.raises(ValueError, match="positive unit"):
+        field_scale({"a": f1 * 0}, w, w, sc)
 
 
 def test_cs_and_weighted_headline():

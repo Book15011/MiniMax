@@ -13,7 +13,7 @@ import pytest
 from backtest.data import Market, universe_from_panel
 from backtest.engine import Costs, Simulator, compute_targets, decision_times
 from backtest.scoring import registry
-from backtest.scoring.evaluate import LongOnly, planner_orders, simulate
+from backtest.scoring.evaluate import LongOnly, planner_orders, simulate, tool_version
 from backtest.scoring.leakage import leakage_gate
 from backtest.scoring.score import dumps, score_model
 from src.config import load_config
@@ -93,7 +93,20 @@ def test_two_runs_give_identical_score_json(tmp_path, market):
     s3, _ = score_model(model, market, cfg, use_cache=True)            # and the cache returns the same thing
     assert dumps(s3) == dumps(s1)
     assert s1["windows"]["scored"] == 60 and s1["gates"]["G4"]["ran"]  # MOM_SS25 shorts, so G4 really runs
-    assert set(s1["headline"]) == {"FLOORED", "POL"} and set(s1["headline"]["POL"]) == {"V1", "V2", "V3", "V4"}
+    assert set(s1["headline"]) == {"FLOORED", "POL"} and set(s1["headline"]["POL"]) == {"V1", "V2", "V3", "V4", "REL"}
+    g4 = s1["gates"]["G4"]
+    assert {"long_only_G1", "long_only_G2"} <= set(g4) and g4["pass"] == (g4["long_only_G1"] and g4["long_only_G2"])
+
+
+def test_tool_version_changes_with_the_field(market):
+    """A field member's code or parameters set every model's return gate, so they are part of the version."""
+    cfg = copy.deepcopy(CFG)
+    v0 = tool_version(cfg, market)
+    cfg["models"]["team_rot_ew"]["k"] = 7
+    assert tool_version(cfg, market) != v0
+    cfg = copy.deepcopy(CFG)
+    cfg["models"]["pol_trend_ls"]["threshold"] = 0.9                    # not a field member: no change
+    assert tool_version(cfg, market) == v0
 
 
 def test_cash_scores_zero_and_fails_g1(tmp_path, market):

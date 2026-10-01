@@ -18,12 +18,13 @@ import numpy as np
 import pandas as pd
 
 from backtest.scoring import registry, svg
-from backtest.scoring.competition import headline, return_gate
-from backtest.scoring.score import cs_table, dumps, score_model
+from backtest.scoring.competition import REL, all_variants, headline
+from backtest.scoring.score import dumps, score_model
 from src.config import REPO_ROOT, resolve
 from src.contracts import MEMBERS
 
-VARIANT_NAMES = {"V1": "daily_raw", "V2": "daily_annual", "V3": "hourly_annual", "V4": "total_calmar"}
+VARIANT_NAMES = {"V1": "daily_raw", "V2": "daily_annual", "V3": "hourly_annual", "V4": "total_calmar",
+                 REL: "field-relative (1.00 = field average, V1–V4 averaged)"}
 FIELD_LABELS = {"team_btc_hold": "BTC_HOLD", "team_ew_daily": "EW_DAILY", "team_rot_ew": "ROT_EW",
                 "team_rot_iv": "ROT_IV", "team_trend_2": "TREND_2", "team_mom_ss25": "MOM_SS25", "team_cash": "CASH"}
 
@@ -58,11 +59,13 @@ def field_headlines(ctx: dict, cfg: dict) -> dict[str, dict]:
     sc = cfg["scoring"]
     out = {}
     for n, r in ctx["field"].items():
-        g = return_gate(r.windows.R, ctx["field_median"], float(sc["return_gate_floor"]))
-        cs = cs_table(r.windows, g, sc).loc[ctx["starts"]]
+        cs = ctx["field_cs"][n]
         w = r.windows.loc[ctx["starts"]]
-        out[n] = {"headline": {c: {v: headline(cs[f"{c}.{v}.cs"], ctx["w_live"], ctx["w_rec"], sc["headline"])["headline"]
-                                   for v in sc["variants"]} for c in sc["conventions"]},
+        head = {c: {v: headline(cs[f"{c}.{v}.cs"], ctx["w_live"], ctx["w_rec"], sc["headline"])["headline"]
+                    for v in sc["variants"]} for c in sc["conventions"]}
+        for c, hv in head.items():
+            hv[REL] = float(np.mean([hv[v] / ctx["field_scale"][c][v] for v in sc["variants"]]))
+        out[n] = {"headline": head,
                   "median_R": float(w.R.median()), "worst10_R": float(w.R.quantile(0.1)), "worst_R": float(w.R.min()),
                   "median_MDD": float(w.MDD.median()), "min_active": int(w.active_days.min()),
                   "stress_worst": float(r.windows.R.reindex(ctx["sets"]["STRESS"]).min())}
@@ -191,7 +194,8 @@ Across windows:
 - return gate: gate_w = 1 if R_w >= max({gf}, median of the 6 benchmarks' R_w), else 0 · CS_w = gate_w x Composite_w
 - LIVE-LIKE weights from `{ll}` (PART 0), renormalized over the scored windows · RECENCY weight = 0.5^(age / {hl}), age = days from the window's end to T* = {ts}
 - HEADLINE = {a} x (sum w_live CS / sum w_live) + {b} x (sum w_rec CS / sum w_rec)
-- Gates: G1 >= {g1} active days in {g1s:.0%} of windows (guard days count; flagged above {g1g:.0%} of active days) · G2 worst R > BTC_HOLD's worst · G3 no regime cell median R < {g3:+.0%} · G4 long-only run (negative targets set to 0) completes · G5 {g5} decisions: reproducible, unchanged when all data after t is random-walk noise, no I/O · G6 STRESS worst R >= BTC_HOLD's worst and median R >= BTC_HOLD's median
+- REL: CS_w(REL) = mean over V1–V4 of CS_w(v) / F(v), F(v) = the 6 benchmarks' mean HEADLINE(v); so HEADLINE(REL) = mean over v of HEADLINE(v) / F(v), and 1.00 is the field average
+- Gates: G1 >= {g1} active days in {g1s:.0%} of windows (guard days count; flagged above {g1g:.0%} of active days) · G2 worst R > BTC_HOLD's worst · G3 no regime cell median R < {g3:+.0%} · G4 long-only run (negative targets set to 0) completes and passes G1 and G2 · G5 {g5} decisions: reproducible, unchanged when all data after t is random-walk noise, no I/O · G6 STRESS worst R >= BTC_HOLD's worst and median R >= BTC_HOLD's median
 """
 
 
@@ -221,7 +225,8 @@ def write_report(score: dict, ctx: dict, cfg: dict, md: Path, runtime_s: float, 
          f"| Outputs | `{outputs['score_json']}` (sha256 `{outputs['score_sha256'][:16]}…`) · `{outputs['trades_csv']}` |",
          f"| Runtime | {runtime_s:.0f} s (cached parts are reused) |", "",
          "## Summary", "",
-         f"**HEADLINE {pv} {pc} (primary): {num(prim['headline'])}**, rank {ranks[pc][pv][0]} of {ranks[pc][pv][1]} "
+         f"**HEADLINE {pv} {pc} (primary): {num(prim['headline'])}**"
+         f"{' (1.00 = the field average under all four readings)' if pv == REL else ''}, rank {ranks[pc][pv][0]} of {ranks[pc][pv][1]} "
          f"scored runs · **{'eligible' if score['eligible'] else 'NOT eligible'}** "
          f"({'all gates pass' if score['eligible'] else 'fails ' + ', '.join(g for g, v in gates.items() if not v['pass'])}).", "",
          f"Median 14-day R {pct(score['summary']['median_R'])} · worst 10% {pct(score['summary']['worst10_R'])} · "
@@ -229,7 +234,7 @@ def write_report(score: dict, ctx: dict, cfg: dict, md: Path, runtime_s: float, 
          f"(liquidated median R {pct(score['returns_liquidated']['median_R'])}).", "",
          "| Variant | " + " | ".join(f"{c} | rank" for c in sc["conventions"]) + " | Live-like layer | Recency layer |",
          "|---|" + "---|---|" * len(sc["conventions"]) + "---|---|"]
-    for v in sc["variants"]:
+    for v in all_variants(sc):
         cells = " | ".join(f"{num(score['headline'][c][v]['headline'])} | {ranks[c][v][0]}/{ranks[c][v][1]}"
                            for c in sc["conventions"])
         tag = " (primary)" if v == pv else ""
@@ -331,7 +336,7 @@ def publish(score: dict, ctx: dict, cfg: dict, md: Path, runtime_s: float, log: 
     cur = registry.current(entries, score["tool_version"])
     if not any(e["run_key"] == score["model"]["run_key"] for e in cur):
         cur = cur + [registry.entry_from(score, who, outputs)]
-    ranks = {c: {v: registry.rank(cur, score["headline"][c][v]["headline"], c, v) for v in sc["variants"]}
+    ranks = {c: {v: registry.rank(cur, score["headline"][c][v]["headline"], c, v) for v in all_variants(sc)}
              for c in sc["conventions"]}
     write_report(score, ctx, cfg, md, runtime_s, ranks, outputs, log)
     log.info("score.json: %s (sha256 %s)", sj, outputs["score_sha256"])
