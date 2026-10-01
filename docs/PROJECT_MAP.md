@@ -22,24 +22,26 @@ src/models/<member>/<model>.py ──► backtest/ (harness) ──► reports/<
 | Path | What it is |
 |---|---|
 | `AGENTS.md` | Rules for every agent and teammate. Read at the start of every session |
-| `config.yaml` | Every tunable number: universe, data jobs, validation, `harness:`, and `models:` (one block per model, grouped by member) |
+| `config.yaml` | Every tunable number: universe, data jobs, validation, `harness:`, `scoring:` and `models:` (one block per model, grouped by member) |
 | `src/config.py` | Loads `config.yaml`; symbol helpers (`BTC/USD` ↔ `BTCUSDT`) |
 | `src/contracts.py` | **Shared contract**: `ModelSpec`, `MarketView`, `check_targets`. Changes need both other members' review |
 | `src/models/` | The model registry (`discover`, `get`, `by_method`) and `_template.py` |
-| `src/models/baselines/` | Team references (`team_btc_hold`); reported for context, never compete |
+| `src/models/baselines/` | Team references, never compete: `team_btc_hold`, `team_cash`, and the scoring field `team_ew_daily`, `team_rot_ew`, `team_rot_iv`, `team_trend_2`, `team_mom_ss25` |
 | `src/models/<member>/` | Each member's models: one file per model, file name = model name |
+| `src/models/pol/_combo.py` | Combinations of existing models: weighted blends (`pol_combo_*`) and BTC-trend switches (`pol_switch_*`); sleeve parameters are YAML anchors to the sleeves' own config blocks |
 | `src/data/` | Binance archive downloader (locked, append-only manifest, checksums), loader (ms/µs), integrity sweep, FRED, futures, hourly panel |
 | `src/validation/` | Lookalike validation: state features, outcomes, pre-registered selection, walk-forward skill, report |
 | `backtest/data.py` | Loads the hourly panel, point-in-time universe and Roostoo spreads for the harness |
-| `backtest/engine.py` | Runs a model's decisions through one 14-day window from cash: fees, spread, 1-bar lag, band, activity guard |
+| `backtest/engine.py` | Runs a model's decisions through one 14-day window from cash: fees, spread, 1-bar lag, band, activity guard with a keep-alive trade, gross capped at 100% after every trade |
 | `backtest/metrics.py` | Return, max drawdown, Sharpe/Sortino/Calmar and the composite under conventions A and B |
 | `backtest/evaluate.py` | Scores a model on every window; periods, scenario sets, must-pass checks, result cache |
 | `backtest/report.py` | Writes `reports/<name>/<stamp>.md` and the `.log` |
 | `backtest/run.py` | `python -m backtest.run --model <name>` · `--list` · `--holdout` (frozen launch model only) |
 | `backtest/compare.py` | `python -m backtest.compare --method <method>`: the pre-registered per-method rule |
+| `backtest/scoring/` | Competition-style score (`docs/EVALUATION.md`): metrics V1–V4 × FLOORED/POL, live-like and recency weights, return gate, HEADLINE, gates G1–G6, leakage check, registry and leaderboard, SVG report. `--score` on `backtest.run`; `python -m backtest.scoring compare/leaderboard/field` |
 | `scripts/wt`, `scripts/lock`, `scripts/status` | Worktrees per member and task, single-copy jobs, a status screen |
-| `tests/` | `pytest -q`: downloader, loader, leakage, validation units, harness (metrics by hand, engine accounting, contracts) |
-| `docs/` | `TEAM_PLAN.md` (plan and decisions), `STRATEGY_GUIDE.md`, this map |
+| `tests/` | `pytest -q`: downloader, loader, leakage, validation units, harness (metrics by hand, engine accounting, contracts), scoring (golden values, an independent re-implementation, toy tables, determinism, registry, leakage) |
+| `docs/` | `TEAM_PLAN.md` (plan and decisions), `STRATEGY_GUIDE.md`, `EVALUATION.md` (the score and its sign-off checklist), this map |
 
 **Planned** (build list in `docs/TEAM_PLAN.md` §4.1):
 - `backtest/selection.py`: the selection ladder.
@@ -65,5 +67,9 @@ src/models/<member>/<model>.py ──► backtest/ (harness) ──► reports/<
 | `reports/<model>/<YYYYMMDD-HHMM>.md` | Yes: the record of each run |
 | `reports/<model>/<YYYYMMDD-HHMM>.log` | No |
 | `reports/compare/<method>/…` | `.md` yes, `.log` no |
+| `reports/<model>/<YYYYMMDD-HHMM>-score.md` and its chart folder | Yes (`--score`) |
+| `reports/compare/headline/…` | `.md` yes, `.log` no (`python -m backtest.scoring compare`) |
+| `reports/review/<YYYYMMDD>-<topic>.md` | Yes: reviews of a teammate's branch, with the evidence |
 | `reports/validation_set_v1.md`, `validation/validation_set_v1.json` | Yes (written by `src.validation.build`) |
-| `results/<member>/` | No: scratch |
+| `results/<member>/` | No: scratch, and each scoring run's `score.json` and `trades.csv.gz` |
+| `results/scoring/` | No: the shared scoring registry (`registry.jsonl`), `leaderboard.md` and cache |

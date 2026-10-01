@@ -11,13 +11,18 @@ cd .worktrees/<member>-<model>
 cp src/models/_template.py src/models/<member>/<member>_<name>.py   # edit it; uncomment MODEL = ...
 # add your parameters to config.yaml under `models:`, below your "# --- <member> ---" marker
 .venv/bin/python -m backtest.run --list
-scripts/lock harness-<member> -- nice -n 10 .venv/bin/python -m backtest.run --model <member>_<name>
+scripts/lock harness-<member> -- nice -n 10 .venv/bin/python -m backtest.run --model <member>_<name> --score
 pytest -q                                       # includes a contract test for every registered model
-git add src/models/<member>/<member>_<name>.py config.yaml reports/<member>_<name>/*.md
+git add src/models/<member>/<member>_<name>.py config.yaml reports/<member>_<name>/
 git commit -m "Add <member>_<name>: <what it does and why>"
 ```
 
-A run takes under a minute for a daily model. It writes `reports/<model>/<YYYYMMDD-HHMM>.md` (commit it) and a `.log` next to it (never committed).
+A run takes under a minute for a daily model, plus about a minute for `--score` (a few minutes the first time, while the benchmarks are scored). It writes:
+- `reports/<model>/<YYYYMMDD-HHMM>.md`: commit it
+- with `--score`, `<YYYYMMDD-HHMM>-score.md` and its chart folder: commit them
+- a `.log` next to them: never committed
+
+§4.1 explains the score.
 
 ## 2. The model contract (`src/contracts.py`)
 
@@ -90,6 +95,37 @@ A selector can call other models' `targets()` inside its own `targets()`: they'r
   - **Composite B:** hourly returns, annualized ratios, Calmar on the raw 14-day return
   - both composites = 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar; the official formula is published only on Finale Day, so we look at both
   - active days, turnover, fees, most orders in a day
+
+### 4.1 How to score your model: the competition-style score
+
+`--score` scores the model the way the competition probably will. The full definition, with every constant and the team sign-off checklist, is in `docs/EVALUATION.md`.
+
+1. **Each window gets a composite:** 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar.
+   - The official formula is unpublished, so four readings are computed: V1 daily_raw, V2 daily_annual, V3 hourly_annual, V4 total_calmar.
+   - Each reading is computed under two denominator conventions: FLOORED (primary) and POL (this harness's).
+   - **REL (proposed primary):** each reading's HEADLINE divided by the six benchmarks' average, then averaged over the four readings. 1.00 = the field average; 1.30 = 30% better than a typical competitor under every reading at once.
+2. **Return gate:** a window counts only if the model's 14-day return is ≥ 0 and ≥ the median of six benchmarks: BTC_HOLD, EW_DAILY, ROT_EW, ROT_IV, TREND_2 and MOM_SS25, in `src/models/baselines/`.
+3. **HEADLINE** = 0.70 × the gated composite weighted by live-likeness (PART 0) + 0.30 × the same weighted by recency (half-life 60 days).
+4. **Gates G1–G6.** All must pass for the model to be eligible:
+   - G1: ≥ 10 active days in every window
+   - G2: worst fortnight better than BTC hold
+   - G3: no regime cell with median return below −10%
+   - G4: with shorts disabled, still runs and still passes G1 and G2
+   - G5: no look-ahead or I/O
+   - G6: survives the 20 STRESS windows at least as well as BTC hold
+
+**Reading `<stamp>-score.md`:**
+- The summary line gives the primary HEADLINE (REL FLOORED), its rank among all scored runs, and whether the model is eligible.
+- The tables give the other variants and conventions, why each gate passed or failed, the layer scores, and the benchmarks on the same windows.
+- The charts follow.
+
+**Comparing two models:** `python -m backtest.scoring compare <a> <b>` gives the HEADLINE difference with a 90% block-bootstrap interval. An interval that includes 0 means no clear winner.
+
+**Leaderboard:** `results/scoring/leaderboard.md` lists every full run of the current tool version, with each person's run count next to their best score.
+
+Two things to know:
+- **G5 runs your `targets()` with file and network access blocked.** Keep it pure.
+- **The score does not replace the §5 rule.** It runs alongside it until the team signs off the checklist in `docs/EVALUATION.md`.
 
 ## 5. Choosing the best model in a method (pre-registered)
 

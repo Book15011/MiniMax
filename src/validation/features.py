@@ -197,23 +197,28 @@ class StateEngine:
 
         d30, d180 = pd.Timedelta(days=30), pd.Timedelta(days=180)
         sp = fred["SP500"]
+        # extra publication lags (e.g. DTWEXBGS is published weekly, so its latest days are not yet out)
+        lags = {k: pd.Timedelta(days=d) for k, d in (self.v.get("macro_lag_days") or {}).items()}
+
+        def val(s: str, when: pd.Timestamp) -> float:
+            return _value_before_day(fred[s], when - lags.get(s, pd.Timedelta(0)))
+
         for t in times:
             k = release.searchsorted(t, side="right")  # months released at or before t
             if k >= 4:
                 released = cpi_sorted.index[:k]
                 out.at[t, "X1"] = yoy(released[-1])
                 out.at[t, "X2"] = yoy(released[-1]) - yoy(released[-4])
-            v = {s: _value_before_day(fred[s], t) for s in ("DFEDTARU", "DGS10", "DTWEXBGS", "VIXCLS", "DCOILWTICO")}
-            ff_then = _value_before_day(fred["DFEDTARU"], t - d180)
-            out.at[t, "X3"] = float(np.sign(v["DFEDTARU"] - ff_then))
-            out.at[t, "X4"] = v["DGS10"] - _value_before_day(fred["DGS10"], t - d30)
-            out.at[t, "X5"] = v["DTWEXBGS"] / _value_before_day(fred["DTWEXBGS"], t - d30) - 1
+            v = {s: val(s, t) for s in ("DFEDTARU", "DGS10", "DTWEXBGS", "VIXCLS", "DCOILWTICO")}
+            out.at[t, "X3"] = float(np.sign(v["DFEDTARU"] - val("DFEDTARU", t - d180)))
+            out.at[t, "X4"] = v["DGS10"] - val("DGS10", t - d30)
+            out.at[t, "X5"] = v["DTWEXBGS"] / val("DTWEXBGS", t - d30) - 1
             day = t.tz_convert(None).normalize()
             hist = sp.iloc[: sp.index.searchsorted(day, side="left")]
             if len(hist) >= 200:
                 out.at[t, "X6"] = float(hist.iloc[-1] / hist.iloc[-200:].mean() - 1)
             out.at[t, "X7"] = v["VIXCLS"]
-            out.at[t, "X8"] = v["DCOILWTICO"] / _value_before_day(fred["DCOILWTICO"], t - d30) - 1
+            out.at[t, "X8"] = v["DCOILWTICO"] / val("DCOILWTICO", t - d30) - 1
         return out
 
     def calendar_features(self, times: pd.DatetimeIndex) -> pd.DataFrame:

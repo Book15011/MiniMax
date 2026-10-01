@@ -60,10 +60,32 @@ def git_state() -> dict:
                                                                                   "--untracked-files=no"))}
 
 
+ENGINE_FILES = ("backtest/engine.py", "backtest/metrics.py", "backtest/evaluate.py", "backtest/data.py",
+                "src/contracts.py")
+
+
+def model_modules(model: Model) -> list[str]:
+    """Every src.models module the model's code can reach: its class hierarchy and, transitively, the src.models
+    modules and objects those modules refer to (a reused base class, the sleeves of a combination)."""
+    todo, seen = [c.__module__ for c in type(model).__mro__], set()
+    while todo:
+        m = todo.pop()
+        mod = sys.modules.get(m)
+        if m in seen or not m.startswith("src.models") or mod is None or hasattr(mod, "__path__"):
+            continue                                           # packages (src.models itself) would pull in everything
+        seen.add(m)
+        for v in vars(mod).values():
+            todo.append(v.__name__ if inspect.ismodule(v) else getattr(v, "__module__", None) or "")
+    return sorted(seen)
+
+
 def cache_key(model: Model, params: dict, cfg: dict, market: Market, holdout: bool) -> str:
-    src = inspect.getsource(sys.modules[type(model).__module__])
+    """Changes with the model's code (model_modules), its parameters, the harness config, the data and the code
+    that turns decisions into numbers (ENGINE_FILES)."""
+    src = "\n".join(inspect.getsource(sys.modules[m]) for m in model_modules(model))
+    engine = {f: hashlib.sha256((REPO_ROOT / f).read_bytes()).hexdigest() for f in ENGINE_FILES}
     blob = json.dumps({"src": src, "params": params, "harness": cfg["harness"], "data": market.notes,
-                       "holdout": holdout}, sort_keys=True, default=str)
+                       "holdout": holdout, "engine": engine}, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
@@ -111,7 +133,7 @@ def evaluate(model: Model, market: Market, cfg: dict, holdout: bool = False, use
     log.info("%s: %d decisions %s -> %s, %d windows", spec.name, len(times), times[0], times[-1], len(starts))
     targets = compute_targets(model, market, times, params)
     sim = Simulator(market, targets, spec.band, Costs(h["fees"]["taker"], h["fees"]["short"]), lag, hour,
-                    h["activity_guard_offset_hours"])
+                    h["activity_guard_offset_hours"], float(h.get("keep_alive_weight", 0.0)))
     rows = []
     for t0 in starts:
         res = sim.run(market.close.index.get_loc(t0), days * 24)

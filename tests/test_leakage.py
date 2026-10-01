@@ -2,6 +2,7 @@
 intermediate files exist in data/validation/ (they are skipped otherwise)."""
 import ast
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +18,7 @@ from src.validation.walkforward import run_walkforward
 from tests.synth import LATE_LISTING, cpi_release, make_market, perturb_after
 
 V = load_config()["validation"]
-OUT = REPO_ROOT / "data" / "validation"
+OUT = Path(os.environ.get("MM_VALIDATION_OUT", REPO_ROOT / "data" / "validation"))
 RULES = PickRules(V["k"], V["min_separation_days"], V["span_days"], V["max_per_span"], V["horizon_days"])
 H14 = pd.Timedelta(days=14)
 
@@ -48,7 +49,7 @@ def test_e1_future_perturbation_synthetic(market, engine):
     for k, t in enumerate(times):
         t = pd.Timestamp(t)
         base = engine.features([t])
-        pert = StateEngine(perturb_after(market, t, seed=100 + k), V)
+        pert = StateEngine(perturb_after(market, t, seed=100 + k, lags=V["macro_lag_days"]), V)
         assert _bits(pert.features([t])) == _bits(base), f"features at {t} changed when only later data changed"
         later = t + pd.Timedelta(days=20)
         if later <= engine.close_d.index[-1]:
@@ -69,7 +70,8 @@ def test_e1_future_perturbation_real_data():
     times = _random_times(eng.close_d.index, 20, 2, "2020-07-01", str(eng.close_d.index[-40].date()))
     for k, t in enumerate(times):
         t = pd.Timestamp(t)
-        pert = StateEngine(perturb_after(data, t, seed=200 + k, release_day=V["cpi_release_day"]), V)
+        pert = StateEngine(perturb_after(data, t, seed=200 + k, release_day=V["cpi_release_day"],
+                                         lags=V["macro_lag_days"]), V)
         assert _bits(pert.features([t])) == _bits(eng.features([t])), f"real-data features at {t} changed"
 
 
@@ -107,6 +109,22 @@ def test_e2_daily_fred_uses_previous_business_day(market, engine):
     t = pd.Timestamp("2020-06-15 16:00", tz="UTC")  # a Monday: must use Friday 2020-06-12
     vix = market.fred["VIXCLS"]
     assert engine.macro_features(pd.DatetimeIndex([t]))["X7"].iloc[0] == vix[pd.Timestamp("2020-06-12")]
+
+
+def test_e2_dtwexbgs_is_lagged_seven_days(market, engine):
+    assert V["macro_lag_days"]["DTWEXBGS"] == 7
+    t = pd.Timestamp("2020-06-17 16:00", tz="UTC")  # Wednesday; 7 days earlier is Wed 2020-06-10
+    s = market.fred["DTWEXBGS"]
+    x5 = engine.macro_features(pd.DatetimeIndex([t]))["X5"].iloc[0]
+    now = s[s.index < pd.Timestamp("2020-06-10")].iloc[-1]       # last value dated before 2020-06-10
+    then = s[s.index < pd.Timestamp("2020-05-11")].iloc[-1]      # ... and 30 days before that
+    assert x5 == now / then - 1
+    # values from the last 7 days before t must not matter
+    s2 = s.copy()
+    s2[(s2.index >= pd.Timestamp("2020-06-10")) & (s2.index < pd.Timestamp("2020-06-17"))] *= 5.0
+    alt = StateEngine(MarketData(market.close, market.quote_volume, market.funding, market.oi,
+                                 {**market.fred, "DTWEXBGS": s2}), V)
+    assert alt.macro_features(pd.DatetimeIndex([t]))["X5"].iloc[0] == x5
 
 
 # ---- E3: embargo ----------------------------------------------------------------------------------

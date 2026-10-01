@@ -1,6 +1,7 @@
-"""Score one model: python -m backtest.run --model <name> [--holdout] [--no-cache] | --list
+"""Score one model: python -m backtest.run --model <name> [--score] [--holdout] [--no-cache] | --list
 
 Writes reports/<name>/<YYYYMMDD-HHMM>.md (commit it) and a .log next to it (never committed).
+--score adds the competition-style score (docs/EVALUATION.md): <YYYYMMDD-HHMM>-score.md and its charts.
 """
 from __future__ import annotations
 
@@ -22,7 +23,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--list", action="store_true", help="list registered models")
     ap.add_argument("--holdout", action="store_true", help="open the sealed holdout (only for the frozen launch model)")
     ap.add_argument("--no-cache", action="store_true", help="recompute even if a cached result matches")
+    ap.add_argument("--score", action="store_true", help="also compute the competition-style score (docs/EVALUATION.md)")
     a = ap.parse_args(argv)
+    if a.score and a.holdout:
+        ap.error("--score never opens the holdout; use --holdout without --score")
     if a.list or not a.model:
         for name, m in sorted(discover().items(), key=lambda kv: (kv[1].spec.method, kv[0])):
             print(f"{m.spec.method:10s} {name:28s} {m.spec.author:8s} {m.spec.description}")
@@ -39,6 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     for c, ok, d in out["checks"]:
         log.info("must-pass %-30s %s  %s", c, "PASS" if ok else "FAIL", d)
     log.info("report: %s", md)
+    if a.score:
+        from backtest.scoring.report import score_and_publish
+        score_and_publish(model, market, cfg, md.with_name(f"{md.stem}-score.md"), log, use_cache=not a.no_cache)
     return 0
 
 
