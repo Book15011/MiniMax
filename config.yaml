@@ -220,8 +220,83 @@ harness:
     lookalikes: validation/validation_set_v1.json
     recent_n: 25
 
+# Competition-style scoring (backtest/scoring/, docs/EVALUATION.md). Every value below is listed in the
+# TEAM SIGN-OFF CHECKLIST of docs/EVALUATION.md and stays "pending team review" until the team confirms it.
+scoring:
+  version: 1                              # bump on any formula change; caches and the leaderboard key on it
+  e0: 100000                              # USD equity at the start of every window, before the first trade
+  hours_per_day: 24
+  stride_days: 1                          # 1 = every pool window; a full run takes minutes, so no stride is needed
+  t_star: "2026-10-03 16:00"              # live start (UTC); recency age = days from a window's end to here
+  live_like: validation/live_like_v1.json # PART 0 weights: no CPI filter, no direction reweighting
+  validation_set: validation/validation_set_v1.json   # LOOKALIKE-25, RECENT-25 and the 20 STRESS windows
+  regimes: data/validation/outcomes.parquet           # ex-post 3x3 grid: terciles of BTC return x BTC volatility
+  recency_half_life_days: 60
+  headline: {live_like: 0.70, recency: 0.30}
+  liquidation_cost: 0.001                 # R_liq charges this on the gross notional still open at the end
+  composite: {sortino: 0.4, sharpe: 0.3, calmar: 0.3}
+  variants:                               # Sharpe, Sortino = (m / denominator) * sqrt(annualize)
+    V1: {returns: daily, annualize: 1, calmar: mean}      # daily_raw (PRIMARY): Calmar = m / MDD
+    V2: {returns: daily, annualize: 365, calmar: mean}    # daily_annual: Calmar = m * 365 / MDD
+    V3: {returns: hourly, annualize: 8760, calmar: mean}  # hourly_annual: Calmar = m * 8760 / MDD
+    V4: {returns: daily, annualize: 1, calmar: total}     # total_calmar: Calmar = R / MDD
+  conventions:                            # denominator floors; 0 = no floor, and a zero denominator gives 0
+    FLOORED: {s_daily: 0.001, dd_daily: 0.001, mdd: 0.002,
+              s_hourly: 0.000204124145231931, dd_hourly: 0.000204124145231931}   # hourly = 0.001 / sqrt(24)
+    POL: {s_daily: 0, dd_daily: 0, s_hourly: 0, dd_hourly: 0, mdd: 0.0001}       # as backtest/metrics.py
+  primary: {variant: V1, convention: FLOORED}
+  field: [team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2, team_mom_ss25]
+  btc_hold: team_btc_hold                 # reference for G2 and G6
+  return_gate_floor: 0.0                  # gate_w = 1 if R_w >= max(this, median of the field's R_w)
+  gates:
+    G1: {min_active_days: 10, share_of_windows: 1.0, guard_flag_share: 0.25}
+    G3: {min_cell_median_return: -0.10}
+    G5: {decisions: 30, seed: 20261003, noise_sigma: 0.01}
+  compare: {block_windows: 14, reps: 2000, level: 0.90, seed: 20261003}
+  report: {curves: 25}
+  cache_dir: results/scoring/cache        # shared by every worktree (results/ links to the root's results/)
+  registry: results/scoring/registry.jsonl     # append-only, one line per full run, written under a lock
+  leaderboard: results/scoring/leaderboard.md  # regenerated after every registered run
+
 # Model parameters: one block per model, under its author's marker (keeps merges clean).
 models:
+  # --- team (frozen benchmarks for the scoring field; docs/EVALUATION.md section 3) ---
+  team_rot_ew:
+    lookback_days: [3, 7, 14]
+    vol_days: 30                  # covariance window of the book-volatility estimate
+    min_history_days: 30
+    k: 6
+    keep_rank: 12
+    weighting: equal
+    target_daily_vol: 0.03
+  team_rot_iv:
+    lookback_days: [3, 7, 14]
+    vol_days: 30
+    min_history_days: 30
+    k: 6
+    keep_rank: 12
+    weighting: inverse_vol
+    target_daily_vol: 0.02
+  team_trend_2:
+    coins: [BTCUSDT, ETHUSDT]
+    ema_days: 40
+    hysteresis: 0.03              # in trend above EMA * 1.03, out below EMA * 0.97, unchanged between
+    state_days: 120               # the hysteresis is replayed over this many days at each decision
+    vol_days: 30
+    risk_budget: 0.25             # weight = 0.25 / annualized volatility
+    out_of_trend_scale: 0.15
+  team_mom_ss25:                  # the TEAM_PLAN v1 MOM-SS numbers, frozen (pol_mom_ss may evolve)
+    lookback_days: [3, 7, 14]
+    vol_days: 30
+    min_history_days: 30
+    min_coins: 8
+    top_n: 15
+    k: 5
+    keep_rank: 10
+    long_gross: 0.75
+    long_vol_cap: 0.5
+    short_gross: 0.25
+    short_k: 4
   # --- pol ---
   pol_mom_ss:
     lookback_days: [3, 7, 14]

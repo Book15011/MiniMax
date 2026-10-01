@@ -31,6 +31,7 @@ class WindowResult:
     fees: float              # fees + spread paid, as a fraction of equity (summed)
     max_orders_day: int      # most coins traded in a single HKT day
     max_gross: float         # largest sum |w| right after a trade
+    trace: dict | None = None  # only with run(..., trace=True); see Simulator.run
 
 
 def decision_times(index: pd.DatetimeIndex, every_h: int, anchor_hour: int,
@@ -97,7 +98,11 @@ class Simulator:
         # fees are taken from the book pro rata, so weights relative to the new equity equal `new` (gross stays <= 1)
         return new, float(np.abs(d).sum()), cost, int(moved.sum())
 
-    def run(self, i0: int, hours: int) -> WindowResult:
+    def run(self, i0: int, hours: int, trace: bool = False) -> WindowResult:
+        """trace=True also returns, for the scoring layer (backtest/scoring), the hourly gross and net exposure,
+        every trade (hour, kind, weights before and after, equity before, cost), which days had a strategy trade
+        and which had a guard trade. It never changes the result. A guard hour that is also a decision hour
+        counts as a strategy trade if the decision alone would have traded."""
         if i0 + hours >= len(self.index):
             raise ValueError("window runs past the end of the data")
         n_days = hours // 24
@@ -108,6 +113,10 @@ class Simulator:
         traded = np.zeros(n_days, dtype=bool)
         orders = np.zeros(n_days, dtype=int)
         turnover = fees = max_gross = 0.0
+        tr = None
+        if trace:
+            tr = {"cols": self.cols, "gross": np.zeros(hours + 1), "net": np.zeros(hours + 1), "trades": [],
+                  "strategy_day": np.zeros(n_days, dtype=bool), "guard_day": np.zeros(n_days, dtype=bool)}
         for h in range(1, hours + 1):
             i = i0 + h
             r = self.R[i]
@@ -120,8 +129,14 @@ class Simulator:
             first = h == 1
             guard = (not traded[day]) and ((h - 1) % 24 == self.guard)
             if first or guard or self.is_dec[j]:
+                w0 = w
                 w, tv, cost, n = self._trade(w, self.T[j], exact=first or guard)
                 if n:
+                    if tr is not None:
+                        by_guard = guard and not (self.is_dec[j] and self._trade(w0, self.T[j], exact=False)[3])
+                        tr["trades"].append((h, "entry" if first else "guard" if by_guard else "decision",
+                                             w0, w, eq, cost))
+                        tr["guard_day" if by_guard else "strategy_day"][day] = True
                     eq *= 1.0 - cost
                     turnover += tv
                     fees += cost
@@ -129,4 +144,8 @@ class Simulator:
                     orders[day] += n
                     max_gross = max(max_gross, float(np.abs(w).sum()))
             E[h] = eq
-        return WindowResult(E, int(traded.sum()), turnover, fees, int(orders.max()), max_gross)
+            if tr is not None:
+                tr["gross"][h], tr["net"][h] = float(np.abs(w).sum()), float(w.sum())
+        if tr is not None:
+            tr["w_end"] = w
+        return WindowResult(E, int(traded.sum()), turnover, fees, int(orders.max()), max_gross, tr)
