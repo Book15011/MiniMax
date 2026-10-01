@@ -1,0 +1,712 @@
+{
+ "version": "validation_set_v2_prelim",
+ "revision": "1.1 (PART 0: pinned FRED, input hashes, DTWEXBGS lag, RECENT/STRESS sets, fair-CRPS diagnostics)",
+ "asof_requested": "2026-09-30 00:00:00+00:00",
+ "state_time": "2026-09-29 12:00:00+00:00",
+ "live_start_T_star": "2026-10-04 12:00:00+00:00",
+ "holdout_H": "2026-09-30 00:00:00+00:00",
+ "gap_hours_T_star_minus_state_time": 120.0,
+ "variant": "CORE",
+ "groups": [
+  "TREND",
+  "CYCLE",
+  "VOL",
+  "STRUCTURE"
+ ],
+ "features": [
+  "T1",
+  "T2",
+  "T3",
+  "T4",
+  "C1",
+  "C2",
+  "V1",
+  "V2",
+  "M1",
+  "M2",
+  "M3",
+  "M4"
+ ],
+ "query_features_dropped_nan": [],
+ "choice": {
+  "screen_leader": "CORE",
+  "chosen": "CORE",
+  "reason": "CORE had the highest SCREEN skill vs (a)",
+  "core_confirm_skill": 0.028231199279192834,
+  "core_not_predictive": false,
+  "unavailable_variants": []
+ },
+ "parameters": {
+  "validation": {
+   "live_start": "2026-10-04 12:00",
+   "holdout_days": 4.5,
+   "horizon_days": 14,
+   "pool_earliest": "2020-06-01",
+   "grid_hour_utc": 12,
+   "k": 25,
+   "min_separation_days": 14,
+   "span_days": 90,
+   "max_per_span": 3,
+   "hourly_from_1m": "2025-09-01",
+   "overlap_check": {
+    "symbol": "BTCUSDT",
+    "month": "2026-08"
+   },
+   "segment_gap_days": 7,
+   "renames": [
+    {
+     "old": "MATICUSDT",
+     "new": "POLUSDT"
+    },
+    {
+     "old": "FTMUSDT",
+     "new": "SUSDT"
+    }
+   ],
+   "rename_checks": {
+    "min_overlap_hours": 24,
+    "max_median_abs_log_diff": 0.005,
+    "max_abs_log_diff": 0.02,
+    "max_gap_hours": 168,
+    "max_gap_abs_log_diff": 0.05
+   },
+   "universe": {
+    "top_n": 30,
+    "min_history_days": 90,
+    "volume_days": 30,
+    "exclude": [
+     "PAXGUSDT"
+    ],
+    "stablecoins": [
+     "USDCUSDT",
+     "FDUSDUSDT",
+     "TUSDUSDT",
+     "BUSDUSDT",
+     "DAIUSDT",
+     "USDPUSDT",
+     "PYUSDUSDT",
+     "USD1USDT",
+     "EURUSDT",
+     "AEURUSDT",
+     "USDEUSDT",
+     "USTUSDT"
+    ],
+    "leveraged_regex": "^[A-Z0-9]+(UP|DOWN|BULL|BEAR)USDT$"
+   },
+   "funding_min_coverage": 0.5,
+   "funding_prints_per_day": 3,
+   "oi_max_staleness_hours": 1,
+   "cpi_release_day": 16,
+   "macro_lag_days": {
+    "DTWEXBGS": 7
+   },
+   "walkforward": {
+    "start": "2022-07-01",
+    "step_days": 7,
+    "screen_end": "2024-06-30",
+    "confirm_start": "2024-07-01",
+    "random_draws": 50,
+    "bootstrap_reps": 2000,
+    "bootstrap_block": 4,
+    "seed": 20261003
+   },
+   "sensitivity_k": [
+    15,
+    40
+   ]
+  },
+  "rules": {
+   "k": 25,
+   "min_separation_days": 14,
+   "span_days": 90,
+   "max_per_span": 3,
+   "horizon_days": 14
+  },
+  "variants": {
+   "CORE": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE"
+   ],
+   "CORE+POSITIONING": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "POSITIONING"
+   ],
+   "CORE+MACRO": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "MACRO"
+   ],
+   "CORE+CALENDAR": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "CALENDAR"
+   ],
+   "CORE+POSITIONING+MACRO": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "POSITIONING",
+    "MACRO"
+   ],
+   "ALL": [
+    "TREND",
+    "CYCLE",
+    "VOL",
+    "STRUCTURE",
+    "POSITIONING",
+    "MACRO",
+    "CALENDAR"
+   ],
+   "CORE-minus-TREND": [
+    "CYCLE",
+    "VOL",
+    "STRUCTURE"
+   ],
+   "CORE-minus-CYCLE": [
+    "TREND",
+    "VOL",
+    "STRUCTURE"
+   ],
+   "CORE-minus-VOL": [
+    "TREND",
+    "CYCLE",
+    "STRUCTURE"
+   ],
+   "CORE-minus-STRUCTURE": [
+    "TREND",
+    "CYCLE",
+    "VOL"
+   ]
+  }
+ },
+ "pool": {
+  "n": 2298,
+  "first_start": "2020-06-01 12:00:00+00:00",
+  "last_start": "2026-09-15 12:00:00+00:00"
+ },
+ "windows": [
+  {
+   "rank": 1,
+   "start": "2026-05-11 12:00:00+00:00",
+   "end": "2026-05-25 12:00:00+00:00",
+   "distance": 0.143188
+  },
+  {
+   "rank": 2,
+   "start": "2023-02-24 12:00:00+00:00",
+   "end": "2023-03-10 12:00:00+00:00",
+   "distance": 0.162364
+  },
+  {
+   "rank": 3,
+   "start": "2024-10-05 12:00:00+00:00",
+   "end": "2024-10-19 12:00:00+00:00",
+   "distance": 0.1661
+  },
+  {
+   "rank": 4,
+   "start": "2020-06-18 12:00:00+00:00",
+   "end": "2020-07-02 12:00:00+00:00",
+   "distance": 0.166418
+  },
+  {
+   "rank": 5,
+   "start": "2020-07-26 12:00:00+00:00",
+   "end": "2020-08-09 12:00:00+00:00",
+   "distance": 0.170176
+  },
+  {
+   "rank": 6,
+   "start": "2020-07-12 12:00:00+00:00",
+   "end": "2020-07-26 12:00:00+00:00",
+   "distance": 0.175474
+  },
+  {
+   "rank": 7,
+   "start": "2026-09-07 12:00:00+00:00",
+   "end": "2026-09-21 12:00:00+00:00",
+   "distance": 0.176076
+  },
+  {
+   "rank": 8,
+   "start": "2025-08-03 12:00:00+00:00",
+   "end": "2025-08-17 12:00:00+00:00",
+   "distance": 0.179929
+  },
+  {
+   "rank": 9,
+   "start": "2021-09-07 12:00:00+00:00",
+   "end": "2021-09-21 12:00:00+00:00",
+   "distance": 0.181412
+  },
+  {
+   "rank": 10,
+   "start": "2023-04-19 12:00:00+00:00",
+   "end": "2023-05-03 12:00:00+00:00",
+   "distance": 0.182525
+  },
+  {
+   "rank": 11,
+   "start": "2026-05-26 12:00:00+00:00",
+   "end": "2026-06-09 12:00:00+00:00",
+   "distance": 0.189188
+  },
+  {
+   "rank": 12,
+   "start": "2023-12-13 12:00:00+00:00",
+   "end": "2023-12-27 12:00:00+00:00",
+   "distance": 0.202233
+  },
+  {
+   "rank": 13,
+   "start": "2023-02-08 12:00:00+00:00",
+   "end": "2023-02-22 12:00:00+00:00",
+   "distance": 0.20744
+  },
+  {
+   "rank": 14,
+   "start": "2023-11-27 12:00:00+00:00",
+   "end": "2023-12-11 12:00:00+00:00",
+   "distance": 0.208377
+  },
+  {
+   "rank": 15,
+   "start": "2021-11-06 12:00:00+00:00",
+   "end": "2021-11-20 12:00:00+00:00",
+   "distance": 0.208947
+  },
+  {
+   "rank": 16,
+   "start": "2024-09-20 12:00:00+00:00",
+   "end": "2024-10-04 12:00:00+00:00",
+   "distance": 0.212342
+  },
+  {
+   "rank": 17,
+   "start": "2024-10-19 12:00:00+00:00",
+   "end": "2024-11-02 12:00:00+00:00",
+   "distance": 0.216513
+  },
+  {
+   "rank": 18,
+   "start": "2024-01-19 12:00:00+00:00",
+   "end": "2024-02-02 12:00:00+00:00",
+   "distance": 0.216534
+  },
+  {
+   "rank": 19,
+   "start": "2023-07-20 12:00:00+00:00",
+   "end": "2023-08-03 12:00:00+00:00",
+   "distance": 0.218645
+  },
+  {
+   "rank": 20,
+   "start": "2024-12-19 12:00:00+00:00",
+   "end": "2025-01-02 12:00:00+00:00",
+   "distance": 0.21951
+  },
+  {
+   "rank": 21,
+   "start": "2023-01-13 12:00:00+00:00",
+   "end": "2023-01-27 12:00:00+00:00",
+   "distance": 0.223459
+  },
+  {
+   "rank": 22,
+   "start": "2024-05-18 12:00:00+00:00",
+   "end": "2024-06-01 12:00:00+00:00",
+   "distance": 0.233832
+  },
+  {
+   "rank": 23,
+   "start": "2022-03-31 12:00:00+00:00",
+   "end": "2022-04-14 12:00:00+00:00",
+   "distance": 0.234694
+  },
+  {
+   "rank": 24,
+   "start": "2025-07-20 12:00:00+00:00",
+   "end": "2025-08-03 12:00:00+00:00",
+   "distance": 0.23565
+  },
+  {
+   "rank": 25,
+   "start": "2024-07-21 12:00:00+00:00",
+   "end": "2024-08-04 12:00:00+00:00",
+   "distance": 0.242366
+  }
+ ],
+ "windows_identical_to_previous_same_asof": null,
+ "recent": [
+  {
+   "start": "2025-10-14 12:00:00+00:00",
+   "end": "2025-10-28 12:00:00+00:00"
+  },
+  {
+   "start": "2025-10-28 12:00:00+00:00",
+   "end": "2025-11-11 12:00:00+00:00"
+  },
+  {
+   "start": "2025-11-11 12:00:00+00:00",
+   "end": "2025-11-25 12:00:00+00:00"
+  },
+  {
+   "start": "2025-11-25 12:00:00+00:00",
+   "end": "2025-12-09 12:00:00+00:00"
+  },
+  {
+   "start": "2025-12-09 12:00:00+00:00",
+   "end": "2025-12-23 12:00:00+00:00"
+  },
+  {
+   "start": "2025-12-23 12:00:00+00:00",
+   "end": "2026-01-06 12:00:00+00:00"
+  },
+  {
+   "start": "2026-01-06 12:00:00+00:00",
+   "end": "2026-01-20 12:00:00+00:00"
+  },
+  {
+   "start": "2026-01-20 12:00:00+00:00",
+   "end": "2026-02-03 12:00:00+00:00"
+  },
+  {
+   "start": "2026-02-03 12:00:00+00:00",
+   "end": "2026-02-17 12:00:00+00:00"
+  },
+  {
+   "start": "2026-02-17 12:00:00+00:00",
+   "end": "2026-03-03 12:00:00+00:00"
+  },
+  {
+   "start": "2026-03-03 12:00:00+00:00",
+   "end": "2026-03-17 12:00:00+00:00"
+  },
+  {
+   "start": "2026-03-17 12:00:00+00:00",
+   "end": "2026-03-31 12:00:00+00:00"
+  },
+  {
+   "start": "2026-03-31 12:00:00+00:00",
+   "end": "2026-04-14 12:00:00+00:00"
+  },
+  {
+   "start": "2026-04-14 12:00:00+00:00",
+   "end": "2026-04-28 12:00:00+00:00"
+  },
+  {
+   "start": "2026-04-28 12:00:00+00:00",
+   "end": "2026-05-12 12:00:00+00:00"
+  },
+  {
+   "start": "2026-05-12 12:00:00+00:00",
+   "end": "2026-05-26 12:00:00+00:00"
+  },
+  {
+   "start": "2026-05-26 12:00:00+00:00",
+   "end": "2026-06-09 12:00:00+00:00"
+  },
+  {
+   "start": "2026-06-09 12:00:00+00:00",
+   "end": "2026-06-23 12:00:00+00:00"
+  },
+  {
+   "start": "2026-06-23 12:00:00+00:00",
+   "end": "2026-07-07 12:00:00+00:00"
+  },
+  {
+   "start": "2026-07-07 12:00:00+00:00",
+   "end": "2026-07-21 12:00:00+00:00"
+  },
+  {
+   "start": "2026-07-21 12:00:00+00:00",
+   "end": "2026-08-04 12:00:00+00:00"
+  },
+  {
+   "start": "2026-08-04 12:00:00+00:00",
+   "end": "2026-08-18 12:00:00+00:00"
+  },
+  {
+   "start": "2026-08-18 12:00:00+00:00",
+   "end": "2026-09-01 12:00:00+00:00"
+  },
+  {
+   "start": "2026-09-01 12:00:00+00:00",
+   "end": "2026-09-15 12:00:00+00:00"
+  },
+  {
+   "start": "2026-09-15 12:00:00+00:00",
+   "end": "2026-09-29 12:00:00+00:00"
+  }
+ ],
+ "stress": {
+  "drops": [
+   {
+    "start": "2021-05-09 12:00:00+00:00",
+    "btc_14d_log_return": -0.49244287405841225,
+    "btc_below_90d_high": -0.10236546485486786
+   },
+   {
+    "start": "2022-06-04 12:00:00+00:00",
+    "btc_14d_log_return": -0.43333207282723285,
+    "btc_below_90d_high": -0.3802900444921403
+   },
+   {
+    "start": "2022-04-28 12:00:00+00:00",
+    "btc_14d_log_return": -0.3318743257561946,
+    "btc_below_90d_high": -0.17155446894423554
+   },
+   {
+    "start": "2026-01-28 12:00:00+00:00",
+    "btc_14d_log_return": -0.29521436552813757,
+    "btc_below_90d_high": -0.18990612965332965
+   },
+   {
+    "start": "2024-07-22 12:00:00+00:00",
+    "btc_14d_log_return": -0.2738945794967159,
+    "btc_below_90d_high": -0.0583539830340285
+   },
+   {
+    "start": "2021-01-08 12:00:00+00:00",
+    "btc_14d_log_return": -0.26387984791497665,
+    "btc_below_90d_high": 0.0
+   },
+   {
+    "start": "2022-11-07 12:00:00+00:00",
+    "btc_14d_log_return": -0.2538977187817924,
+    "btc_below_90d_high": -0.15595805164283905
+   },
+   {
+    "start": "2022-02-10 12:00:00+00:00",
+    "btc_14d_log_return": -0.2350650226962527,
+    "btc_below_90d_high": -0.31793697113750674
+   },
+   {
+    "start": "2021-11-20 12:00:00+00:00",
+    "btc_14d_log_return": -0.23194251789597595,
+    "btc_below_90d_high": -0.132691954343355
+   },
+   {
+    "start": "2026-05-22 12:00:00+00:00",
+    "btc_14d_log_return": -0.22278977287760404,
+    "btc_below_90d_high": -0.06172893363283816
+   }
+  ],
+  "rebounds": [
+   {
+    "start": "2021-01-27 12:00:00+00:00",
+    "btc_14d_log_return": 0.4190367483459018,
+    "btc_below_90d_high": -0.25789486049613586
+   },
+   {
+    "start": "2023-03-10 12:00:00+00:00",
+    "btc_14d_log_return": 0.35135841393274353,
+    "btc_below_90d_high": -0.20607553234230624
+   },
+   {
+    "start": "2023-01-07 12:00:00+00:00",
+    "btc_14d_log_return": 0.30298772870233603,
+    "btc_below_90d_high": -0.20959624156082124
+   },
+   {
+    "start": "2021-02-28 12:00:00+00:00",
+    "btc_14d_log_return": 0.28649714489263656,
+    "btc_below_90d_high": -0.20947846714634022
+   },
+   {
+    "start": "2021-07-17 12:00:00+00:00",
+    "btc_14d_log_return": 0.2813797073998348,
+    "btc_below_90d_high": -0.4648380781835202
+   },
+   {
+    "start": "2022-01-24 12:00:00+00:00",
+    "btc_14d_log_return": 0.23725581989443967,
+    "btc_below_90d_high": -0.5014850215208289
+   },
+   {
+    "start": "2022-03-15 12:00:00+00:00",
+    "btc_14d_log_return": 0.21461642215340623,
+    "btc_below_90d_high": -0.24216376553421692
+   },
+   {
+    "start": "2026-08-11 12:00:00+00:00",
+    "btc_14d_log_return": 0.20598861907062488,
+    "btc_below_90d_high": -0.20140463927594854
+   },
+   {
+    "start": "2025-04-09 12:00:00+00:00",
+    "btc_14d_log_return": 0.20384262360791855,
+    "btc_below_90d_high": -0.2957263445892381
+   },
+   {
+    "start": "2021-08-03 12:00:00+00:00",
+    "btc_14d_log_return": 0.19654011501826146,
+    "btc_below_90d_high": -0.34268135047951453
+   }
+  ],
+  "rebound_candidates": 690
+ },
+ "sensitivity": {
+  "K=15": {
+   "n": 15,
+   "jaccard": 0.6
+  },
+  "K=40": {
+   "n": 40,
+   "jaccard": 0.625
+  },
+  "drop TREND": {
+   "n": 25,
+   "jaccard": 0.3888888888888889
+  },
+  "drop CYCLE": {
+   "n": 25,
+   "jaccard": 0.35135135135135137
+  },
+  "drop VOL": {
+   "n": 25,
+   "jaccard": 0.13636363636363635
+  },
+  "drop STRUCTURE": {
+   "n": 25,
+   "jaccard": 0.25
+  }
+ },
+ "skill_of_chosen": {
+  "SCREEN vs all": {
+   "skill": 0.0146670082965744,
+   "lo": -0.0016186964285778618,
+   "hi": 0.03372384550745188,
+   "n_dates": 93.0
+  },
+  "SCREEN vs recent": {
+   "skill": -0.04595723911327655,
+   "lo": -0.12470799730267454,
+   "hi": 0.014111191918581857,
+   "n_dates": 93.0
+  },
+  "SCREEN vs random": {
+   "skill": 0.042492588536098996,
+   "lo": 0.028165238008880024,
+   "hi": 0.060221431009732006,
+   "n_dates": 93.0
+  },
+  "CONFIRM vs all": {
+   "skill": 0.028231199279192834,
+   "lo": 0.0008844390249567659,
+   "hi": 0.051194368077982194,
+   "n_dates": 115.0
+  },
+  "CONFIRM vs recent": {
+   "skill": -0.013843029496667908,
+   "lo": -0.04826021055577504,
+   "hi": 0.012473636220611177,
+   "n_dates": 115.0
+  },
+  "CONFIRM vs random": {
+   "skill": 0.06508541644117014,
+   "lo": 0.0391468374701607,
+   "hi": 0.08824698977074685,
+   "n_dates": 115.0
+  }
+ },
+ "fair_skill_of_chosen": {
+  "SCREEN vs all": {
+   "skill": 0.06133379004939192,
+   "lo": 0.045866260068051716,
+   "hi": 0.07997424204019951,
+   "n_dates": 93.0
+  },
+  "SCREEN vs recent": {
+   "skill": -0.03743575115285154,
+   "lo": -0.11870712928216498,
+   "hi": 0.023916928810641433,
+   "n_dates": 93.0
+  },
+  "SCREEN vs random": {
+   "skill": 0.042738046323885934,
+   "lo": 0.027699848354822303,
+   "hi": 0.061045521180269575,
+   "n_dates": 93.0
+  },
+  "CONFIRM vs all": {
+   "skill": 0.07248353606774086,
+   "lo": 0.04615707152740504,
+   "hi": 0.09618662059551149,
+   "n_dates": 115.0
+  },
+  "CONFIRM vs recent": {
+   "skill": -0.005647175961531664,
+   "lo": -0.0410447859656367,
+   "hi": 0.021335555614582027,
+   "n_dates": 115.0
+  },
+  "CONFIRM vs random": {
+   "skill": 0.06405026265535868,
+   "lo": 0.03693218823236855,
+   "hi": 0.08828281818559275,
+   "n_dates": 115.0
+  }
+ },
+ "git_commit": "55e9091780ea74b191d1cdfbdcdcb5db1db9d6a0",
+ "git_dirty_paths": [],
+ "prereg_commit": "6aa59149ee49608945fdd4b8ac9f2377d4af1d8b",
+ "prereg_sha256": "c145c75e47b8b6baeed53973a3325705585a7665c43e0be14830fa5b61aa879d",
+ "fred_snapshot": {
+  "pinned": true,
+  "files": {
+   "CPIAUCNS": "CPIAUCNS__20260930T080310Z.csv",
+   "DFEDTARU": "DFEDTARU__20260930T080314Z.csv",
+   "DGS10": "DGS10__20260930T080316Z.csv",
+   "DTWEXBGS": "DTWEXBGS__20260930T080320Z.csv",
+   "SP500": "SP500__20260930T080321Z.csv",
+   "VIXCLS": "VIXCLS__20260930T080325Z.csv",
+   "DCOILWTICO": "DCOILWTICO__20260930T080328Z.csv"
+  }
+ },
+ "inputs_active_sources": [
+  "spot"
+ ],
+ "inputs_sha256_active": "ee27c1295919c7760903bf3e0f2bce7bd82de400f5283cef28bbf7ed8b0a6767",
+ "inputs_sha256_all": "a514e256efebf37259577c0fe51943eff56f97533755612245d32c12f6743159",
+ "inputs_files": {
+  "spot": 7666,
+  "futures": 2300,
+  "fred": 7
+ },
+ "data_last": {
+  "btc_last_hourly_close": "2026-09-30 00:00:00+00:00",
+  "funding_last": "2026-08-31 16:00:00.001000+00:00",
+  "oi_last": "2026-09-29 23:55:00+00:00",
+  "fred_last": {
+   "CPIAUCNS": "2026-08-01",
+   "DFEDTARU": "2026-09-29",
+   "DGS10": "2026-09-28",
+   "DTWEXBGS": "2026-09-25",
+   "SP500": "2026-09-29",
+   "VIXCLS": "2026-09-28",
+   "DCOILWTICO": "2026-09-22"
+  }
+ },
+ "inputs_changed": {
+  "method": "src.validation.build + src.validation.live_like, unchanged (PART 0)",
+  "grid_hour_utc": 12,
+  "T_star": "2026-10-04 12:00:00+00:00",
+  "asof": "2026-09-30 00:00:00+00:00",
+  "pool_end_H": "2026-09-30 00:00:00+00:00",
+  "holdout_days": 4.5,
+  "panel": "data/validation",
+  "panel_last": "2026-09-30 00:00:00+00:00",
+  "wrapper": "src.validation.prelim_v2"
+ }
+}
