@@ -1,0 +1,9 @@
+# Idea 3: multi-speed BTC trend gate. Pre-registered: adopt "3 speeds" only if it ties or beats base on
+# >= 3 of the 4 rule scores (median comp. A, median comp. B, worst 10%, share > 0) in SCREEN.
+model: baitoey_tg_mom
+references: [pol_mom_ss]
+variants:
+  - {name: "3 speeds 100/200/400h", gate_speeds: [[25, 100], [50, 200], [100, 400]]}
+  - {name: "2 speeds 200/400h", gate_speeds: [[50, 200], [100, 400]]}
+  - {name: "1 speed 100h", gate_speeds: [[25, 100]]}
+  - {name: "1 speed 400h", gate_speeds: [[100, 400]]}

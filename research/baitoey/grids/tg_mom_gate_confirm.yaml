@@ -1,0 +1,5 @@
+# One-time CONFIRM check of the variant chosen on SCREEN by the rule in tg_mom_gate_speeds.yaml.
+model: baitoey_tg_mom
+references: [pol_mom_ss]
+variants:
+  - {name: "3 speeds 100/200/400h", gate_speeds: [[25, 100], [50, 200], [100, 400]]}

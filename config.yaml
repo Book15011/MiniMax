@@ -236,8 +236,7 @@ models:
   # --- book ---
   # --- baitoey ---
   baitoey_tg_mom:
-    gate_slow_hours: 200
-    gate_fast_hours: 50
+    gate_speeds: [[25, 100], [50, 200], [100, 400]]   # [fast, slow] BTC averages in hours; the gate averages them
     gate_ramp: 0.04               # each gate half is fully on 2% above the slow average, fully off 2% below
     lookback_hours: [24, 48, 72]
     vol_days: 30

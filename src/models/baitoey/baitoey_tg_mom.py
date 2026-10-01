@@ -1,7 +1,7 @@
 """Trend-gated momentum.
 
 A BTC trend gate sets how much of the book is "risk on": exposure ramps smoothly with BTC's distance
-above its slow moving average and with the fast/slow average spread, instead of switching all-or-nothing,
+above its slow moving average and with the fast/slow average spread (averaged over one or more speeds), instead of switching all-or-nothing,
 so choppy markets don't whipsaw the whole book. The risk-on part holds the few liquid coins with the best
 risk-adjusted 1-3 day momentum whose trading volume is above normal, weighted by inverse volatility,
 capped per coin and scaled to a daily volatility target. The risk-off part runs a small short sleeve on
@@ -32,11 +32,14 @@ class TrendGatedMomentum:
         p = view.params
         if BTC not in view.close.columns:
             return 0.0
-        btc = view.close[BTC].iloc[-p["gate_slow_hours"]:].dropna()
-        if len(btc) < p["gate_slow_hours"] * 0.9:
-            return 0.0
-        slow, fast, last = btc.mean(), btc.iloc[-p["gate_fast_hours"]:].mean(), btc.iloc[-1]
-        return 0.5 * _ramp(last / slow - 1, p["gate_ramp"]) + 0.5 * _ramp(fast / slow - 1, p["gate_ramp"])
+        parts = []
+        for fast_h, slow_h in p["gate_speeds"]:
+            btc = view.close[BTC].iloc[-slow_h:].dropna()
+            if len(btc) < slow_h * 0.9:
+                return 0.0
+            slow, fast, last = btc.mean(), btc.iloc[-fast_h:].mean(), btc.iloc[-1]
+            parts.append(0.5 * _ramp(last / slow - 1, p["gate_ramp"]) + 0.5 * _ramp(fast / slow - 1, p["gate_ramp"]))
+        return float(np.mean(parts))
 
     def targets(self, view: MarketView) -> pd.Series:
         p = view.params
