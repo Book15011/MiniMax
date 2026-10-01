@@ -364,6 +364,40 @@ models:
       team_rot_ew: {when: up, params: *team_rot_ew}
   # --- book ---
   # --- baitoey ---
+  baitoey_breakout:               # variant A of research/baitoey/prereg/20261001-volume-timing.md
+    breakout_hours: 72            # enter above the highest close of the previous 72 h ...
+    entry_volume_ratio: 1.5       # ... while 24 h quote volume > 1.5 x a normal day of the last 7
+    volume_short_hours: 24
+    volume_long_days: 7
+    exit_low_hours: 24            # exit below the lowest close of the previous 24 h ...
+    trail_hours: 72               # ... or below the 72 h highest close minus atr_mult daily ATRs
+    atr_days: 14
+    atr_mult: 2.0
+    lookback_days: [7, 14]        # ranks simultaneous breakouts (risk-adjusted momentum)
+    vol_days: 30
+    min_history_days: 30
+    k: 6                          # slots, each 1/k of the book
+    target_daily_vol: 0.03        # book scaled down to <= 3%/day estimated volatility
+  baitoey_vt_mom:                 # variants B0, B and C of the same note
+    lookback_days: [7, 14]
+    vol_days: 30
+    min_history_days: 30
+    k: 6
+    keep_rank: 12
+    weighting: equal
+    target_daily_vol: 0.03
+    early_exit: true              # B: skip a coin for exit_cooldown_hours after a volume-confirmed 24 h low
+    exit_low_hours: 24
+    exit_volume_ratio: 1.5
+    exit_cooldown_hours: 24
+    volume_short_hours: 24
+    volume_long_days: 7
+    no_chase: false               # C: skip a coin after a volume spike until it pulls back
+    chase_return_hours: 24
+    chase_return: 0.15
+    chase_volume_ratio: 3.0
+    chase_window_hours: 72
+    chase_pullback: 0.05
   baitoey_tg_mom:
     gate_speeds: [[25, 100], [50, 200], [100, 400]]   # [fast, slow] BTC averages in hours; the gate averages them
     gate_ramp: 0.04               # each gate half is fully on 2% above the slow average, fully off 2% below
