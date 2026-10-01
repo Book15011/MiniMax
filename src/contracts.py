@@ -51,10 +51,37 @@ class MarketView:
     params: dict = field(default_factory=dict)                     # this model's block under `models:` in config.yaml
     prev_targets: pd.Series = field(default_factory=lambda: pd.Series(dtype=float))  # this model's previous decision
 
+    # ---- PROPOSED extra fields (PR feature/contracts-view-fields; needs all three members' review) ----
+    # Every field defaults to empty, so existing models are unaffected. The harness and the live engine fill them
+    # only after the team approves, each with the point-in-time rule stated here. Look-ahead is a bug (AGENTS.md 7).
+    ohlc: dict[str, pd.DataFrame] = field(default_factory=dict)
+    """"open", "high", "low": hourly bars, same index and columns as `close` (bars closed at or before t)."""
+    funding: pd.DataFrame = field(default_factory=pd.DataFrame)
+    """Perpetual funding rates, one column per series id with data (BTCUSDT today), index = settlement time <= t.
+    A rate is known once its settlement has happened (every 8 h)."""
+    open_interest: pd.DataFrame = field(default_factory=pd.DataFrame)
+    """Perpetual open interest in USD, one column per series id, index = snapshot time <= t."""
+    macro: pd.DataFrame = field(default_factory=pd.DataFrame)
+    """Point-in-time macro values (FRED ids as columns), index = the time each value became public, <= t.
+    CPI uses its BLS release time (validation/event_calendar_v1.csv); other series their configured publication
+    lag (validation.macro_lag_days, e.g. DTWEXBGS 7 days). Values are as first published, never later revisions."""
+    events: pd.DataFrame = field(default_factory=pd.DataFrame)
+    """Scheduled macro events (CPI, FOMC minutes) from validation/event_calendar_v1.csv, columns event, time_utc,
+    status: "released" if time_utc <= t, "scheduled" if later. Includes future rows, since the schedules are
+    published in advance. UNVERIFIED: the calendar does not record when each schedule was announced. A release
+    cancelled after t (CPI for October 2025, government shutdown) must still appear as "scheduled" at times
+    before the cancellation, or the view leaks the cancellation."""
+
     def tail(self, hours: int) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Last `hours` bars of close and quote volume, restricted to the universe (cheap; use this first)."""
         cols = list(self.universe)
         return self.close.iloc[-hours:][cols], self.quote_volume.iloc[-hours:][cols]
+
+    def daily_close(self, hour: int = 16) -> pd.DataFrame:
+        """PROPOSED: closes at `hour`:00 UTC each day (default 16:00 UTC = 00:00 HKT, the live round's daily grid),
+        universe columns, up to t. Derived from `close`, so it needs no new data."""
+        c = self.close[list(self.universe)]
+        return c[c.index.hour == hour]
 
 
 @runtime_checkable
