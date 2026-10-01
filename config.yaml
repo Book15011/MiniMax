@@ -544,3 +544,9 @@ models:
       pol_mr_cap: {when: calm, params: *pol_mr_cap}
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
+  pol_switch_vt_tl_e20v45:        # candidate from the sensitivity check (reports/review/20261002-recheck.md), chosen after looking
+    prev: own
+    switch: {<<: *team_trend_2, ema_days: 20}
+    sleeves:
+      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
