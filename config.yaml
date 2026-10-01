@@ -364,7 +364,7 @@ models:
       team_rot_ew: {when: up, params: *team_rot_ew}
   # --- book ---
   # --- baitoey ---
-  baitoey_mr_bbrsi:               # research/baitoey/prereg/20261001-mean-reversion.md
+  baitoey_mr_bbrsi: &baitoey_mr_bbrsi   # research/baitoey/prereg/20261001-mean-reversion.md
     bar_hours: 24                 # indicator bars (the study sets them to the rebalance interval)
     bb_bars: 20                   # Bollinger: 20-bar mean ...
     bb_k: 2.0                     # ... minus 2 standard deviations
@@ -449,3 +449,10 @@ models:
     btc_floor: 0.10               # long-only risk-off: BTC weight when fully risk-off
     short_gross: 0.25
     short_k: 4
+  baitoey_switch_mr:              # research/baitoey/prereg/20261001-calm-switch.md
+    vol_days: 30                  # BTC realized volatility over the last 30 days ...
+    regime_days: 365              # ... against its daily values over the past year
+    calm_quantile: 0.5            # calm = below this quantile (the median)
+    sleeves:
+      calm: {<<: *baitoey_mr_bbrsi, bar_hours: 4}    # MR @4h
+      trend: *team_rot_ew                             # the ROT_EW rotation
