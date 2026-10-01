@@ -23,7 +23,7 @@ import pandas as pd
 
 from backtest.data import Market
 from backtest.engine import Costs, Simulator, compute_targets, decision_times
-from backtest.evaluate import git_state
+from backtest.evaluate import git_state, model_modules
 from backtest.scoring.metrics import window_metrics
 from src.config import REPO_ROOT, resolve
 from src.contracts import MarketView, Model
@@ -93,12 +93,10 @@ def tool_version(cfg: dict, market: Market) -> str:
 
 
 def model_sources(model: Model) -> str:
-    """Source of every src.models module the model's class is built from or refers to (e.g. a reused class)."""
+    """Source of every src.models module the model's code can reach (backtest.evaluate.model_modules: its class
+    hierarchy and, transitively, what those modules refer to, e.g. a reused class or a combination's sleeves)."""
     base = model.inner if isinstance(model, LongOnly) else model
-    mods = {c.__module__ for c in type(base).__mro__}
-    for v in vars(sys.modules[type(base).__module__]).values():
-        mods.add(v.__name__ if inspect.ismodule(v) else getattr(v, "__module__", None) or "")
-    return "\n".join(inspect.getsource(sys.modules[m]) for m in sorted(m for m in mods if m.startswith("src.models")))
+    return "\n".join(inspect.getsource(sys.modules[m]) for m in model_modules(base))
 
 
 def run_key(model: Model, params: dict, long_only: bool, starts: pd.DatetimeIndex, cfg: dict, market: Market) -> str:
@@ -150,7 +148,8 @@ def simulate(model: Model, market: Market, cfg: dict, starts: pd.DatetimeIndex, 
     targets = compute_targets(m, market, times, params)
     t_targets = time.time() - t_start
     costs = Costs(h["fees"]["taker"], h["fees"]["short"])
-    sim = Simulator(market, targets, spec.band, costs, lag, hour, h["activity_guard_offset_hours"])
+    sim = Simulator(market, targets, spec.band, costs, lag, hour, h["activity_guard_offset_hours"],
+                    float(h.get("keep_alive_weight", 0.0)))
     cols = np.array(sim.cols)
     e0 = float(sc["e0"])
     W = len(starts)

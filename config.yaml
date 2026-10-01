@@ -215,6 +215,7 @@ harness:
   spreads_snapshot_glob: data/roostoo_snapshots/ticker_*.json
   default_half_spread_bps: 5              # coins missing from the snapshot (e.g. delisted ones)
   activity_guard_offset_hours: 20         # force a trade if an HKT day has none by 20:00 HKT
+  keep_alive_weight: 0.002              # guard on a day already on target (all cash, one coin): trade 0.2% of equity, reversed next day
   min_active_days: 10
   scenario_sets:
     lookalikes: validation/validation_set_v1.json
@@ -261,7 +262,7 @@ scoring:
 # Model parameters: one block per model, under its author's marker (keeps merges clean).
 models:
   # --- team (frozen benchmarks for the scoring field; docs/EVALUATION.md section 3) ---
-  team_rot_ew:
+  team_rot_ew: &team_rot_ew
     lookback_days: [3, 7, 14]
     vol_days: 30                  # covariance window of the book-volatility estimate
     min_history_days: 30
@@ -269,7 +270,7 @@ models:
     keep_rank: 12
     weighting: equal
     target_daily_vol: 0.03
-  team_rot_iv:
+  team_rot_iv: &team_rot_iv
     lookback_days: [3, 7, 14]
     vol_days: 30
     min_history_days: 30
@@ -277,7 +278,7 @@ models:
     keep_rank: 12
     weighting: inverse_vol
     target_daily_vol: 0.02
-  team_trend_2:
+  team_trend_2: &team_trend_2
     coins: [BTCUSDT, ETHUSDT]
     ema_days: 40
     hysteresis: 0.03              # in trend above EMA * 1.03, out below EMA * 0.97, unchanged between
@@ -298,7 +299,7 @@ models:
     short_gross: 0.25
     short_k: 4
   # --- pol ---
-  pol_mom_ss:
+  pol_mom_ss: &pol_mom_ss
     lookback_days: [3, 7, 14]
     vol_days: 30
     min_history_days: 30
@@ -310,7 +311,7 @@ models:
     long_vol_cap: 0.5          # annualized; upper bound that assumes the coins are perfectly correlated
     short_gross: 0.25
     short_k: 4
-  pol_trend_ls:
+  pol_trend_ls: &pol_trend_ls
     lookback_days: 21
     threshold: 0.5
     vol_days: 30
@@ -318,5 +319,37 @@ models:
     min_coins: 8
     top_n: 15
     target_vol: 0.35
+  # combinations (src/models/pol/_combo.py): sleeve parameters are anchors to the sleeves' own blocks
+  pol_combo_rt:
+    replay_steps: 1
+    sleeves:
+      team_rot_ew: {weight: 0.5, params: *team_rot_ew}
+      pol_trend_ls: {weight: 0.5, params: *pol_trend_ls}
+  pol_combo_rb:
+    replay_steps: 1
+    sleeves:
+      team_btc_hold: {weight: 0.5}
+      team_rot_ew: {weight: 0.5, params: *team_rot_ew}
+  pol_combo_rtt:
+    replay_steps: 1
+    sleeves:
+      team_rot_ew: {weight: 0.3333333333333333, params: *team_rot_ew}
+      pol_trend_ls: {weight: 0.3333333333333333, params: *pol_trend_ls}
+      team_trend_2: {weight: 0.3333333333333333, params: *team_trend_2}
+  pol_combo_ms_tl:
+    replay_steps: 1
+    sleeves:
+      pol_mom_ss: {weight: 0.5, params: *pol_mom_ss}
+      pol_trend_ls: {weight: 0.5, params: *pol_trend_ls}
+  pol_combo_all:
+    replay_steps: 1
+    sleeves:
+      team_btc_hold: {weight: 0.14285714285714285}
+      team_ew_daily: {weight: 0.14285714285714285}
+      team_rot_ew: {weight: 0.14285714285714285, params: *team_rot_ew}
+      team_rot_iv: {weight: 0.14285714285714285, params: *team_rot_iv}
+      team_trend_2: {weight: 0.14285714285714285, params: *team_trend_2}
+      pol_mom_ss: {weight: 0.14285714285714285, params: *pol_mom_ss}
+      pol_trend_ls: {weight: 0.14285714285714285, params: *pol_trend_ls}
   # --- book ---
   # --- baitoey ---

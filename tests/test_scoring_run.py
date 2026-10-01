@@ -111,6 +111,7 @@ def test_tool_version_changes_with_the_field(market):
 
 def test_cash_scores_zero_and_fails_g1(tmp_path, market):
     cfg = synth_cfg(tmp_path, market)
+    cfg["harness"]["keep_alive_weight"] = 0.0                          # the pure model; with it, see the next test
     s, ctx = score_model(discover()["team_cash"], market, cfg)
     for c in s["headline"].values():
         for v in c.values():
@@ -119,8 +120,19 @@ def test_cash_scores_zero_and_fails_g1(tmp_path, market):
     assert (ctx["run"].windows.R == 0).all() and (ctx["run"].windows.active_days == 0).all()
 
 
+def test_keep_alive_makes_cash_active_at_almost_no_cost(tmp_path, market):
+    cfg = synth_cfg(tmp_path, market)
+    run = simulate(discover()["team_cash"], market, cfg, pd.date_range("2021-02-01 16:00", periods=10, freq="D", tz="UTC"))
+    assert (run.windows.active_days == 14).all()
+    # band 0: the next decision unwinds the nudge (a "strategy" day), the guard nudges again the day after
+    assert (run.windows.guard_days >= 7).all()
+    assert run.windows.R.abs().max() < 0.001
+    assert run.windows.gross_max.max() <= 1.25 * cfg["harness"]["keep_alive_weight"]   # the nudge, plus its price drift
+
+
 def test_btc_hold_return_is_btc_move_minus_entry_cost(tmp_path, market):
     cfg = synth_cfg(tmp_path, market)
+    cfg["harness"]["keep_alive_weight"] = 0.0                          # the exact formula below is the pure hold
     run = simulate(discover()["team_btc_hold"], market, cfg, pd.date_range("2021-02-01 16:00", periods=10, freq="D", tz="UTC"))
     px = market.close["BTCUSDT"].ffill()                                # the engine carries a missing hour forward
     for t0, R in run.windows.R.items():

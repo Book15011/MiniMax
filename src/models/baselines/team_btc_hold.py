@@ -8,7 +8,7 @@ from src.contracts import MarketView, ModelSpec
 
 class BtcHold:
     spec = ModelSpec(name="team_btc_hold", method="reference", author="team", rebalance_hours=24, band=0.0,
-                     description="Hold 100% BTC. Reference for the worst-fortnight check; trades once, so it fails the activity rule")
+                     description="Hold 100% BTC. Reference for the worst-fortnight check; active daily only through the keep-alive trade")
 
     def targets(self, view: MarketView) -> pd.Series:
         return pd.Series({"BTCUSDT": 1.0}) if "BTCUSDT" in view.universe else pd.Series(dtype=float)
