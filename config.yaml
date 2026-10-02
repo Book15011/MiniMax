@@ -560,7 +560,7 @@ models:
       pol_mr_cap: {when: calm, params: *pol_mr_cap}
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
-  pol_switch_vt_tl_e20v45:        # candidate from the sensitivity check (reports/review/20261002-recheck.md), chosen after looking
+  pol_switch_vt_tl_e20v45: &pol_switch_vt_tl_e20v45   # candidate from the sensitivity check (reports/review/20261002-recheck.md), chosen after looking
     prev: own
     switch: {<<: *team_trend_2, ema_days: 20}
     sleeves:
@@ -573,5 +573,13 @@ models:
     min_weight: 0.005
   pol_abl_shock:                  # F: cash for 24 h after BTC falls >= 5% over 4 hours (checked hourly)
     vt: *baitoey_vt_mom
+    shock_4h: 0.05
+    cooldown_hours: 24
+  pol_abl_shock_e20v45:           # F on the switch candidate (research only)
+    vt: *pol_switch_vt_tl_e20v45
+    shock_4h: 0.05
+    cooldown_hours: 24
+  pol_abl_shock_vtv45:            # F on vt_mom with the 4.5%/day vol cap (research only)
+    vt: {<<: *baitoey_vt_mom, target_daily_vol: 0.045}
     shock_4h: 0.05
     cooldown_hours: 24
