@@ -19,6 +19,7 @@ GRID_HOUR = 16
 
 
 class ShockOverride:
+    INNER = VT_MOM                                           # the daily model under the override; params under "vt"
     spec = ModelSpec(name="pol_abl_shock", method="momentum", author="pol", rebalance_hours=1, band=VT_MOM.spec.band,
                      description="ablation F: baitoey_vt_mom daily, cash for cooldown_hours after a BTC 4-hour crash")
 
@@ -37,7 +38,7 @@ class ShockOverride:
             return pd.Series(dtype=float)
         prev = view.prev_targets[view.prev_targets != 0]
         if view.t.hour == GRID_HOUR or prev.empty:
-            return VT_MOM.targets(replace(view, params=p["vt"]))
+            return self.INNER.targets(replace(view, params=p["vt"]))
         return prev[prev.index.isin(list(view.universe))]
 
 
