@@ -187,7 +187,7 @@ class FakeClient:
         return self.offset_ms
 
 
-def make_runner(tmp_path, model: str, store: feed.Store, mode="paper", start_at=None) -> Runner:
+def make_runner(tmp_path, model: str, store: feed.Store, mode="paper", start_at=None, account=None) -> Runner:
     store.save(tmp_path)
     cfg = copy.deepcopy(CFG)
     cfg["live"].update(state_dir=str(tmp_path), start_at=start_at)
@@ -196,9 +196,10 @@ def make_runner(tmp_path, model: str, store: feed.Store, mode="paper", start_at=
     h = Holdings(100_000.0)
     if st.exists():
         from src.live.runner import holdings_from_json
-        h = holdings_from_json(json.loads(st.read_text())["paper"])
+        paper = json.loads(st.read_text())["paper"]                     # None in a live state
+        h = holdings_from_json(paper) if paper else h
     broker = PaperAccount(h, {}, lambda: quotes_from_ticker(client.ticker()))
-    r = Runner(cfg, model, mode, broker, client, tmp_path, LOG)
+    r = Runner(cfg, model, mode, broker, client, tmp_path, LOG, account=account)
     broker.rules = r.rules
     return r
 
@@ -270,6 +271,47 @@ def test_competition_key_is_refused_off_ec2(monkeypatch, tmp_path):
     monkeypatch.delenv("MM_HOST", raising=False)
     with pytest.raises(SystemExit, match="refused"):
         rmod.build(CFG, Namespace(mode="live", model=None, long_only=False), LOG)
+
+
+def test_competition_key_needs_start_at(monkeypatch, tmp_path):
+    from argparse import Namespace
+
+    from src.api.client import Credentials
+    from src.live import runner as rmod
+    monkeypatch.setattr(rmod, "load_credentials", lambda *a, **k: Credentials("k", "s", "competition"))
+    monkeypatch.setenv("MM_HOST", "ec2")
+    cfg = copy.deepcopy(CFG)
+    cfg["live"].update(state_dir=str(tmp_path), start_at=None)
+    with pytest.raises(SystemExit, match="needs live.start_at"):
+        rmod.build(cfg, Namespace(mode="live", model=None, long_only=False), LOG)
+
+
+def test_a_test_runs_state_never_carries_into_the_round(tmp_path):
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+    r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120), mode="live", account="test")
+    r.process(start)                                                    # a test run that started trading at once
+    assert r.state["account"] == "test" and r.state["round_start"] == str(start)
+    with pytest.raises(SystemExit, match="for the test account"):
+        make_runner(tmp_path, "team_btc_hold", feed.Store.load(tmp_path), mode="live", account="competition",
+                    start_at="2026-10-04 12:00")
+    st = json.loads((tmp_path / "state.json").read_text())
+    del st["account"]                                                   # a state saved before the account stamp
+    (tmp_path / "state.json").write_text(json.dumps(st))
+    with pytest.raises(SystemExit, match="before live.start_at"):
+        make_runner(tmp_path, "team_btc_hold", feed.Store.load(tmp_path), mode="live", account="competition",
+                    start_at="2026-10-04 12:00")
+    r2 = make_runner(tmp_path, "team_btc_hold", feed.Store.load(tmp_path), mode="live", account="test")
+    assert r2.state["account"] == "test"                                # the test run itself resumes
+
+
+def test_a_restart_inside_the_round_resumes(tmp_path):
+    start = pd.Timestamp("2026-10-04 12:00", tz="UTC")
+    r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120), mode="live", account="competition",
+                    start_at="2026-10-04 12:00")
+    r.process(start)
+    r2 = make_runner(tmp_path, "team_btc_hold", feed.Store.load(tmp_path), mode="live", account="competition",
+                     start_at="2026-10-04 12:00")
+    assert r2.state["round_start"] == str(start) and r2.state["active_days"] == r.state["active_days"] != []
 
 
 class StubbornPaper(PaperAccount):
