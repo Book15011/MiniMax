@@ -71,6 +71,7 @@ Every constant is under `scoring:` in `config.yaml`; the code is `backtest/scori
   - 2,000 draws, seed 20261002, the same draws for every model;
   - in each draw, HIT = Σ w′ × 1[cleared] / Σ w′ over the drawn windows.
   - For every model: the 90% interval of HEADLINE_RET(model) − HEADLINE_RET(top), where the top is the eligible candidate with the highest HEADLINE_RET. If the interval contains 0, the model is tied with the top.
+  - **Amended 2026-10-02 (tie margin):** a model is tied only if that interval contains 0 **and** its HEADLINE_RET is within 0.03 of the top's (`selection:` in config.yaml, `backtest/scoring/selection.py`). The interval alone is wide for a model that moves differently from the top, so a model 0.10 below could be tied and win on CS_HIT. Decided after the v2 results were known: evidence and the walk-forward check in `reports/review/20261002-selection-rule.md`, the record in `reports/review/20261002-amend-pick-rule.md`. The leaderboard also prints the pre-registered (legacy) pick.
 - **Candidates** are team models only; the 7 benchmarks (CASH included) are reference rows. The pick order:
   1. passes the hard gates;
   2. highest HEADLINE_RET;
@@ -294,6 +295,7 @@ The full write-up, with every table, is `reports/review/20261001-scoring-review.
 
 | Date | Version | Change | Why |
 |---|---|---|---|
+| 2026-10-02 | v2 amendment, `feature/v2check` (pending Book's review) | Tie group also needs HEADLINE_RET within 0.03 of the top (`selection.rule: margin`); the legacy pick is still printed; a "Why: results by market type" view. Report layer only: tool version unchanged (`3036a0d8bfdaa6a0`) | The legacy tie group is set by correlation, not closeness; in a 17-quarter walk-forward its picks scored 0.417 vs 0.470 with the margin (`reports/review/20261002-selection-rule.md`) |
 | 2026-10-02 | scoring v2, `feature/return-first` (pending review) | Primary HEADLINE_RET (three return bars on R_liq, live-like and direction-balanced weights); CS_HIT second inside a month-bootstrap tie group; 12:00 UTC starts with the first decision at the start; clock-day HKT and UTC buckets; the spent holdout in the pool behind a switch; only G1, G4, G5 hard; live-like weights v2 (preliminary) | Reasons a–d in "Scoring v2" above; pre-registered in `reports/review/20261002-prereg-return-first.md` before any run |
 | 2026-10-01 | v1, tool `56cb5a2e85d45862` | Clock-time engine and guard (`feature/bar-clock-fix`), field-best bar, REL primary | Sections 6 and 7 |
 
@@ -334,5 +336,5 @@ Every row is **pending team review**. To change a value, edit `config.yaml` → 
 | 29 | Window start (v2) | 12:00 UTC every day; first decision at the start with no previous targets, as live | pending team review | — |
 | 30 | Spent holdout (v2) | `include_spent_holdout: true`; every headline also without the 52 post-holdout windows | pending team review | — |
 | 31 | Weights (v2) | LL v2 preliminary (PART 0 code on 12:00 starts), REC 0.5^(age/60) from the latest start, 0.7 / 0.3, then the pi_up direction rebalance | pending team review; LL to be rerun on Oct 4 | — |
-| 32 | Risk second (v2) | CS_HIT on V1 FLOORED, HKT days; tie group from a calendar-month bootstrap (2,000 draws, seed 20261002, 90%); CS_HIT within 0.05 → min(SCREEN, CONFIRM) | pending team review | — |
+| 32 | Risk second (v2) | CS_HIT on V1 FLOORED, HKT days; tie group from a calendar-month bootstrap (2,000 draws, seed 20261002, 90%) **and within 0.03 of the top's HEADLINE_RET (amended 2026-10-02)**; CS_HIT within 0.05 → min(SCREEN, CONFIRM) | pending team review (amendment: Pol, pending Book) | — |
 | 33 | Gates (v2) | hard: G1 (HKT days, 15 buckets), G4 (runs cleanly), G5; report-only: G2, G3, G6_median, G6_worst | pending team review | — |
