@@ -317,6 +317,49 @@ def test_guard_also_runs_for_a_model_that_decides_every_hour(tmp_path):
     assert r.state["active_days"] == [str(start)]
 
 
+def rising_store(start: pd.Timestamp, days: int, hours_after: int, daily: float) -> feed.Store:
+    idx = pd.date_range(start - pd.Timedelta(days=days), start + pd.Timedelta(hours=hours_after), freq="h")
+    k = np.clip(np.arange(len(idx)) - days * 24, 0, None)
+    c = pd.DataFrame({"BTCUSDT": 100.0 * (1 + daily) ** (k / 24), "ETHUSDT": 10.0}, index=idx)
+    st = feed.Store(c, c * 0 + 1e6, idx[-1])
+    return st
+
+
+def run_round(tmp_path, enabled: bool, daily: float, hours: int = 24 * 12) -> tuple[Runner, list]:
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+    st = rising_store(start, 120, hours, daily)
+    r = make_runner(tmp_path, "team_btc_hold", st)
+    r.lv["endgame"] = {"enabled": enabled, "from_day": 10, "lock_return": 0.03}
+    for k in range(hours):
+        H = start + pd.Timedelta(hours=k)
+        px = float(st.close.loc[H, "BTCUSDT"])
+        r.client.prices["BTC/USD"] = px
+        r.process(H)
+    logs = [json.loads(x) for f in (tmp_path / "logs").glob("*.jsonl") for x in f.read_text().splitlines()]
+    return r, logs
+
+
+def test_endgame_lock_sells_once_ahead_after_day_10_and_holds_cash(tmp_path):
+    r, logs = run_round(tmp_path, True, daily=0.004)                    # +0.4% a day: +4% by day 10
+    locks = [e for e in logs if e["event"] == "endgame_lock"]
+    assert len(locks) == 1 and locks[0]["bar"].startswith("2026-10-13 16:00")   # the first hour of day 10
+    assert locks[0]["round_return"] >= 0.03
+    assert r.state["locked_at"] and r.state["standing"] == {}
+    btc = r.broker.h.spot.get("BTC/USD", 0.0) * r.client.prices["BTC/USD"]
+    assert btc <= 2 * 0.002 * 100_000 * 1.1                             # at most the keep-alive left in BTC
+    days = {e["bar"][:10] for e in logs if any(f["status"] == "FILLED" for f in e.get("fills", []))}
+    assert "2026-10-14" in days                                         # the guard keeps the days after active
+
+
+def test_endgame_is_off_by_default_and_waits_for_the_gain(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    r, logs = run_round(tmp_path / "a", False, daily=0.004)
+    assert not any(e["event"] == "endgame_lock" for e in logs) and r.broker.h.spot.get("BTC/USD", 0) > 0
+    r, logs = run_round(tmp_path / "b", True, daily=0.001)              # +1% by day 10: below the 3% lock
+    assert not any(e["event"] == "endgame_lock" for e in logs) and r.broker.h.spot.get("BTC/USD", 0) > 0
+
+
 def test_utc_day_guard_trades_on_every_utc_day(tmp_path):
     start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
 
