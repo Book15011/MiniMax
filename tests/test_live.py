@@ -300,6 +300,23 @@ def test_guard_fires_at_04_utc_confirms_the_fill_and_retries_the_same_day(tmp_pa
     assert r.broker.h.spot.get("BTC/USD", 0.0) > 0
 
 
+def test_guard_also_runs_for_a_model_that_decides_every_hour(tmp_path):
+    """An hourly model's decision hour is every hour; a decision that trades nothing must not switch the guard off
+    (the backtest engine fires the guard on decision hours too)."""
+    import dataclasses
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+    r = make_runner(tmp_path, "team_cash", flat_store(start, 120))
+    r.model = copy.copy(r.model)
+    r.model.spec = dataclasses.replace(r.model.spec, rebalance_hours=1)
+    for k in range(24):
+        r.process(start + pd.Timedelta(hours=k))
+    logs = [json.loads(x) for f in (tmp_path / "logs").glob("*.jsonl") for x in f.read_text().splitlines()]
+    assert sum(e["event"] == "decision" for e in logs) == 24            # it decided every hour ...
+    ka = [e["bar"][:16] for e in logs if e["event"] == "keep_alive"]
+    assert ka == ["2026-10-04 04:00"]                                   # ... and the guard still fired at 04:00 UTC, once
+    assert r.state["active_days"] == [str(start)]
+
+
 def test_utc_day_guard_trades_on_every_utc_day(tmp_path):
     start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
 
