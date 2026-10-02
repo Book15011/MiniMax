@@ -28,6 +28,8 @@ sudo systemctl stop minimax-bot
 git checkout -- config.yaml
 git pull -q --ff-only origin "$BR"
 echo "   code now $(git rev-parse --short HEAD)"
+sed "s/^User=ubuntu$/User=$(id -un)/" deploy/minimax-bot.service | sudo tee /etc/systemd/system/minimax-bot.service >/dev/null
+sudo systemctl daemon-reload                                    # the committed service settings (restart policy)
 STAMP=$(date -u +%Y%m%d%H%M)
 if [ -f data/live/state.json ]; then
   mv data/live/state.json "data/live/state-before-round-$STAMP.json"
