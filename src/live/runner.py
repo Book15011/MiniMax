@@ -18,7 +18,10 @@ Each completed hour bar H (UTC), about `process_after_s` after the hour:
    A fill counts only when the account's positions moved (an order response alone is not proof), and an
    unconfirmed guard is retried every later hour of the same day. With `harness.guard_utc_day`, the guard also
    fires when the day's only confirmed trades came before 00:00 UTC, so the day counts in UTC and in HKT.
-4. Log every step as one JSONL line (git commit stamped, no keys) and save the state atomically.
+4. End-of-round lock-in (`live.endgame`, off unless enabled): from `from_day` days after the round's first hour,
+   once equity is `lock_return` above that hour's equity, sell everything and hold cash to the end; the guard
+   keeps the remaining days active.
+5. Log every step as one JSONL line (git commit stamped, no keys) and save the state atomically.
 Live trades about an hour earlier than the backtest assumes (it lags fills by one bar), so the backtest is the
 conservative side. Hours, days and the start time run on Roostoo's server clock (machine clock plus the offset
 measured every hour); the offset is logged, with a warning above clock_warn_s. Restarts resume from the state file; missed hours are not replayed, an overdue decision or
@@ -166,6 +169,25 @@ class Runner:
         on_grid = (H.hour - self.h["grid_hour_utc"]) % rb == 0
         return last is None or on_grid or H - pd.Timestamp(last) >= pd.Timedelta(hours=rb)
 
+    def endgame_locked(self, H: pd.Timestamp, eq: float) -> bool:
+        """live.endgame (off unless enabled): from `from_day` days after the round's first hour, once equity is
+        `lock_return` above the round's starting equity, lock: hold cash to the end of the round. The lock is kept in
+        the state (restarts keep it) and lasts while the setting stays enabled (a committed change can lift it)."""
+        eg = self.lv.get("endgame") or {}
+        if not eg.get("enabled"):
+            return False
+        if self.state.get("locked_at"):
+            return True
+        if H - pd.Timestamp(self.state["round_start"]) < pd.Timedelta(days=float(eg["from_day"])):
+            return False
+        r = eq / float(self.state["round_start_equity"]) - 1.0
+        if r < float(eg["lock_return"]):
+            return False
+        self.state["locked_at"] = str(H)
+        self.emit("endgame_lock", bar=H, round_return=r, round_start=self.state["round_start"],
+                  rule={k: eg[k] for k in ("from_day", "lock_return")})
+        return True
+
     def trade(self, kind: str, H: pd.Timestamp, targets: dict, h: Holdings, quotes: dict, band: float,
               exact: bool) -> list[dict]:
         orders, notes = plan_orders(targets, h, quotes, self.rules, band, self.ex["fee"], self.ex["cash_buffer"],
@@ -210,7 +232,14 @@ class Runner:
             self.state["last_bar"] = str(H)
             self.save()
             return
-        if self.due_decision(H):
+        if self.state.get("round_start") is None:            # the round's first hour: its equity is the baseline
+            self.state.update(round_start=str(H), round_start_equity=float(eq))
+        if self.endgame_locked(H, eq):                        # end-of-round lock-in: hold cash to the end
+            self.state["standing"] = {}
+            w_now = current_weights(h, quotes, eq)
+            if sum(abs(x) for x in w_now.values()) > 2 * float(self.h["keep_alive_weight"]):   # sell until out
+                self.trade("endgame", H, {}, h, quotes, 0.0, exact=True)
+        elif self.due_decision(H):
             g = day_start(min(H, self.store.complete_through), grid)
             uni = live_universe(self.store.close, self.store.qv, g, self.v, set(self.pairs))
             close = self.store.close.loc[:H].ffill(limit=int(self.lv["max_fill_hours"]))   # gaps the sources left
