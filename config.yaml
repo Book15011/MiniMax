@@ -587,3 +587,9 @@ models:
     vt: {<<: *baitoey_vt_mom, target_daily_vol: 0.045}
     shock_4h: 0.05
     cooldown_hours: 24
+
+# Leaderboard pick rule (backtest/scoring/selection.py). Not part of the tool version: changing it rescores nothing.
+# The leaderboard always shows both picks; `rule` only sets which one orders the table. Changing it is a team decision.
+selection:
+  rule: legacy                    # legacy = the pre-registered tie test; margin = Pol's proposal (reports/review/20261002-selection-rule.md)
+  tie_margin: 0.03                # margin rule: tied only if also within this of the top's HEADLINE_RET

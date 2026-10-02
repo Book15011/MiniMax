@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from backtest.scoring import selection
 from backtest.scoring.returnfirst import BARS, month_multiplicity, pick_order, tie_test
 from src.config import REPO_ROOT, resolve
 
@@ -144,9 +145,11 @@ def per_window(entry: dict) -> pd.DataFrame | None:
     return df[df.scored.astype(bool)]
 
 
-def tie_groups(rows: dict[str, dict], tables: dict[str, pd.DataFrame], sc: dict) -> tuple[dict, dict, list[str]]:
+def tie_groups(rows: dict[str, dict], tables: dict[str, pd.DataFrame], sc: dict,
+               margin: float | None = None) -> tuple[dict, dict, list[str]]:
     """{pool: {model: tie result}}, {pool: pick order}, and warnings. The weights must be the same in every run of
-    the tool version (they are: the same windows and the same files); the first candidate's are used."""
+    the tool version (they are: the same windows and the same files); the first candidate's are used. With `margin`
+    (backtest.scoring.selection), a model is tied only if also within `margin` of the top's HEADLINE_RET."""
     t = sc["tie"]
     ties, orders, warn = {}, {}, []
     names = [n for n in rows if n in tables]
@@ -172,7 +175,7 @@ def tie_groups(rows: dict[str, dict], tables: dict[str, pd.DataFrame], sc: dict)
             continue
         top = max(elig, key=lambda n: (rows[n]["headline_ret"][pool], n))
         mult = month_multiplicity(sel, int(t["reps"]), int(t["seed"]))
-        ties[pool] = tie_test(inds, w, top, mult, float(t["level"]))
+        ties[pool] = selection.apply_margin(tie_test(inds, w, top, mult, float(t["level"])), margin)
         pr = {n: {"eligible": r["eligible"], "headline_ret": r["headline_ret"][pool], "cs_hit": r["cs_hit"][pool],
                   "min_sc": (r.get("period_check") or {}).get("min")} for n, r in cands.items()}
         orders[pool] = pick_order(pr, {n: v for n, v in ties[pool].items() if n in cands}, float(t["cs_tolerance"]))
@@ -262,7 +265,12 @@ def leaderboard(entries: list[dict], tool_version: str, cfg: dict) -> str:
     sc = cfg["scoring"]
     rows = latest_by_model(entries, tool_version)
     tables = {n: t for n, e in rows.items() if (t := per_window(e)) is not None}
-    ties, orders, warn = tie_groups(rows, tables, sc)
+    rule, margin = selection.settings(cfg)
+    ties, orders, warn = tie_groups(rows, tables, sc, margin)
+    alt_margin = None if margin is not None else selection.proposal_margin(cfg)       # the other rule, shown too
+    _, alt_orders, _ = tie_groups(rows, tables, sc, alt_margin)
+    rule_name = "legacy (pre-registered)" if margin is None else f"margin {margin:g} (Pol's proposal)"
+    alt_name = f"margin {alt_margin:g} (Pol's proposal)" if margin is None else "legacy (pre-registered)"
     old = latest_by_model(entries, str(sc.get("previous_tool_version", "")))
     old_rank = {n: k for k, n in enumerate(sorted(old, key=lambda n: -old[n]["primary"]), 1)}
     cash = rows.get("team_cash")
@@ -281,6 +289,8 @@ def leaderboard(entries: list[dict], tool_version: str, cfg: dict) -> str:
          "Definitions: docs/EVALUATION.md; pre-registration: reports/review/20261002-prereg-return-first.md. "
          f"Latest full run of each model, regenerated after every registered run. pi_up (full / without the "
          f"post-holdout windows): {_num(pi.get('full'))} / {_num(pi.get('in_sample'))}.", ""]
+    L += [f"Tie rule ordering this table: **{rule_name}**; the {alt_name} pick is shown under each pick "
+          "(top-level `selection:` in config.yaml, backtest/scoring/selection.py).", ""]
     L += [f"- **Warning:** {w}" for w in warn]
     if warn:
         L.append("")
@@ -320,8 +330,12 @@ def leaderboard(entries: list[dict], tool_version: str, cfg: dict) -> str:
     L += [line("", n) for n in refs]
     if cands:
         pick = orders.get("full", [None])[0]
-        L += ["", f"**Pick (full pool): `{pick}`.** Tie group: "
+        L += ["", f"**Pick (full pool), rule {rule_name}: `{pick}`.** Tie group: "
               + ", ".join(f"`{n}`" for n in cands if ties.get("full", {}).get(n, {}).get("tied")) + "."]
+        alt = alt_orders.get("full", [None])[0]
+        L += ["", f"Under the {alt_name} rule the pick would be `{alt}`"
+              + (" (the same)." if alt == pick else ". Rule: top-level `selection:` in config.yaml; evidence in "
+                 "reports/review/20261002-selection-rule.md.")]
     # ---- without the post-holdout windows
     ins = orders.get("in_sample", [])
     if ins:
@@ -346,7 +360,9 @@ def leaderboard(entries: list[dict], tool_version: str, cfg: dict) -> str:
                      f"{e['hit']['in_sample']['LENIENT']:.2f} / {e['hit']['in_sample']['MIDDLE']:.2f} / "
                      f"{e['hit']['in_sample']['STRICT']:.2f} | {_num(_mean3(e['hit_up']['in_sample']), 2)} / "
                      f"{_num(_mean3(e['hit_down']['in_sample']), 2)} | — | {_num(e['cs_hit']['in_sample'])} | — |")
-        L += ["", f"**Pick without the post-holdout windows: `{ins[0]}`.**"]
+        alt_ins = (alt_orders.get("in_sample") or [None])[0]
+        L += ["", f"**Pick without the post-holdout windows, rule {rule_name}: `{ins[0]}`.** Under the {alt_name} rule: "
+              f"`{alt_ins}`."]
     L += ["", "Columns: HIT L / M / S = the share of weight clearing LENIENT (−1.4965% in DOWN windows, 0% in UP "
           "windows, an assumption), MIDDLE (0%) and STRICT (max(0, the 6 gate benchmarks' median)); HIT UP / DOWN = "
           "the mean of the three HITs on UP and on DOWN windows, each group's weights renormalized. CS_HIT = mean "
