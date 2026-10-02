@@ -12,7 +12,8 @@ Each completed hour bar H (UTC), about `process_after_s` after the hour:
    as the backtest engine carries prices; without that, a model that needs a full 30 days of bars sees none. The shared planner
    turns targets into orders (the first decision trades every difference, later ones only beyond the band).
 3. Activity guard, as backtest/engine.py: from hour `activity_guard_offset_hours` + 1 of the HKT day on (04:00 UTC
-   with the proposed 11), if the day has no confirmed trade yet, rebalance exactly to the standing targets; if that
+   with the proposed 11), if the day has no confirmed trade yet (also right after a decision that filled nothing, so
+   a model deciding every hour keeps its guard), rebalance exactly to the standing targets; if that
    needs no order, make the keep-alive trade (0.2% of equity more BTC, or that much less of the largest holding).
    A fill counts only when the account's positions moved (an order response alone is not proof), and an
    unconfirmed guard is retried every later hour of the same day. With `harness.guard_utc_day`, the guard also
@@ -204,7 +205,6 @@ class Runner:
             h = self.broker.holdings(with_shorts=False)
         eq = equity(h, quotes)
         grid = self.h["grid_hour_utc"]
-        decided = False
         if self.start_at is not None and H < self.start_at:  # before the round: record data, never trade
             self.emit("snapshot", bar=H, equity=eq, waiting_until=self.start_at)
             self.state["last_bar"] = str(H)
@@ -226,15 +226,15 @@ class Runner:
             self.emit("decision", bar=H, universe=uni, universe_as_of=g, equity=eq, first=first,
                       targets=self.state["standing"])
             self.trade("rebalance", H, self.state["standing"], h, quotes, self.model.spec.band, exact=first)
-            decided = True
         start = day_start(H, grid)
         into_day = int((H - start) / HOUR)
         no_trade = str(start) not in self.state["active_days"]                   # none yet in this HKT day
         if self.h.get("guard_utc_day") and H.floor("D") > start:                 # or none since 00:00 UTC
             last = self.state.get("last_fill")
             no_trade = no_trade or last is None or pd.Timestamp(last) < H.floor("D")
-        if (not decided and no_trade                                             # every later hour of the day retries
-                and into_day >= self.h["activity_guard_offset_hours"] + 1):        # until a fill is confirmed
+        if (no_trade                                                             # every later hour of the day retries
+                and into_day >= self.h["activity_guard_offset_hours"] + 1):        # until a fill is confirmed; also right
+            # after a decision that filled nothing, as the engine does (an hourly model decides every hour)
             h = self.broker.holdings(with_shorts=not self.long_only)
             fills = self.trade("guard", H, self.state["standing"], h, quotes, 0.0, exact=True)
             if not any(f["status"] == "FILLED" for f in fills):
