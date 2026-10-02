@@ -94,16 +94,27 @@ The organizers' EC2 is reached **only through Session Manager** (browser shell, 
 
 The round is Roostoo competition 538: **2026-10-04 12:00 UTC → 2026-10-18 12:00 UTC**, $100,000 start, 0.1% taker and 0.05% maker fees, no leverage (from `/v1/competition_list`).
 
-1. Commit on `main`, reviewed: `live.mode: live`, the chosen `live.model`, and `live.start_at: "2026-10-04 12:00"` (already the default).
-2. On EC2, before 12:00 UTC:
+1. The launch branch (`feature/launch-e20v45`) already has `live.mode: live`, `live.model` and
+   `live.start_at: "2026-10-04 12:00"` committed.
+2. On EC2, before 12:00 UTC, the person who has the competition key runs this as ec2-user:
 
    ```bash
-   cd /opt/minimax && git pull && .venv/bin/python -m src.live.runner clock    # RESULT OK
-   sudo systemctl stop minimax-bot
-   mv data/live/state.json data/live/state-paper.json      # paper and live never share state
-   sudo systemctl start minimax-bot && journalctl -u minimax-bot -f
+   bash /opt/minimax/deploy/go_live_round.sh
    ```
 
+   - It asks for the key and secret first: hidden prompts, never printed. Ctrl+C there changes nothing.
+   - Then it stops the bot and ends any test run, keeping that run's state aside, never reused.
+   - It pulls the committed config, writes `.env` (`ROOSTOO_ENV=competition`, mode 600), checks the clock and
+     starts the bot.
+   - The bot refuses to start if `state.json` belongs to another account or to a run that began before
+     `live.start_at`. It also refuses the competition key without `live.start_at`. So a test run's positions
+     can never carry into the round.
+
+   `bash /opt/minimax/deploy/status.sh` (read-only) shows:
+   - the service and the config;
+   - the last equity, round return and holdings;
+   - the last decision and trade;
+   - errors in the last 24 h.
 3. Started any time before 12:00 UTC, the bot only records bars until the 12:00 bar. Then it makes its first decision and trades every difference from cash. Its next daily decision is at 16:00 UTC, on the research grid.
 
 ## During the round
@@ -115,10 +126,17 @@ The round is Roostoo competition 538: **2026-10-04 12:00 UTC → 2026-10-18 12:0
 - **Shorts refused:** if the exchange answers "does not allow short positions", the bot trades long-only from then on (G4 in `docs/EVALUATION.md` checks that this fallback stays active and safe).
 - **Clock:** the bot keeps time by Roostoo's server clock (offset re-measured every hour, `clock` events in the JSONL log). A `warning` or `error` level means the host's NTP has a problem: check `chronyc tracking`.
 
-## Not verified yet
+## Verified (2026-10-02, on EC2 and the TEST account)
 
-- Whether Binance's API is reachable from EC2 (step 5).
-- The EC2 clock (step 2), and whether the launch template is Ubuntu or Amazon Linux (the setup script handles both).
-- The format of `/v6/short_positions`: if the bot cannot read it, it switches to long-only.
-- Fills, fees and limits on the competition account. Run `python -m src.live.selfcheck --orders` with the test key first.
-- Answered: no cap on trades per minute, only 30 API calls/min (FAQ Q22–23); the bot uses ≤ 20 and spaces orders 3 s apart.
+- **Machine and network.** Binance's API is reachable from EC2 (200). The clock is synced (Amazon Time Sync). The
+  launch template is Amazon Linux 2023; the setup installs Python 3.11.
+- **Balance.** `/v3/balance` answers `SpotWallet` (plus an empty `MarginWallet`), not the documented `Wallet`.
+  The client reads both.
+- **Orders** (`selfcheck --orders`):
+  - Market orders fill at the quote with a 0.1% fee.
+  - LIMIT orders rest as PENDING/MAKER and cancel.
+  - Shorts open, list in `/v6/short_positions` and close.
+- **Live run.** On the test account it bought its 6 coins and confirmed every fill.
+- **Rate limit.** No cap on trades per minute, only 30 API calls/min (FAQ Q22–23); the bot uses ≤ 20 and spaces
+  orders 3 s apart.
+- **Still unknown:** the competition account itself (it opens at the round's start).

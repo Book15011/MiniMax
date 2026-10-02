@@ -200,7 +200,7 @@ execution:
 # Live bot (src/live/runner.py, deploy/README.md). Paper trading on the research server; live only on EC2.
 live:
   model: pol_switch_vt_tl_e20v45       # launch model (2026-10-02; reports/review/20261002-e20v45-readiness.md)
-  mode: paper                   # paper | live
+  mode: live                    # paper | live. live = the round on EC2 (deploy/go_live_round.sh puts the competition key in)
   start_at: "2026-10-04 12:00"  # UTC = Oct 4 20:00 HKT, the round's start (Roostoo competition 538). Live mode: earlier bars recorded, never traded
   clock_warn_s: 2               # warn when the machine clock is this far off Roostoo's (the bot runs on Roostoo's time anyway)
   clock_error_s: 30             # error above this; Roostoo rejects signatures more than 60 s off

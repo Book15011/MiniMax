@@ -27,7 +27,9 @@ conservative side. Hours, days and the start time run on Roostoo's server clock 
 measured every hour); the offset is logged, with a warning above clock_warn_s. Restarts resume from the state file; missed hours are not replayed, an overdue decision or
 guard runs at the next hour. In live mode, before `live.start_at` the bot only records bars. A committed change of
 `live.model` takes effect at the next hour (the new model decides at once; active days are kept); paper and
-live never share a state file. If the exchange refuses a short, the bot trades long-only from then on.
+live never share a state file, nor do the test and competition accounts, and a state whose round began before
+`live.start_at` (a test run) is refused. The competition key runs only with `live.start_at` set. If the exchange
+refuses a short, the bot trades long-only from then on.
 """
 from __future__ import annotations
 
@@ -120,8 +122,9 @@ def holdings_from_json(d: dict) -> Holdings:
 
 class Runner:
     def __init__(self, cfg: dict, model_name: str, mode: str, broker, client: RoostooClient, state_dir: Path,
-                 log: logging.Logger, long_only: bool = False, rest=None, archive=None):
+                 log: logging.Logger, long_only: bool = False, rest=None, archive=None, account: str | None = None):
         self.cfg, self.mode, self.broker, self.client, self.dir, self.log = cfg, mode, broker, client, state_dir, log
+        self.account = account or mode                    # "paper", or the key's ROOSTOO_ENV: "test" | "competition"
         self.lv, self.h, self.ex, self.v = cfg["live"], cfg["harness"], cfg["execution"], cfg["validation"]
         self.model = get(model_name)
         self.params = (cfg.get("models") or {}).get(model_name, {}) or {}
@@ -130,10 +133,13 @@ class Runner:
         self.rest, self.archive = rest, archive
         self.state_path = state_dir / "state.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {
-            "model": model_name, "mode": mode, "last_bar": None, "last_decision": None, "prev_targets": {},
-            "standing": {}, "active_days": [], "paper": None}
+            "model": model_name, "mode": mode, "account": self.account, "last_bar": None, "last_decision": None,
+            "prev_targets": {}, "standing": {}, "active_days": [], "paper": None}
         if self.state["mode"] != mode:
             raise SystemExit(f"state.json is for {self.state['mode']} mode; move it away to start {mode} fresh")
+        if self.state.setdefault("account", self.account) != self.account:   # a test run's positions are not ours
+            raise SystemExit(f"state.json is for the {self.state['account']} account; move it away to start on the "
+                             f"{self.account} account fresh")
         self.switched_from = None
         if self.state["model"] != model_name:             # a committed model change (e.g. the team_cash exit)
             self.switched_from = self.state["model"]
@@ -141,6 +147,10 @@ class Runner:
         self.long_only = self.long_only or bool(self.state.get("long_only"))
         self.start_at = (pd.Timestamp(self.lv["start_at"]).tz_localize("UTC")      # live only: paper is a rehearsal
                          if mode == "live" and self.lv.get("start_at") else None)
+        began = self.state.get("round_start")
+        if self.start_at is not None and began is not None and pd.Timestamp(began) < self.start_at:
+            raise SystemExit(f"state.json is from a run that began {began}, before live.start_at {self.start_at} "
+                             "(a test run?); move it away to start the round fresh")
         self.store = feed.Store.load(state_dir)
         self.rules = parse_exchange_info(client.exchange_info())
         self.commit = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], cwd=REPO_ROOT, capture_output=True,
@@ -352,6 +362,8 @@ def build(cfg: dict, args, log: logging.Logger) -> Runner:
         creds = load_credentials(REPO_ROOT / ex["env_file"])
         if creds.env == "competition" and os.environ.get("MM_HOST") != "ec2":
             raise SystemExit("ROOSTOO_ENV=competition outside EC2: refused (AGENTS.md rule 3)")
+        if creds.env == "competition" and not lv.get("start_at"):
+            raise SystemExit("ROOSTOO_ENV=competition needs live.start_at (the round's start): refused")
     else:
         creds = None
     client = RoostooClient(cfg["exchange"]["base_url"], creds, ex["calls_per_minute"], ex["timeout_s"], log=log)
@@ -365,7 +377,8 @@ def build(cfg: dict, args, log: logging.Logger) -> Runner:
                               float(ex["fee"]))
     rest = feed.rest_fetcher(lv["binance_rest"]) if lv.get("binance_rest") else None
     archive = feed.archive_fetcher(cfg["data"]["base_url"]) if lv.get("use_archive", True) else None
-    return Runner(cfg, args.model or lv["model"], args.mode, broker, client, state_dir, log, args.long_only, rest, archive)
+    return Runner(cfg, args.model or lv["model"], args.mode, broker, client, state_dir, log, args.long_only, rest, archive,
+                  account=creds.env if creds else None)
 
 
 def main(argv: list[str] | None = None) -> int:
