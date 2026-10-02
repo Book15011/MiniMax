@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Git worktrees so several people and agents can work in parallel without touching each other's files.
+#   scripts/wt new   <member> <task> [base]                   .worktrees/<member>-<task> on feature/<task> (base: main)
+#   scripts/wt merge <member>-<task> --reviewed-by <member>   test, then merge feature/<task> into main
+#   scripts/wt rm    <member>-<task>                          remove a worktree (branch is kept)
+#   scripts/wt ls                                             list worktrees
+set -euo pipefail
+ROOT="$(dirname "$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir)")"
+WT="$ROOT/.worktrees"
+IDS="$ROOT/.team/identities"   # member|Display Name|email  (gitignored, stays on this server)
+
+die() { echo "wt: $*" >&2; exit 1; }
+runtests() { local rc=0; (cd "$1" && "$ROOT/.venv/bin/python" -m pytest -q) || rc=$?; [[ $rc == 0 || $rc == 5 ]]; }  # 5 = no tests yet
+ident() { grep -E "^$1\|" "$IDS" 2>/dev/null | head -1 || true; }
+field() { cut -d'|' -f"$2" <<<"$1"; }
+
+case "${1:-ls}" in
+  new)
+    member="${2:-}"; task="${3:-}"; base="${4:-main}"
+    [[ -n "$member" && -n "$task" ]] || die "usage: scripts/wt new <member> <task> [base]"
+    [[ "$member$task" =~ ^[a-z0-9._-]+$ ]] || die "use lowercase letters, digits, . _ - only"
+    id="$(ident "$member")"; [[ -n "$id" ]] || die "no identity for '$member' in .team/identities"
+    dir="$WT/$member-$task"; branch="feature/$task"
+    [[ ! -e "$dir" ]] || die "$dir already exists"
+    if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$branch"; then
+      git -C "$ROOT" worktree add "$dir" "$branch"
+    else
+      git -C "$ROOT" worktree add -b "$branch" "$dir" "$base"
+    fi
+    git -C "$ROOT" config extensions.worktreeConfig true
+    git -C "$dir" config --worktree user.name  "$(field "$id" 2)"
+    git -C "$dir" config --worktree user.email "$(field "$id" 3)"
+    ln -s "$ROOT/.venv" "$dir/.venv"; ln -s "$ROOT/data" "$dir/data"
+    mkdir -p "$ROOT/results/$member"; ln -s "$ROOT/results" "$dir/results"
+    echo "ready: $dir (branch $branch, commits as $(git -C "$dir" config user.name))"
+    ;;
+  merge)
+    name="${2:-}"; [[ "${3:-}" == "--reviewed-by" && -n "${4:-}" ]] || die "usage: scripts/wt merge <member>-<task> --reviewed-by <member>"
+    dir="$WT/$name"; [[ -d "$dir" ]] || die "no worktree $dir"
+    author="${name%%-*}"; reviewer="$4"
+    [[ "$reviewer" != "$author" ]] || die "the reviewer must be someone other than the author"
+    rid="$(ident "$reviewer")"; [[ -n "$rid" ]] || die "unknown reviewer '$reviewer'"
+    aid="$(ident "$author")";   [[ -n "$aid" ]] || die "unknown author '$author'"
+    branch="$(git -C "$dir" symbolic-ref --short HEAD)"
+    [[ -z "$(git -C "$dir" status --porcelain)" ]] || die "$dir has uncommitted changes"
+    echo "== tests on $branch"; runtests "$dir" || die "tests failed on $branch; not merging"
+    mkdir -p "$ROOT/run/locks"; exec 9>"$ROOT/run/locks/git-main.lock"
+    flock -w 120 9 || die "another merge is running"
+    mainwt="$(git -C "$ROOT" worktree list --porcelain | awk '/^worktree /{w=substr($0,10)} /^branch refs\/heads\/main$/{print w}')"
+    if [[ -z "$mainwt" ]]; then mainwt="$WT/_main"; git -C "$ROOT" worktree add "$mainwt" main >/dev/null; fi
+    [[ -z "$(git -C "$mainwt" status --porcelain --untracked-files=no)" ]] || die "main checkout $mainwt is not clean"
+    git -C "$mainwt" -c user.name="$(field "$aid" 2)" -c user.email="$(field "$aid" 3)" \
+      merge --no-ff "$branch" -m "Merge $branch" -m "Reviewed-by: $(field "$rid" 2) <$(field "$rid" 3)>"
+    echo "== tests on main"; runtests "$mainwt" || echo "wt: WARNING tests fail on main after merge; fix now" >&2
+    echo "merged $branch into main (reviewed by $(field "$rid" 2))"
+    ;;
+  rm)
+    name="${2:-}"; [[ -n "$name" ]] || die "usage: scripts/wt rm <member>-<task>"
+    dir="$WT/$name"; [[ -d "$dir" ]] || die "no worktree $dir"
+    [[ -z "$(git -C "$dir" status --porcelain --untracked-files=no)" ]] || die "$dir has uncommitted changes; commit first"
+    git -C "$ROOT" worktree remove --force "$dir" && echo "removed $dir (branch kept)"
+    ;;
+  ls)
+    git -C "$ROOT" worktree list
+    ;;
+  *) die "unknown command '$1' (new | merge | rm | ls)";;
+esac

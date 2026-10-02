@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# One-screen view of shared work on this server: worktrees, tmux sessions, held locks, load, disk.
+set -uo pipefail
+ROOT="$(git -C "$(dirname "$0")/.." rev-parse --path-format=absolute --git-common-dir | xargs dirname)"
+echo "== worktrees";  git -C "$ROOT" worktree list
+echo "== root checkout"; git -C "$ROOT" status -sb | head -1
+echo "== tmux (mm-*)"; (tmux ls 2>/dev/null | grep '^mm-') || echo "(none)"
+echo "== locks held"
+shopt -s nullglob; any=0
+for f in "$ROOT"/run/locks/*.info; do echo "  $(basename "$f" .info): $(cat "$f")"; any=1; done
+[[ $any == 1 ]] || echo "  (none)"
+echo "== load";  uptime; echo "cpus: $(nproc)"
+echo "== disk";  du -sh "$ROOT/data" "$ROOT/results" 2>/dev/null; df -h "$ROOT" | tail -1

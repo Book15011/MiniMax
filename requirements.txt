@@ -1,6 +1,7 @@
 requests
 pandas
 numpy
+pyarrow
 pyyaml
 python-dotenv
 pytest

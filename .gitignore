@@ -7,3 +7,15 @@ __pycache__/
 *.parquet
 *.zip
 .pytest_cache/
+
+# Team setup (see AGENTS.md section 4)
+/.worktrees/
+/.team/
+/run/
+/results
+# symlinks inside worktrees (no trailing slash so links match too)
+/.venv
+/data
+
+# Run logs next to reports are never committed (AGENTS.md section 4)
+reports/**/*.log
