@@ -99,6 +99,7 @@ Every constant is under `scoring:` in `config.yaml`; the code is `backtest/scori
 - **The leaderboard:**
   - the latest full run of each model, candidates in the pick order, benchmarks as reference rows, both pools;
   - "old REL" is the primary of tool version `56cb5a2e85d45862`;
+  - a separate **return view** (report-only) ranks the same runs by the size of the return: the mean 14-day R_liq weighted with w', with the weighted median, 10th and 90th percentiles, the share of weight above 0, the plain median, worst and best, both pools. HEADLINE_RET says how often a model makes the cut; the return view says by how much it gains. It never changes the pick or the main order;
   - rows of older tool versions stay below, marked as previous versions.
 - **Independent check:** `tests/return_first_reference.py` recomputes w′, the HITs, HEADLINE_RET and CS_HIT from the saved outputs without importing the scoring code.
 
