@@ -108,6 +108,15 @@ def test_signed_post_sends_exactly_the_signed_body():
     assert call["headers"]["Content-Type"] == "application/x-www-form-urlencoded"
 
 
+def test_balance_reads_the_live_spotwallet_and_the_documented_wallet():
+    live = {"Success": True, "ErrMsg": "", "MarginWallet": {},
+            "SpotWallet": {"USD": {"Free": 50000, "Lock": 0, "PendingOrders": 0, "ShortCollateral": 0}}}
+    assert client([(200, live)]).balance()["USD"]["Free"] == 50000            # the reply the TEST account gives
+    doc = {"Success": True, "ErrMsg": "", "Wallet": {"BTC": {"Free": 0.5, "Lock": 0.1}}}
+    assert client([(200, doc)]).balance() == {"BTC": {"Free": 0.5, "Lock": 0.1}}   # the docs' example
+    assert client([(200, {"Success": True, "ErrMsg": "", "SpotWallet": {}, "MarginWallet": {}})]).balance() == {}
+
+
 def test_cancel_all_needs_explicit_permission_and_keys_stay_hidden():
     with pytest.raises(ValueError):
         client([]).cancel_order()
