@@ -191,7 +191,8 @@ class Runner:
         ticker = self.client.ticker()
         quotes = quotes_from_ticker(ticker)
         closes = {binance_symbol(p): float(q.get("LastPrice") or 0.0) for p, q in ticker.items()}
-        added = feed.top_up(self.store, H, self.rest, self.archive, lambda: closes, self.log)
+        vols = {binance_symbol(p): float(q.get("UnitTradeValue") or 0.0) for p, q in ticker.items()}   # 24 h quote volume
+        added = feed.top_up(self.store, H, self.rest, self.archive, lambda: closes, self.log, lambda: vols)
         self.store.trim(int(self.lv["history_days"]))
         self.store.save(self.dir)
         self.emit("feed", bar=H, added=added, complete_through=self.store.complete_through)
