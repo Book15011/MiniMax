@@ -77,6 +77,23 @@ def test_blocked_rest_falls_back_to_archive_then_ticker_and_archive_later_replac
     assert st.close.loc[upto, "BTCUSDT"] == 150.0 and not st.ticker_only
 
 
+def test_ticker_volume_makes_the_24h_sum_match_the_tickers_figure():
+    st = small_store()                                      # 10.0 per hour through T0
+    h1, h2 = T0 + pd.Timedelta(hours=1), T0 + pd.Timedelta(hours=2)
+    added = feed.top_up(st, h1, None, None, lambda: {"BTCUSDT": 101.0}, LOG, lambda: {"BTCUSDT": 300.0, "XUSDT": 0.0})
+    assert added["ticker_qv"] == 1 and st.qv.loc[h1, "BTCUSDT"] == pytest.approx(300.0 - 23 * 10.0)
+    assert np.isnan(st.qv.loc[h1, "XUSDT"])                 # no figure: stays unknown
+    feed.top_up(st, h2, None, None, lambda: {"BTCUSDT": 102.0}, LOG, lambda: {"BTCUSDT": 310.0})
+    assert st.qv["BTCUSDT"].iloc[-24:].sum() == pytest.approx(310.0)
+    st.qv.loc[T0, "BTCUSDT"] = np.nan                       # a hole in the 23 bars before: flat estimate
+    h3 = T0 + pd.Timedelta(hours=3)
+    feed.top_up(st, h3, None, None, lambda: {"BTCUSDT": 103.0}, LOG, lambda: {"BTCUSDT": 240.0})
+    assert st.qv.loc[h3, "BTCUSDT"] == pytest.approx(10.0)
+    st.qv.loc[T0, "BTCUSDT"] = 10.0
+    feed.top_up(st, T0 + pd.Timedelta(hours=4), None, None, lambda: {"BTCUSDT": 1.0}, LOG, lambda: {"BTCUSDT": 1.0})
+    assert st.qv.loc[T0 + pd.Timedelta(hours=4), "BTCUSDT"] == 0.0     # never negative
+
+
 def test_archive_day_is_published_when_btc_is_and_a_missing_coin_is_no_data():
     st = small_store()
 

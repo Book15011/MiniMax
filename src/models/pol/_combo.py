@@ -28,11 +28,11 @@ from src.contracts import MarketView, ModelSpec
 from src.models.baitoey import baitoey_mr_bbrsi, baitoey_rot_max, baitoey_vt_mom
 from src.models.baitoey.baitoey_switch_mr import btc_calm
 from src.models.baselines import team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2
-from src.models.pol import pol_mom_ss, pol_trend_ls
+from src.models.pol import pol_mom_ss, pol_mr_cap, pol_trend_ls, pol_vt_mvr
 
 SLEEVES = {m.MODEL.spec.name: m.MODEL for m in (team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2,
                                                  pol_mom_ss, pol_trend_ls, baitoey_rot_max, baitoey_mr_bbrsi,
-                                                 baitoey_vt_mom)}
+                                                 baitoey_vt_mom, pol_vt_mvr, pol_mr_cap)}
 
 
 def _clean(w: pd.Series) -> pd.Series:
