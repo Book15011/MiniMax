@@ -566,3 +566,12 @@ models:
     sleeves:
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
+  # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
+  pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
+    vt: *baitoey_vt_mom
+    alpha: 0.5
+    min_weight: 0.005
+  pol_abl_shock:                  # F: cash for 24 h after BTC falls >= 5% over 4 hours (checked hourly)
+    vt: *baitoey_vt_mom
+    shock_4h: 0.05
+    cooldown_hours: 24
