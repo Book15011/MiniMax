@@ -208,6 +208,10 @@ live:
   history_days: 300             # hourly bars kept: >= the longest lookback (team_trend_2's state needs 240 days)
   process_after_s: 45           # read bar HH:00 this long after the hour
   max_fill_hours: 48            # carry a price forward over at most this many unfilled hours in the model's view
+  endgame:                      # end-of-round lock-in (reports/review/20261002-new-rules.md). OFF: enabling it is a team decision
+    enabled: false
+    from_day: 10                # days after the round's first hour
+    lock_return: 0.03           # once equity is this far above the round's starting equity: sell everything, hold cash to the end
   order_spacing_s: 3            # pause between orders. Organizers: no cap on trades per minute, only 30 API calls/min (we use <= 20)
   paper_equity: 100000
   binance_rest: https://api.binance.com/api/v3/klines   # blocked on the research server; then the archive
