@@ -503,6 +503,9 @@ models:
   baitoey_mr_4h:                  # MR_4h registered for the live bot (Pol, 2026-10-01; Baitoey to review)
     <<: *baitoey_mr_bbrsi
     bar_hours: 4
+  baitoey_vt_dual:                # research/baitoey/prereg/20261002-dual-momentum.md
+    <<: *baitoey_vt_mom
+    min_score: 0.0                # a coin holds a slot only while its own momentum score is above this
   # --- pol, after the baitoey blocks (the YAML anchors these switches use are defined above) ---
   pol_switch_rmax_tl:             # pre-registered: reports/review/20261001-prereg-strict-bar.md
     prev: own
