@@ -139,7 +139,7 @@ def per_window(entry: dict) -> pd.DataFrame | None:
     if p is None or not p.exists():
         return None
     pw = json.loads(p.read_text())["per_window"]
-    cols = ["scored", "post_holdout", "w_final", "w_final_in_sample"] + [f"hit_{b}" for b in BARS]
+    cols = ["scored", "post_holdout", "w_final", "w_final_in_sample", "R", "R_liq"] + [f"hit_{b}" for b in BARS]
     df = pd.DataFrame({c: pw[c] for c in cols}, index=pd.to_datetime(pw["start"], utc=True))
     return df[df.scored.astype(bool)]
 
@@ -177,6 +177,60 @@ def tie_groups(rows: dict[str, dict], tables: dict[str, pd.DataFrame], sc: dict)
                   "min_sc": (r.get("period_check") or {}).get("min")} for n, r in cands.items()}
         orders[pool] = pick_order(pr, {n: v for n, v in ties[pool].items() if n in cands}, float(t["cs_tolerance"]))
     return ties, orders, warn
+
+
+def wquantile(x: np.ndarray, w: np.ndarray, q: float) -> float:
+    """Weighted quantile: the smallest x whose cumulative weight share reaches q."""
+    o = np.argsort(x, kind="stable")
+    c = np.cumsum(w[o]) / w.sum()
+    return float(x[o][min(int(np.searchsorted(c, q)), len(x) - 1)])
+
+
+def return_stats(t: pd.DataFrame, pool: str) -> dict | None:
+    """Report-only return magnitude of one run on one pool, from its score.json per-window table: the final weights
+    w' (the same weights as HEADLINE_RET) applied to R_liq, plus the plain (unweighted) distribution."""
+    wcol = "w_final" if pool == "full" else "w_final_in_sample"
+    sel = t if pool == "full" else t[~t.post_holdout.astype(bool)]
+    if sel.empty:
+        return None
+    w = sel[wcol].to_numpy(dtype=float)
+    r = sel.R_liq.to_numpy(dtype=float)
+    if not np.isfinite(w).all():
+        return None
+    return {"mean": float((w * r).sum() / w.sum()), "median": wquantile(r, w, 0.5), "p10": wquantile(r, w, 0.1),
+            "p90": wquantile(r, w, 0.9), "positive": float((w * (r > 0)).sum() / w.sum()),
+            "plain_median": float(np.median(r)), "worst": float(r.min()), "best": float(r.max())}
+
+
+def return_view(rows: dict[str, dict], tables: dict[str, pd.DataFrame], order: list[str]) -> list[str]:
+    """Report-only: candidates ranked by their weighted mean 14-day R_liq (the size of the return, not how often
+    it clears a bar), with the benchmarks as reference rows. It never changes the pick or the main ranking."""
+    st = {p: {n: return_stats(t, p) for n, t in tables.items()} for p in POOLS}
+    rank_main = {n: k for k, n in enumerate(order, 1)}
+    cands = sorted((n for n in rows if rows[n]["candidate"] and st["full"].get(n)), key=lambda n: -st["full"][n]["mean"])
+    rank_in = {n: k for k, n in enumerate(sorted((n for n in cands if st["in_sample"].get(n)),
+                                                 key=lambda n: -st["in_sample"][n]["mean"]), 1)}
+    refs = sorted((n for n in rows if not rows[n]["candidate"] and st["full"].get(n)), key=lambda n: -st["full"][n]["mean"])
+    L = ["", "## Return view (report-only): ranked by the size of the 14-day return", "",
+         "The main ranking above is by HEADLINE_RET: how often the return clears the cut. This view ranks the same runs "
+         "by how large the return is: the mean 14-day R_liq weighted with the same final weights w' (live-like, "
+         "recency, direction-balanced). It is shown so both can be read side by side; it does not change the pick "
+         "or the order above.", "",
+         "| Return rank | Model | Mean R_liq (w') | without post-holdout (rank) | Median R_liq (w') | 10th pct | 90th pct | "
+         "Share > 0 | Plain median | Worst | Best | Main rank (HEADLINE_RET) | Eligible |",
+         "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+
+    def line(k, n: str) -> str:
+        a, b = st["full"][n], st["in_sample"].get(n)
+        ins = "—" if b is None else f"{_pct(b['mean'], 2)}" + (f" (#{rank_in[n]})" if n in rank_in else "")
+        return (f"| {k} | {LABELS.get(n, n)} | **{_pct(a['mean'], 2)}** | {ins} | {_pct(a['median'], 2)} | "
+                f"{_pct(a['p10'])} | {_pct(a['p90'])} | {_share(a['positive'], 0)} | {_pct(a['plain_median'], 2)} | "
+                f"{_pct(a['worst'])} | {_pct(a['best'])} | {('#' + str(rank_main[n])) if n in rank_main else 'ref'} | "
+                f"{'yes' if rows[n]['eligible'] else 'no'} |")
+
+    L += [line(k, n) for k, n in enumerate(cands, 1)]
+    L += [line("ref", n) for n in refs]
+    return L
 
 
 def _pct(x, d=1) -> str:
@@ -301,6 +355,7 @@ def leaderboard(entries: list[dict], tool_version: str, cfg: dict) -> str:
           "days in every window), G4 (long-only run completes), G5 (leakage). Report-only gates: G2, G3, G6_median, "
           "G6_worst. Replay: the previous edition's two real windows from cash, R and rank among its teams "
           "(numbers only)."]
+    L += return_view(rows, tables, cands)
     L += ["", "## Runs per person (this tool version)", "", "| Person | Full runs | Best eligible candidate HEADLINE_RET |",
           "|---|---|---|"]
     for person in sorted(runs_by):

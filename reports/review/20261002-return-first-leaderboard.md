@@ -75,6 +75,39 @@ Primary: **HEADLINE_RET**, the mean over three return bars (LENIENT, MIDDLE, STR
 
 Columns: HIT L / M / S = the share of weight clearing LENIENT (−1.4965% in DOWN windows, 0% in UP windows, an assumption), MIDDLE (0%) and STRICT (max(0, the 6 gate benchmarks' median)); HIT UP / DOWN = the mean of the three HITs on UP and on DOWN windows, each group's weights renormalized. CS_HIT = mean composite (V1 FLOORED) over the windows clearing LENIENT, on HKT days and on UTC days. Old REL = the primary of tool version `56cb5a2e85d45862` (report only). Hard gates: G1 (≥ 10 active HKT days in every window), G4 (long-only run completes), G5 (leakage). Report-only gates: G2, G3, G6_median, G6_worst. Replay: the previous edition's two real windows from cash, R and rank among its teams (numbers only).
 
+## Return view (report-only): ranked by the size of the 14-day return
+
+The main ranking above is by HEADLINE_RET: how often the return clears the cut. This view ranks the same runs by how large the return is: the mean 14-day R_liq weighted with the same final weights w' (live-like, recency, direction-balanced). It is shown so both can be read side by side; it does not change the pick or the order above.
+
+| Return rank | Model | Mean R_liq (w') | without post-holdout (rank) | Median R_liq (w') | 10th pct | 90th pct | Share > 0 | Plain median | Worst | Best | Main rank (HEADLINE_RET) | Eligible |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | baitoey_vt_mom | **+4.86%** | +2.54% (#1) | +2.60% | -9.1% | +23.6% | 62% | +1.17% | -30.9% | +71.3% | #1 | yes |
+| 2 | pol_switch_vt_tl | **+3.88%** | +1.04% (#3) | +1.20% | -8.1% | +21.6% | 56% | +0.17% | -27.0% | +66.5% | #2 | yes |
+| 3 | baitoey_rot_max | **+3.85%** | +1.66% (#2) | +1.68% | -13.7% | +23.9% | 56% | +0.68% | -48.4% | +287.9% | #3 | yes |
+| 4 | pol_switch_rmax_mr | **+3.17%** | +0.58% (#4) | -0.07% | -13.3% | +25.4% | 50% | -0.17% | -36.1% | +152.0% | #8 | yes |
+| 5 | pol_switch_rmax_tl | **+3.09%** | +0.49% (#6) | +0.45% | -11.9% | +22.4% | 51% | -0.41% | -30.5% | +281.6% | #6 | yes |
+| 6 | pol_switch_rot_mr | **+2.44%** | +0.29% (#10) | +0.59% | -10.7% | +17.6% | 54% | +0.05% | -32.7% | +61.3% | #5 | yes |
+| 7 | pol_switch_rc | **+1.90%** | +0.38% (#9) | -0.01% | -9.6% | +16.5% | 45% | -0.01% | -21.8% | +57.6% | #14 | yes |
+| 8 | pol_combo_rb | **+1.82%** | +0.54% (#5) | +0.59% | -8.6% | +14.7% | 52% | +0.65% | -30.1% | +55.3% | #7 | yes |
+| 9 | pol_switch_rt | **+1.76%** | +0.15% (#13) | +0.06% | -10.4% | +16.7% | 50% | -0.24% | -26.0% | +57.6% | #9 | yes |
+| 10 | pol_combo_all | **+1.61%** | +0.39% (#8) | +0.28% | -6.3% | +12.6% | 53% | +0.15% | -20.0% | +38.8% | #11 | yes |
+| 11 | pol_combo_rtt | **+1.42%** | +0.26% (#11) | -0.10% | -5.6% | +11.4% | 49% | -0.16% | -18.8% | +40.7% | #16 | yes |
+| 12 | pol_combo_rt | **+1.36%** | +0.39% (#7) | -0.03% | -7.1% | +12.0% | 50% | -0.24% | -16.1% | +40.1% | #13 | yes |
+| 13 | pol_mom_ss | **+0.76%** | +0.25% (#12) | +0.24% | -6.3% | +9.1% | 52% | +0.09% | -16.3% | +25.3% | #12 | yes |
+| 14 | pol_switch3 | **+0.60%** | -1.30% (#19) | -0.17% | -7.8% | +9.3% | 48% | -0.17% | -31.2% | +61.4% | #15 | yes |
+| 15 | pol_combo_ms_tl | **+0.49%** | +0.03% (#14) | -0.22% | -4.8% | +8.4% | 47% | -0.07% | -12.5% | +25.2% | #18 | yes |
+| 16 | pol_trend_ls | **+0.29%** | -0.30% (#16) | -0.47% | -6.4% | +9.1% | 46% | -0.05% | -18.7% | +33.0% | #17 | yes |
+| 17 | baitoey_tg_mom | **+0.22%** | -0.11% (#15) | -0.44% | -3.5% | +5.5% | 43% | -0.02% | -9.7% | +25.3% | #19 | yes |
+| 18 | baitoey_mr_4h | **+0.08%** | -0.43% (#18) | +0.63% | -6.6% | +6.2% | 54% | +0.63% | -28.7% | +21.0% | #10 | yes |
+| 19 | baitoey_mr_bbrsi | **-0.17%** | -0.42% (#17) | +0.00% | -1.9% | +2.2% | 54% | +0.00% | -25.3% | +22.1% | #4 | yes |
+| ref | ROT_EW | **+3.14%** | +1.27% | +1.31% | -10.6% | +20.3% | 56% | +0.66% | -33.6% | +76.8% | ref | yes |
+| ref | ROT_IV | **+2.54%** | +0.85% | +0.96% | -6.4% | +13.0% | 55% | +0.61% | -24.0% | +41.3% | ref | yes |
+| ref | EW_DAILY | **+2.15%** | +0.27% | -0.49% | -12.7% | +23.9% | 49% | -0.15% | -47.3% | +133.7% | ref | yes |
+| ref | TREND_2 | **+1.60%** | +0.15% | +0.04% | -6.3% | +10.0% | 51% | -0.13% | -16.9% | +45.6% | ref | yes |
+| ref | BTC_HOLD | **+1.39%** | +0.28% | +0.26% | -7.2% | +10.8% | 53% | +0.60% | -37.4% | +69.2% | ref | yes |
+| ref | MOM_SS25 | **+0.76%** | +0.25% | +0.24% | -6.3% | +9.1% | 52% | +0.09% | -16.3% | +25.3% | ref | yes |
+| ref | CASH | **-0.00%** | -0.01% | -0.01% | -0.0% | +0.0% | 31% | -0.01% | -0.1% | +0.1% | ref | yes |
+
 ## Runs per person (this tool version)
 
 | Person | Full runs | Best eligible candidate HEADLINE_RET |

@@ -212,3 +212,24 @@ def test_cash_is_active_on_all_15_hkt_and_utc_days_of_a_1200_start(market, tmp_p
     w = run.windows
     assert (w.day_buckets == 15).all() and (w.day_buckets_utc == 15).all()
     assert (w.active_days == 15).all() and (w.active_days_utc == 15).all()
+
+
+def test_return_view_ranks_by_weighted_mean_r_liq_and_keeps_the_main_order():
+    from backtest.scoring.registry import return_stats, return_view
+    idx = pd.date_range("2024-03-01 12:00", periods=4, freq="D", tz="UTC")
+
+    def table(r):
+        return pd.DataFrame({"post_holdout": [False, False, False, True], "w_final": [0.1, 0.2, 0.3, 0.4],
+                             "w_final_in_sample": [0.5, 0.25, 0.25, np.nan], "R": r, "R_liq": r}, index=idx)
+
+    a, b = table([0.10, 0.00, 0.00, -0.05]), table([-0.02, 0.01, 0.02, 0.03])
+    sa, sb = return_stats(a, "full"), return_stats(b, "full")
+    assert sa["mean"] == pytest.approx(0.1 * 0.10 - 0.4 * 0.05)             # -0.010
+    assert sb["mean"] == pytest.approx(-0.1 * 0.02 + 0.2 * 0.01 + 0.3 * 0.02 + 0.4 * 0.03)   # +0.018
+    assert return_stats(a, "in_sample")["mean"] == pytest.approx(0.5 * 0.10)  # the post-holdout window is left out
+    assert sa["median"] == 0.0 and sb["positive"] == pytest.approx(0.9)
+    rows = {n: {"candidate": True, "eligible": True} for n in ("a", "b")}
+    lines = return_view(rows, {"a": a, "b": b}, ["a", "b"])                 # main order: a first
+    body = [ln for ln in lines if ln.startswith("| 1 ") or ln.startswith("| 2 ")]
+    assert body[0].startswith("| 1 | b |") and body[0].endswith("| #2 | yes |")   # b has the larger return
+    assert body[1].startswith("| 2 | a |") and body[1].endswith("| #1 | yes |")
