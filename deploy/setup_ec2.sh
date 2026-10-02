@@ -34,6 +34,10 @@ python3 -m venv "$APP/.venv"
 "$APP/.venv/bin/pip" install -q --upgrade pip
 "$APP/.venv/bin/pip" install -q -r "$APP/deploy/requirements-lock.txt"
 mkdir -p "$APP/data/live"
+if [ ! -f "$APP/data/live/close_1h.parquet" ] && [ -f "$APP/deploy/seed/close_1h.parquet" ]; then
+  cp "$APP/deploy/seed/close_1h.parquet" "$APP/deploy/seed/qv_1h.parquet" "$APP/deploy/seed/store_meta.json" "$APP/data/live/"
+  echo "Seeded $APP/data/live from deploy/seed; the bot fetches every later hour itself."
+fi
 sed "s/^User=ubuntu$/User=$ME/" "$APP/deploy/minimax-bot.service" | sudo tee /etc/systemd/system/minimax-bot.service >/dev/null
 sudo systemctl daemon-reload
 
@@ -42,6 +46,6 @@ echo "Installed in $APP (commit $(git -C "$APP" rev-parse --short=12 HEAD)), ser
 echo "Clock check (must say RESULT OK before going live):"
 (cd "$APP" && .venv/bin/python -m src.live.runner clock) || echo "CLOCK NOT OK: wait a minute for chrony, then rerun: cd $APP && .venv/bin/python -m src.live.runner clock"
 [ -f "$APP/.env" ] || echo "MISSING: $APP/.env with ROOSTOO_API_KEY, ROOSTOO_SECRET_KEY, ROOSTOO_ENV (chmod 600). Type it in yourself."
-[ -f "$APP/data/live/close_1h.parquet" ] || echo "MISSING: the seed store in $APP/data/live (deploy/README.md)."
+[ -f "$APP/data/live/close_1h.parquet" ] || echo "MISSING: the seed store in $APP/data/live (deploy/seed/ in the repo; deploy/README.md step 3)."
 echo "Then: cd $APP && .venv/bin/python -m src.live.runner run --once   # one hour, by hand, to check"
 echo "      sudo systemctl enable --now minimax-bot && journalctl -u minimax-bot -f"
