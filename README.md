@@ -19,6 +19,11 @@ Every day at 12:00 HKT, if the day has no trade yet, the bot rebalances back to 
 has at least one trade that follows the strategy. If the exchange refuses short positions, the bot continues
 long-only by itself; over the backtest the long-only version scores the same.
 
+**End-of-round lock-in.** From day 10 of the round, once the account is 3% above its starting value, the bot sells
+everything and holds cash to the end; a small daily trade keeps every day active. This protects a lead against a late
+reversal and improves the risk score (the second stage of the ranking). It costs about 0.9% of average return, and in
+a strong rally it gives up further gains (`live.endgame`, `reports/review/20261003-flaws.md`).
+
 ### Risk and position sizing
 
 - **No leverage.** Longs are bought only with free cash and 1% of equity always stays in USD; a short is 1x and
@@ -101,6 +106,8 @@ The replays send every order through the live code, with Roostoo's real pair rul
 - **Execution.** Market orders filled at the quoted price with a 0.1% fee on the test account. Market impact on
   large orders is not modelled beyond the bid-ask spread. The backtest fills one hour after the decision; the live
   bot trades within a minute, so the backtest is the conservative side.
+- **Lock-in.** Holding cash from day 10 once up 3% gives up any further rally. In rising markets in the backtest,
+  that lowers the chance of clearing a high top-20 bar a little (falling markets gain much more).
 - **Shorts.** Verified on the test account (open, list, close). If the competition account refuses them, the bot
   continues long-only, which scores the same in the backtest.
 

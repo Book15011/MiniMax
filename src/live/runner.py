@@ -25,7 +25,8 @@ Each completed hour bar H (UTC), about `process_after_s` after the hour:
 Live trades about an hour earlier than the backtest assumes (it lags fills by one bar), so the backtest is the
 conservative side. Hours, days and the start time run on Roostoo's server clock (machine clock plus the offset
 measured every hour); the offset is logged, with a warning above clock_warn_s. Restarts resume from the state file; missed hours are not replayed, an overdue decision or
-guard runs at the next hour. In live mode, before `live.start_at` the bot only records bars. A committed change of
+guard runs at the next hour. In live mode, before `live.start_at` and from `live.end_at` on the bot only records
+bars; the round's starting equity is the first hour from start_at with money in the account (late funding). A committed change of
 `live.model` takes effect at the next hour (the new model decides at once; active days are kept); paper and
 live never share a state file, nor do the test and competition accounts, and a state whose round began before
 `live.start_at` (a test run) is refused. The competition key runs only with `live.start_at` set. If the exchange
@@ -147,6 +148,8 @@ class Runner:
         self.long_only = self.long_only or bool(self.state.get("long_only"))
         self.start_at = (pd.Timestamp(self.lv["start_at"]).tz_localize("UTC")      # live only: paper is a rehearsal
                          if mode == "live" and self.lv.get("start_at") else None)
+        self.end_at = (pd.Timestamp(self.lv["end_at"]).tz_localize("UTC")          # the round's end: record only
+                       if mode == "live" and self.lv.get("end_at") else None)
         began = self.state.get("round_start")
         if self.start_at is not None and began is not None and pd.Timestamp(began) < self.start_at:
             raise SystemExit(f"state.json is from a run that began {began}, before live.start_at {self.start_at} "
@@ -188,6 +191,8 @@ class Runner:
             return False
         if self.state.get("locked_at"):
             return True
+        if not self.state.get("round_start") or not float(self.state.get("round_start_equity") or 0) > 0:
+            return False                                    # no funded first hour yet
         if H - pd.Timestamp(self.state["round_start"]) < pd.Timedelta(days=float(eg["from_day"])):
             return False
         r = eq / float(self.state["round_start_equity"]) - 1.0
@@ -242,7 +247,12 @@ class Runner:
             self.state["last_bar"] = str(H)
             self.save()
             return
-        if self.state.get("round_start") is None:            # the round's first hour: its equity is the baseline
+        if self.end_at is not None and H >= self.end_at:     # the round is over (the exchange liquidates): no trades
+            self.emit("snapshot", bar=H, equity=eq, round_over=self.end_at)
+            self.state["last_bar"] = str(H)
+            self.save()
+            return
+        if self.state.get("round_start") is None and eq > 0:  # the round's first funded hour: its equity is the baseline
             self.state.update(round_start=str(H), round_start_equity=float(eq))
         if self.endgame_locked(H, eq):                        # end-of-round lock-in: hold cash to the end
             self.state["standing"] = {}

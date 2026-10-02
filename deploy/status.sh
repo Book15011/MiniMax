@@ -14,6 +14,8 @@ d = pathlib.Path("data/live")
 st = json.loads((d / "state.json").read_text()) if (d / "state.json").exists() else {}
 print(f"state     account {st.get('account', '?')}, mode {st.get('mode', '?')}, last hour {st.get('last_bar')}, "
       f"last decision {st.get('last_decision')}, round start {st.get('round_start')}")
+if st.get("locked_at"):
+    print(f"LOCKED    end-of-round lock-in since {st['locked_at']}: holding cash to the end (live.endgame)")
 now = datetime.now(timezone.utc)
 ev = []
 for f in sorted((d / "logs").glob("*.jsonl"))[-3:]:
@@ -25,6 +27,8 @@ if snap:
     line = f"equity    ${s['equity']:,.2f} at bar {s['bar'][:16]} UTC ({age:.0f} min ago{'; LATE' if age > 70 else ''})"
     if s.get("waiting_until"):
         line += f"; waiting for the round, trades from {str(s['waiting_until'])[:16]} UTC"
+    elif s.get("round_over"):
+        line += "; the round is over, no more trades"
     else:
         line += f"; gross {s.get('gross', 0):.2f}, active days {s.get('active_days')}"
         if st.get("round_start_equity"):

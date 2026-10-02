@@ -314,6 +314,42 @@ def test_a_restart_inside_the_round_resumes(tmp_path):
     assert r2.state["round_start"] == str(start) and r2.state["active_days"] == r.state["active_days"] != []
 
 
+def test_late_funding_at_the_rounds_first_hour(tmp_path):
+    """The competition wallet still empty at the round's first hour: no baseline from $0 (the lock-in would divide by
+    it), and the next hour's guard buys the decided targets once the money is there."""
+    start = pd.Timestamp("2026-10-04 12:00", tz="UTC")
+    r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120), mode="live", account="competition",
+                    start_at="2026-10-04 12:00")
+    r.lv["endgame"] = {"enabled": True, "from_day": 10, "lock_return": 0.03}
+    r.broker.h.usd_free = 0.0
+    r.process(start)
+    assert r.state.get("round_start") is None and not r.broker.h.spot and r.state["last_decision"] == str(start)
+    r.broker.h.usd_free = 100_000.0                                     # the organizers fund the account
+    r.process(start + pd.Timedelta(hours=1))
+    assert r.state["round_start"] == str(start + pd.Timedelta(hours=1)) and r.state["round_start_equity"] > 0
+    assert r.broker.h.spot.get("BTC/USD", 0) > 0                        # the guard caught up the same evening
+    r.process(start + pd.Timedelta(days=11))                           # past day 10: the lock check runs, no error
+    assert not r.state.get("locked_at")                                 # flat prices: +0%, below the +3% lock
+
+
+def test_nothing_trades_after_end_at(tmp_path):
+    start = pd.Timestamp("2026-10-04 12:00", tz="UTC")
+    r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120), mode="live", account="competition",
+                    start_at="2026-10-04 12:00")
+    r.lv["end_at"] = "2026-10-04 13:00"
+    r.end_at = pd.Timestamp("2026-10-04 13:00", tz="UTC")
+    r.process(start)
+    btc = r.broker.h.spot.get("BTC/USD", 0)
+    assert btc > 0
+    r.broker.h.spot.clear()                                             # the exchange liquidates at the end
+    r.broker.h.usd_free = 100_000.0
+    r.process(start + pd.Timedelta(hours=1))
+    r.process(start + pd.Timedelta(hours=16))                           # past a decision hour and a guard hour
+    assert not r.broker.h.spot                                          # nothing bought back
+    logs = [json.loads(x) for f in (tmp_path / "logs").glob("*.jsonl") for x in f.read_text().splitlines()]
+    assert [e for e in logs if e["event"] == "snapshot"][-1].get("round_over")
+
+
 class StubbornPaper(PaperAccount):
     """Answers every order as filled but moves nothing for the first `misses` batches (a fill that never happened)."""
 
