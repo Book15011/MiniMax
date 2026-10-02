@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from backtest.scoring import selection
+from backtest.scoring import explain, selection
 from backtest.scoring.returnfirst import BARS, month_multiplicity, pick_order, tie_test
 from src.config import REPO_ROOT, resolve
 
@@ -141,6 +141,7 @@ def per_window(entry: dict) -> pd.DataFrame | None:
         return None
     pw = json.loads(p.read_text())["per_window"]
     cols = ["scored", "post_holdout", "w_final", "w_final_in_sample", "R", "R_liq"] + [f"hit_{b}" for b in BARS]
+    cols += [c for c in ("net_avg", "gross_avg", "regime") if c in pw]          # for the market-type view (explain.py)
     df = pd.DataFrame({c: pw[c] for c in cols}, index=pd.to_datetime(pw["start"], utc=True))
     return df[df.scored.astype(bool)]
 
@@ -261,6 +262,21 @@ def _replay(e: dict) -> str:
     return " · ".join(parts) if parts else "—"
 
 
+def why_view(rows: dict, tables: dict[str, pd.DataFrame], cands: list[str], cfg: dict) -> list[str]:
+    """Report-only: each candidate's results by market type and a measured reason (backtest/scoring/explain.py),
+    plus BTC_HOLD for reference. Empty if the panel or the needed columns are missing."""
+    names = [n for n in cands if n in tables] + [n for n in ("team_btc_hold",) if n in tables]   # CASH: its hits are keep-alive noise
+    if not names or not all(c in tables[names[0]] for c in ("regime", "net_avg")):
+        return []
+    try:
+        btc = pd.read_parquet(resolve(cfg["harness"]["panel_dir"]) / "panel_close_1h.parquet", columns=["BTCUSDT"])["BTCUSDT"]
+    except Exception:                                                  # noqa: BLE001 - a report view, never fatal
+        return []
+    ref = tables[names[0]]
+    types = explain.market_types(ref.index, btc, ref["regime"])
+    return explain.section(names, tables, types)
+
+
 def leaderboard(entries: list[dict], tool_version: str, cfg: dict) -> str:
     sc = cfg["scoring"]
     rows = latest_by_model(entries, tool_version)
@@ -372,6 +388,7 @@ def leaderboard(entries: list[dict], tool_version: str, cfg: dict) -> str:
           "G6_worst. Replay: the previous edition's two real windows from cash, R and rank among its teams "
           "(numbers only)."]
     L += return_view(rows, tables, cands)
+    L += why_view(rows, tables, cands, cfg)
     L += ["", "## Runs per person (this tool version)", "", "| Person | Full runs | Best eligible candidate HEADLINE_RET |",
           "|---|---|---|"]
     for person in sorted(runs_by):
