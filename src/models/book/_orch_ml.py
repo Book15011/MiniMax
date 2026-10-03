@@ -1,10 +1,18 @@
-"""book_orch's fitted forecasters: load once per process, verified against the manifest (not a model).
+"""book_orch's forecasts, v2 (not a model): the stored out-of-sample forecasts and the live path.
 
-The manifest (validation/book_orch_ml_v1.json, written by backtest/orch_train.py) lists, for every monthly retrain,
-the pickled mu1 and mu3 models with their sha256, q (the 90th percentile of |mu3| among that model's in-sample
-predictions) and the engine's half-spreads. book_orch's parameters carry the manifest's sha256, so the run key
-changes when the artifacts change, and a model file whose sha256 differs from the manifest is refused.
-scikit-learn is imported only here, when a manifest is loaded: the model registry and the tests work without it.
+The manifest (validation/book_orch_v2_forecasts.json, written by backtest/orch_train.py) lists the forecasts file with
+its sha256, every weekly retrain with its models (L and S per horizon), base rates and class means, and the engine's
+half-spreads. book_orch's parameters carry the manifest's sha256, so the run key changes with the forecasts, and a
+file whose sha256 differs from the manifest is refused.
+
+- load(manifest, sha) -> Store, read once per process and cached by (path, sha256). The scratch runner loads it
+  before the first targets() call, so targets() does no I/O when the leakage gate checks it.
+- Store.at(t): the forecasts of hour t (index = coin) with the signals of the pre-registration, section 2.5:
+  q = mean over horizons of P(rise) - P(fall); p_rise, p_fall = means over horizons; rise_margin = p_rise -
+  pbar_rise and fall_margin = p_fall - pbar_fall (confident when >= 0.15; FS's strong FALL when >= 0.25);
+  e8 = the expected 8-hour return.
+- live(view, ...): the same columns computed from the view with the models of the latest retrain at or before view.t
+  (features_at + predict_proba). It needs scikit-learn; it serves the launch cards and the stored-vs-live test.
 """
 from __future__ import annotations
 
@@ -18,93 +26,123 @@ import pandas as pd
 
 from src.config import resolve
 
-
-@dataclass
-class Forecaster:
-    retrain: pd.Timestamp
-    mu1: object
-    mu3: object
-    q: float
-
-
-@dataclass
-class Bundle:
-    manifest_sha256: str
-    features: list[str]
-    forecasters: list[Forecaster]               # sorted by retrain time
-    retrains: pd.DatetimeIndex
-    half_spread: dict[str, float]
-    default_half_spread: float
-
-    def at(self, t: pd.Timestamp) -> Forecaster | None:
-        """The latest model retrained at or before t (None before the first one)."""
-        k = int(self.retrains.searchsorted(t, side="right")) - 1
-        return self.forecasters[k] if k >= 0 else None
-
-    def spread(self, coin: str) -> float:
-        return float(self.half_spread.get(coin, self.default_half_spread))
-
-    def predict(self, t: pd.Timestamp, X: pd.DataFrame) -> pd.DataFrame | None:
-        """mu1 and mu3 per row of X (columns = features), and q; None before the first model or for an empty X."""
-        f = self.at(t)
-        if f is None or X.empty:
-            return None
-        A = X[self.features].to_numpy(dtype=float)
-        return pd.DataFrame({"mu1": f.mu1.predict(A), "mu3": f.mu3.predict(A), "q": f.q}, index=X.index)
-
-
-_CACHE: dict[tuple[str, str], Bundle] = {}
+HORIZONS = (2, 4, 8)
+CLASSES = ("fall", "flat", "rise")
+SHORT = {"fall": "f", "flat": "n", "rise": "r"}
+PROB_COLS = [f"p{SHORT[c]}{h}" for h in HORIZONS for c in CLASSES]
 
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def load(manifest: str, manifest_sha256: str) -> Bundle:
-    """The bundle of a manifest, read once per process and cached by (path, sha256)."""
-    key = (str(manifest), str(manifest_sha256))
+def add_signals(df: pd.DataFrame) -> pd.DataFrame:
+    pr = df[[f"pr{h}" for h in HORIZONS]].to_numpy(dtype=float)
+    pf = df[[f"pf{h}" for h in HORIZONS]].to_numpy(dtype=float)
+    out = df.copy()
+    out["q"] = (pr - pf).mean(axis=1)
+    out["p_rise"], out["p_fall"] = pr.mean(axis=1), pf.mean(axis=1)
+    out["rise_margin"] = out.p_rise - out.pbar_rise
+    out["fall_margin"] = out.p_fall - out.pbar_fall
+    return out
+
+
+@dataclass
+class Store:
+    manifest_sha256: str
+    df: pd.DataFrame                 # sorted by t, then coin
+    t_ns: np.ndarray
+    half_spread: dict[str, float]
+    default_half_spread: float
+    first: pd.Timestamp
+
+    def at(self, t: pd.Timestamp) -> pd.DataFrame | None:
+        """The forecasts of hour t (index = coin); None if there are none (before the first model)."""
+        lo, hi = np.searchsorted(self.t_ns, [t.value, t.value + 1])
+        if lo == hi:
+            return None
+        return self.df.iloc[lo:hi].set_index("coin")
+
+    def spread(self, coin: str) -> float:
+        return float(self.half_spread.get(coin, self.default_half_spread))
+
+
+_CACHE: dict[tuple[str, str], Store] = {}
+_MANIFESTS: dict[tuple[str, str], dict] = {}
+_MODELS: dict[tuple[str, str], object] = {}
+
+
+def manifest(path: str, manifest_sha256: str) -> dict:
+    key = (str(path), str(manifest_sha256))
+    if key not in _MANIFESTS:
+        raw = resolve(path).read_bytes()
+        if sha256(raw) != manifest_sha256:
+            raise ValueError(f"{path}: sha256 {sha256(raw)[:12]} differs from the parameters' {manifest_sha256[:12]}")
+        _MANIFESTS[key] = json.loads(raw)
+    return _MANIFESTS[key]
+
+
+def load(path: str, manifest_sha256: str) -> Store:
+    """The stored forecasts of a manifest, verified and cached by (path, sha256)."""
+    key = (str(path), str(manifest_sha256))
     if key in _CACHE:
         return _CACHE[key]
-    raw = resolve(manifest).read_bytes()
-    if sha256(raw) != manifest_sha256:
-        raise ValueError(f"{manifest}: sha256 {sha256(raw)[:12]} differs from the parameters' {manifest_sha256[:12]}")
-    m = json.loads(raw)
-    import sklearn  # noqa: F401  (needed to unpickle; imported here so the registry works without it)
-    fs = []
-    for e in m["models"]:
-        est = {}
-        for h in ("mu1", "mu3"):
-            data = resolve(e["files"][h]["path"]).read_bytes()
-            if sha256(data) != e["files"][h]["sha256"]:
-                raise ValueError(f"{e['files'][h]['path']}: sha256 differs from the manifest")
-            est[h] = pickle.loads(data)
-        fs.append(Forecaster(pd.Timestamp(e["retrain"]), est["mu1"], est["mu3"], float(e["q"])))
-    fs.sort(key=lambda f: f.retrain)
-    b = Bundle(manifest_sha256, list(m["features"]), fs, pd.DatetimeIndex([f.retrain for f in fs]),
-               {k: float(v) for k, v in m["half_spread"].items()}, float(m["default_half_spread"]))
-    _CACHE[key] = b
-    return b
+    m = manifest(path, manifest_sha256)
+    data = resolve(m["forecasts"]["path"]).read_bytes()
+    if sha256(data) != m["forecasts"]["sha256"]:
+        raise ValueError(f"{m['forecasts']['path']}: sha256 differs from the manifest")
+    df = pd.read_parquet(resolve(m["forecasts"]["path"]))
+    df = add_signals(df.sort_values(["t", "coin"], kind="mergesort").reset_index(drop=True))
+    st = Store(manifest_sha256, df, df.t.to_numpy(dtype="datetime64[ns]").astype(np.int64), m["half_spread"],
+               float(np.median(list(m["half_spread"].values()))) if m["half_spread"] else 0.0005, df.t.min())
+    _CACHE[key] = st
+    return st
 
 
-def adjust(b: pd.Series, pred: pd.DataFrame, half_spread, p: dict) -> tuple[pd.Series, pd.DataFrame]:
-    """Layer T on the base's longs b (> 0): returns the new longs and, per coin, the numbers behind them.
-    z = mu3 / q; adj = clip(k z, -cap, +cap), 0 if mu1 and mu3 disagree in sign; aim = b (1 + adj); the cost filter
-    keeps aim = b unless |mu3| >= filter_mult x 2 x (fee + half-spread). If the total then exceeds the base's, the
-    upward tilts are shrunk by one common factor until it does not (DEVIATION D1 of the pre-registration: scaling every
-    adjusted coin could push a down-tilted coin below 0.5 b), so every coin stays within [0.5 b, 1.5 b] and the gross
-    never exceeds the base's."""
-    pr = pred.reindex(b.index)
-    mu1, mu3, q = pr["mu1"], pr["mu3"], pr["q"]
-    adj = (float(p["k"]) * mu3 / q).clip(-float(p["cap"]), float(p["cap"]))
-    adj = adj.where(np.sign(mu1) == np.sign(mu3), 0.0).fillna(0.0)
-    rtc = pd.Series({c: 2.0 * (float(p["fee"]) + float(half_spread(c))) for c in b.index})
-    passed = (mu3.abs() >= float(p["filter_mult"]) * rtc) & mu3.notna()
-    adj = adj.where(passed, 0.0)
-    excess = float((b * adj).sum())                   # the total above the base's (negative: below it)
-    up = adj > 0
-    if excess > 0:
-        s = 1.0 - excess / float((b[up] * adj[up]).sum())
-        adj = adj.where(~up, adj * max(0.0, s))
-    out = b * (1.0 + adj)
-    info = pd.DataFrame({"b": b, "mu1": mu1, "mu3": mu3, "q": q, "adj": adj, "rtc": rtc, "passed": passed, "w": out})
-    return out, info
+def _model(entry: dict):
+    key = (entry["path"], entry["sha256"])
+    if key not in _MODELS:
+        data = resolve(entry["path"]).read_bytes()
+        if sha256(data) != entry["sha256"]:
+            raise ValueError(f"{entry['path']}: sha256 differs from the manifest")
+        import sklearn  # noqa: F401  (needed to unpickle; imported here so the registry works without it)
+        _MODELS[key] = pickle.loads(data)
+    return _MODELS[key]
+
+
+def _proba(m, X: np.ndarray) -> np.ndarray:
+    out = np.zeros((len(X), 3))
+    if len(X):
+        out[:, m.classes_.astype(int)] = m.predict_proba(X)
+    return out
+
+
+def live(view, path: str, manifest_sha256: str, trend: dict) -> pd.DataFrame | None:
+    """Forecasts of the liquid coins at view.t from the view itself, with the latest retrain at or before view.t
+    (the same columns as Store.at). None before the first retrain."""
+    from src.models.book._orch_features import FEATURES, features_at
+    m = manifest(path, manifest_sha256)
+    Ts = pd.DatetimeIndex([e["retrain"] for e in m["models"]])
+    k = int(Ts.searchsorted(view.t, side="right")) - 1
+    if k < 0:
+        return None
+    entry = m["models"][k]
+    X = features_at(view, trend)
+    A = X[FEATURES].to_numpy(dtype=float)
+    out = pd.DataFrame(index=X.index)
+    out["retrain"] = Ts[k]
+    bars = {}
+    for h in HORIZONS:
+        e = entry["horizons"][str(h)]
+        PL, PS = _proba(_model(e["files"]["L"]), A), _proba(_model(e["files"]["S"]), A)
+        P = 0.5 * (PL + PS)
+        for j, c in enumerate(CLASSES):
+            out[f"p{SHORT[c]}{h}"] = P[:, j]
+        bars[h] = e["pbar"]
+        if h == 8:
+            sig = X["vol_30d"].to_numpy(dtype=float) * np.sqrt(8.0)
+            out["e8"] = sig * 0.5 * (PL @ np.asarray(e["mu_L"]) + PS @ np.asarray(e["mu_S"]))
+            out["sigma8"] = sig
+    out["pbar_fall"] = float(np.mean([bars[h][0] for h in HORIZONS]))
+    out["pbar_rise"] = float(np.mean([bars[h][2] for h in HORIZONS]))
+    return add_signals(out)

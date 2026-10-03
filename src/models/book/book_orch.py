@@ -1,43 +1,51 @@
-"""book_orch: a daily base strategy, with an ML weight adjustment, a BTC shock rule and a breadth-gated short sleeve.
+"""book_orch v2: a daily base strategy with equal-risk sizing (R), staged entries (E), forecast longs (F) and forecast
+shorts (FS), the last two from a per-coin 2/4/8-hour forecaster.
 
-Pre-registered in reports/review/20261003-prereg-orch.md. Every number lives in config.yaml under `book_orch:`;
-each layer has an `enabled` switch, and with every layer off the model is its base.
+Pre-registered in reports/review/20261003-prereg-orch-v2.md, section 3. Every number lives in config.yaml under
+`book_orch:`; each layer has an `enabled` switch, and with every layer off the model is its base, held between
+decisions (version A'). v1's layers (ML weight adjustment, shock, short sleeve, partial moves) are recorded at
+183827f.
 
-- Base (default baitoey_vt_mom, unchanged): called only at its own decision hour (16:00 UTC), or when the book is
-  empty (a window's first hour, as the live bot's first decision). It is given this model's current holdings as its
-  previous holdings; vt_mom reads only which coins are held long, so no layer may change that set.
-- Between decisions the model holds: it returns its last decision's targets unchanged, as pol_abl_shock does (option
-  1 of the team's decision, a DEVIATION from the pre-registered drift hold, which failed the parity check). The engine
-  then trades between decisions only where a weight has drifted past the band, and its daily guard rebalances to
-  these targets exactly as it does for the base alone.
-- T, ML adjustment (16:00 only): pooled walk-forward forecasts of each held coin's 1-day and 3-day return
-  (src/models/book/_orch_ml.py) scale its weight between 0.5 and 1.5 times the base's; a coin moves only if
-  |mu3| >= 2 round-trip costs, and the gross never exceeds the base's.
-- X, short sleeve (16:00 only, while breadth < 0.3): up to 5 liquid coins the base does not hold, with mu3 below
-  -2 short round-trip costs (or, without ML, coins in no up-trend at all), weights proportional to -1/sigma, the sleeve
-  at most min(25%, 1 - long gross). It never reduces the base's longs.
-- S, shock (hourly): Pol's trigger, imported (pol_abl_shock.ShockOverride.shocked: BTC 4-hour return of -5% or worse
-  at any hour of the last 24 h). While it is active the longs are held at 50%; shorts unchanged. `response: cash`
-  is Pol's own response (report-only).
-- P, partial moves (report-only): at 16:00, coins the base keeps or adds move half-way; dropped coins exit fully.
+- Base (default baitoey_vt_mom, unchanged): runs at its decision hour (16:00 UTC) and at any hour with no long
+  target, on the current view, with this model's current long targets as its previous holdings (option 2).
+- Between base decisions every coin keeps its previous target exactly, except for E's top-up at 00:00 UTC, F's
+  exits and entries, and FS's openings and closings.
+- B' (the base's target between decisions): the base re-run on the view as of the latest 16:00 decision, with the
+  current long targets as its previous holdings. It is memoized per (decision time, held targets, data): a cache of
+  a pure function, so the outputs are the same as without it.
+- R: at base decisions, weights proportional to 1 / 30-day volatility within the base's coins, at the base's gross.
+- E: at base decisions a new coin enters in full if its trend score is 1 and its volatility is below the median of
+  the base's coins, else at half; the half is completed at 00:00 UTC if the coin is still in B' and not broken down
+  (vt_mom's early-exit signal).
+- F: a confident FALL exits a held coin or holds back a new one; a size multiplier clip(1 + q, 0.5, 1.5) applies at
+  base decisions only where the expected 8-hour return clears 2 round trips; between decisions a coin of B' that
+  is not held enters when q >= 0 and there is no confident FALL.
+- FS: shorts of 2% (5% on a strong FALL) on liquid coins not held long, with a confident FALL and an expected
+  8-hour drop of at least 2 short round trips; at most 4, and at most min(20%, 1 - long gross); closed when P(fall)
+  drops below its base rate.
+Forecasts are the stored out-of-sample forecasts of backtest/orch_train.py (src/models/book/_orch_ml.py), read once
+per process; F and FS do nothing to a coin without one (outside the liquid 20, or before the first model).
+`explain(view)` returns the targets and a per-coin record of each decision and its reason (the shadow log).
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import replace
 
 import numpy as np
 import pandas as pd
 
 from src.contracts import MarketView, ModelSpec
+from src.models.baitoey._volume_signals import breakdown_blocked
 from src.models.baitoey.baitoey_vt_mom import MODEL as VT_MOM
-from src.models.book import _orch_features as F
-from src.models.book._trend import hourly_vol, liquid_universe, trend_scores
-from src.models.book._trend import breadth as trend_breadth
-from src.models.pol.pol_abl_shock import ShockOverride
+from src.models.book._trend import hourly_vol, trend_scores
 
-HOUR = pd.Timedelta(hours=1)
+HOUR, DAY = pd.Timedelta(hours=1), pd.Timedelta(days=1)
 CARRY_ROWS = 48                                   # as the engine and the live store: carry a price at most 48 hours
 _BASES = {VT_MOM.spec.name: VT_MOM}
+_B_CACHE: dict = {}
+_B_CACHE_MAX = 50_000
 
 
 def _clean(w: pd.Series) -> pd.Series:
@@ -52,127 +60,331 @@ def base_model(name: str):
     return _BASES[name]
 
 
-def cap_gross(w: pd.Series, longs_only: bool = False) -> pd.Series:
+def cap_gross(w: pd.Series) -> pd.Series:
     g = float(w.abs().sum())
-    if g <= 1.0:
-        return w
-    if not longs_only:
-        return w / g
-    shorts = float(-w[w < 0].sum())
-    room = max(0.0, 1.0 - shorts)
-    out = w.copy()
-    out[w > 0] = w[w > 0] * room / float(w[w > 0].sum())
-    return out
+    return w / g if g > 1.0 else w
 
 
-def shock_view_at(view: MarketView, t: pd.Timestamp) -> MarketView:
-    """BTC's closes as the view at time t (one hour earlier) had them: rows up to t, padded to t with the last price
-    carried if t has no bar, as the harness's view_frames does. Enough for ShockOverride.shocked."""
-    btc = view.close[["BTCUSDT"]].loc[:t] if "BTCUSDT" in view.close.columns else view.close.iloc[:0, :0]
-    if len(btc) and btc.index[-1] < t:
-        extra = pd.date_range(btc.index[-1] + HOUR, t, freq="h")
-        last = btc.iloc[-CARRY_ROWS:].ffill().iloc[-1]
-        btc = pd.concat([btc, pd.DataFrame([last.to_numpy()] * len(extra), index=extra, columns=btc.columns)])
-    return replace(view, t=t, close=btc)
+def last_decision(t: pd.Timestamp, hour: int) -> pd.Timestamp:
+    d = t.floor("D") + hour * HOUR
+    return d if d <= t else d - DAY
 
 
-def shocked(view: MarketView, s: dict) -> bool:
-    return ShockOverride.shocked(view, {"shock_4h": s["shock_4h"], "cooldown_hours": s["cooldown_hours"]})
+def view_at(view: MarketView, t: pd.Timestamp) -> MarketView:
+    """The view as it was at an earlier hour t: bars up to t, padded to t as the harness pads (view_frames)."""
+    c, q = view.close.loc[:t], view.quote_volume.loc[:t]
+    if len(c) and c.index[-1] < t:
+        extra = pd.date_range(c.index[-1] + HOUR, t, freq="h")
+        last = c.iloc[-CARRY_ROWS:].ffill().iloc[-1].to_numpy()
+        c = pd.concat([c, pd.DataFrame(np.tile(last, (len(extra), 1)), index=extra, columns=c.columns)])
+        q = pd.concat([q, pd.DataFrame(np.nan, index=extra, columns=q.columns)])
+    return replace(view, t=t, close=c, quote_volume=q)
 
 
-def partial(prev: pd.Series, b: pd.Series, alpha: float) -> pd.Series:
-    """Coins the base keeps or adds move alpha of the way from the held weight; dropped coins exit fully."""
-    held = prev.reindex(b.index).fillna(0.0)
-    return held + alpha * (b - held)
+class Trace:
+    """Per-coin decisions and reasons of one targets() call (the shadow log); a no-op when not requested."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, dict] = {}
+
+    def set(self, coin: str, decision: str, reason: str) -> None:
+        self.rows[coin] = {"decision": decision, "reason": reason}
 
 
-def short_sleeve(view: MarketView, longs: pd.Series, exclude, p: dict, bundle, market: dict | None) -> pd.Series:
-    """Layer X at a 16:00 decision. Empty unless breadth < breadth_max."""
-    s, trend = p["short"], p["trend"]
-    if (market["breadth"] if market else trend_breadth(view, trend)) >= float(s["breadth_max"]):
+class _NoTrace(Trace):
+    def set(self, coin: str, decision: str, reason: str) -> None:
+        pass
+
+
+# ------------------------------------------------------------------ the base ------------------------------------------
+
+def run_base(view: MarketView, held: pd.Series, p: dict) -> pd.Series:
+    """The base's long targets on this view, given our long targets as its previous holdings (option 2)."""
+    w = _clean(base_model(p["base"]).targets(replace(view, params=p["base_params"], prev_targets=held)))
+    return w[w > 0]
+
+
+def base_between(view: MarketView, held: pd.Series, p: dict) -> tuple[pd.Series, MarketView]:
+    """B': the base re-run as of the latest decision hour, with the current long targets as its previous holdings."""
+    t_d = last_decision(view.t, int(p["decision_hour_utc"]))
+    v = view_at(view, t_d)
+    tail_c, tail_q = v.close.iloc[-CARRY_ROWS:], v.quote_volume.iloc[-CARRY_ROWS:]
+    fp = hashlib.blake2b(np.ascontiguousarray(tail_c.to_numpy(dtype=float)).tobytes()
+                         + np.ascontiguousarray(tail_q.to_numpy(dtype=float)).tobytes()
+                         + "|".join(map(str, tail_c.columns)).encode()
+                         + json.dumps(p["base_params"], sort_keys=True, default=str).encode(), digest_size=16).hexdigest()
+    key = (p["base"], t_d.value, tuple(sorted(held.round(15).items())), tuple(view.universe), fp)
+    if key not in _B_CACHE:
+        if len(_B_CACHE) >= _B_CACHE_MAX:
+            _B_CACHE.clear()
+        _B_CACHE[key] = run_base(v, held, p)
+    return _B_CACHE[key].copy(), v
+
+
+# ------------------------------------------------------------------ layers --------------------------------------------
+
+def size_r(view: MarketView, B: pd.Series, p: dict) -> pd.Series:
+    """R: within the base's coins, weights proportional to 1 / sigma (30-day hourly), at the base's gross. A coin with
+    no sigma keeps its base weight and the others share the rest."""
+    if B.empty:
+        return B
+    sig = hourly_vol(view.close, view.t, list(B.index), float(p["size"]["vol_days"])).reindex(B.index)
+    ok = sig[np.isfinite(sig) & (sig > 0)]
+    if ok.empty:
+        return B
+    keep = B.drop(ok.index)
+    inv = 1.0 / ok
+    out = pd.concat([keep, (float(B.sum()) - float(keep.sum())) * inv / float(inv.sum())])
+    return out.reindex(B.index)
+
+
+def stage_factor(view: MarketView, L: pd.Series, held: pd.Series, p: dict) -> pd.Series:
+    """E at a base decision: 1 for a held coin and for a new coin with trend score 1 and volatility below the median
+    of L's coins; `fraction` (0.5) for any other new coin."""
+    e = p["stage"]
+    fac = pd.Series(1.0, index=L.index)
+    new = [c for c in L.index if c not in held.index]
+    if not new:
+        return fac
+    sig = hourly_vol(view.close, view.t, list(L.index), float(e["vol_days"])).reindex(L.index)
+    med = float(sig.median())
+    s = trend_scores(view.close, view.t, new, p["trend"])
+    for c in new:
+        full = s.get(c, 0.0) == 1.0 and np.isfinite(sig[c]) and np.isfinite(med) and sig[c] < med
+        fac[c] = 1.0 if full else float(e["fraction"])
+    return fac
+
+
+def multiplier(c: str, fc: pd.DataFrame | None, p: dict, spread) -> float:
+    """F's size multiplier: clip(1 + q, m_min, m_max), only where the expected 8-hour return clears filter_mult round
+    trips in the direction of the change; else 1. 1 without a forecast."""
+    if fc is None or c not in fc.index:
+        return 1.0
+    f, g = p["forecast_longs"], p["forecasts"]
+    m = float(np.clip(1.0 + fc.at[c, "q"], float(f["m_min"]), float(f["m_max"])))
+    cost = 2.0 * (float(g["fee"]) + spread(c))
+    e8 = fc.at[c, "e8"]
+    bar = float(g["filter_mult"]) * cost
+    if m > 1.0 and e8 >= bar:
+        return m
+    if m < 1.0 and e8 <= -bar:
+        return m
+    return 1.0
+
+
+def confident_fall(c: str, fc: pd.DataFrame | None, p: dict) -> bool:
+    return fc is not None and c in fc.index and bool(fc.at[c, "fall_margin"] >= float(p["forecasts"]["confident"]))
+
+
+def f_full(L: pd.Series, fc: pd.DataFrame | None, p: dict, spread) -> tuple[pd.Series, set[str], pd.Series]:
+    """F at a base decision: (full targets of the coins it lets in, the coins it holds out, multipliers). If the sum
+    exceeds L's gross, the coins with a multiplier above 1 are scaled down by one factor to fit."""
+    out = set(c for c in L.index if confident_fall(c, fc, p))
+    m = pd.Series({c: multiplier(c, fc, p, spread) for c in L.index if c not in out}, dtype=float)
+    full = L.reindex(m.index) * m
+    G = float(L.sum())
+    up = m.index[m > 1.0]
+    if float(full.sum()) > G + 1e-15 and len(up):
+        rest = float(full.drop(up).sum())
+        full[up] = full[up] * max(0.0, G - rest) / float(full[up].sum())
+    return full, out, m
+
+
+def fs_layer(view: MarketView, longs: pd.Series, prev_shorts: pd.Series, fc: pd.DataFrame | None, p: dict, spread,
+             band: float, tr: Trace) -> pd.Series:
+    """FS: the short targets (negative) this hour, given the final long targets."""
+    s = p["forecast_shorts"]
+    S = prev_shorts[prev_shorts.index.isin(list(view.universe))].copy()
+    for c in prev_shorts.index.difference(S.index):
+        tr.set(c, "close_short", "left the universe")
+    if fc is None:
+        for c in S.index:
+            tr.set(c, "close_short", "no forecast")
         return pd.Series(dtype=float)
-    cand = [c for c in liquid_universe(view, trend) if c not in set(exclude)]
-    if not cand:
-        return pd.Series(dtype=float)
-    if s["candidates"] == "ml":
-        X = F.coin_features(view, cand, pd.Series(dtype=float), trend, market).dropna()
-        pred = bundle.predict(view.t, X)
-        if pred is None:
-            return pd.Series(dtype=float)
-        cost = pd.Series({c: float(s["fee_open"]) + float(s["fee_close"]) + 2.0 * bundle.spread(c) for c in pred.index})
-        ok = pred.mu3 <= -float(s["filter_mult"]) * cost
-        ranked = pred.mu3[ok].sort_values(kind="mergesort")
-        picks = list(ranked.index[: int(s["max_coins"])])
-    elif s["candidates"] == "trend":
-        sc = trend_scores(view.close, view.t, cand, trend)
-        zero = [c for c in cand if sc.get(c, 1.0) == 0.0]
-        stale = pd.Timedelta(hours=float(trend["max_stale_hours"]))
-        r30 = F._returns(view.close, view.t, zero, (30,), stale)["ret_30d"].dropna() if zero else pd.Series(dtype=float)
-        picks = list(sorted(r30.index, key=lambda c: (r30[c], c))[: int(s["max_coins"])])
-    else:
-        raise ValueError(f"book_orch: short.candidates must be 'ml' or 'trend', not {s['candidates']!r}")
-    if not picks:
-        return pd.Series(dtype=float)
-    sigma = hourly_vol(view.close, view.t, picks, float(s["vol_days"]))
-    inv = (1.0 / sigma).replace([np.inf, -np.inf], np.nan).dropna()
-    inv = inv[inv > 0]
-    total = min(float(s["max_gross"]), 1.0 - float(longs[longs > 0].sum()))
-    if inv.empty or total <= 0:
-        return pd.Series(dtype=float)
-    return -total * inv / float(inv.sum())
+    for c in list(S.index):
+        why = ("no forecast" if c not in fc.index else "in the long target" if c in longs.index
+               else "P(fall) below its base rate" if fc.at[c, "fall_margin"] < 0.0 else None)
+        if why:
+            S = S.drop(c)
+            tr.set(c, "close_short", why)
+    room = min(float(s["max_gross"]), 1.0 - float(longs.sum()))
+    while not S.empty and float(-S.sum()) > room + 1e-12:
+        weakest = sorted(S.index, key=lambda c: (fc.at[c, "fall_margin"], c))[0]
+        S = S.drop(weakest)
+        tr.set(weakest, "close_short", "no room: the long book grew")
+    for c in S.index:
+        tr.set(c, "hold_short", "confident fall persists or not yet below base rate")
+    cand = fc[(fc.fall_margin >= float(p["forecasts"]["confident"])) & ~fc.index.isin(longs.index)
+              & ~fc.index.isin(S.index) & fc.index.isin(list(view.universe))]
+    cost = pd.Series({c: float(s["fee_open"]) + float(s["fee_close"]) + 2.0 * spread(c) for c in cand.index},
+                     dtype=float)
+    ok = cand.e8 <= -float(p["forecasts"]["filter_mult"]) * cost.reindex(cand.index)
+    for c in cand.index[~ok.to_numpy(dtype=bool)]:
+        tr.set(c, "no_short", "confident fall, but the expected drop is below 2 short round trips")
+    ranked = sorted(cand.index[ok.to_numpy(dtype=bool)], key=lambda c: (-cand.at[c, "fall_margin"], c))
+    for c in ranked:
+        left = room - float(-S.sum())
+        if len(S) >= int(s["max_coins"]) or left <= band:
+            tr.set(c, "no_short", "no slot or no room")
+            continue
+        strong = cand.at[c, "fall_margin"] >= float(p["forecasts"]["strong"])
+        size = min(float(s["large"] if strong else s["small"]), left)
+        if size <= band:
+            tr.set(c, "no_short", "remaining room below the band")
+            continue
+        S[c] = -size
+        tr.set(c, "open_short", f"{'strong' if strong else 'confident'} fall, expected 8 h drop clears the cost")
+    return S
 
+
+# ------------------------------------------------------------------ the model -----------------------------------------
 
 class BookOrch:
-    spec = ModelSpec(name="book_orch", method="momentum", author="book", rebalance_hours=1, band=VT_MOM.spec.band,
+    spec = ModelSpec(name="book_orch", method="momentum", author="book", rebalance_hours=1, band=0.015,
                      uses_shorts=True,
-                     description="baitoey_vt_mom daily, its weights tilted by a cost-filtered ML forecast, longs held "
-                                 "at 50% after a BTC crash, a small short sleeve when few coins trend up")
-
-    def decide(self, view: MarketView, prev: pd.Series, p: dict) -> pd.Series:
-        base = base_model(p["base"])
-        b = _clean(base.targets(replace(view, params=p["base_params"], prev_targets=prev)))
-        if p["partial"]["enabled"] and not prev.empty:
-            b = _clean(partial(prev[prev > 0], b, float(p["partial"]["alpha"])))
-        longs, others = b[b > 0], b[b < 0]
-        at_grid = view.t.hour == int(p["decision_hour_utc"])
-        ml, x = p["ml"], p["short"]
-        bundle = market = None
-        if at_grid and (ml["enabled"] or (x["enabled"] and x["candidates"] == "ml")):
-            from src.models.book import _orch_ml
-            bundle = _orch_ml.load(ml["manifest"], ml["manifest_sha256"])
-            market = F.market_features(view, p["trend"])
-        if ml["enabled"] and at_grid and not longs.empty:
-            X = F.coin_features(view, longs.index, longs, p["trend"], market).dropna()
-            pred = bundle.predict(view.t, X)
-            if pred is not None:
-                from src.models.book import _orch_ml
-                longs, _ = _orch_ml.adjust(longs, pred, bundle.spread, ml)
-        sleeve = pd.Series(dtype=float)
-        if x["enabled"] and at_grid:
-            sleeve = short_sleeve(view, longs, b.index, p, bundle, market)
-        return pd.concat([longs, others, sleeve])
+                     description="baitoey_vt_mom daily with equal-risk sizing, staged entries, and longs and shorts "
+                                 "steered by a per-coin 2/4/8-hour forecaster (each layer switchable)")
 
     def targets(self, view: MarketView) -> pd.Series:
+        return self._run(view, _NoTrace())[0]
+
+    def explain(self, view: MarketView) -> tuple[pd.Series, dict[str, dict]]:
+        """The targets and, per coin, the decision and its reason (the shadow-log records)."""
+        tr = Trace()
+        w, _ = self._run(view, tr)
+        return w, tr.rows
+
+    def _forecasts(self, view: MarketView, p: dict):
+        if not (p["forecast_longs"]["enabled"] or p["forecast_shorts"]["enabled"]):
+            return None, None
+        from src.models.book import _orch_ml
+        st = _orch_ml.load(p["forecasts"]["manifest"], p["forecasts"]["manifest_sha256"])
+        return st, st.at(view.t)
+
+    def _run(self, view: MarketView, tr: Trace) -> tuple[pd.Series, pd.DataFrame | None]:
         p = view.params
         prev = _clean(view.prev_targets)
-        s = p["shock"]
-        now = bool(s["enabled"]) and shocked(view, s)
-        if now and s["response"] == "cash":
-            return pd.Series(dtype=float)
-        if view.t.hour == int(p["decision_hour_utc"]) or prev.empty:
-            w = self.decide(view, prev, p)
-            if now:
-                w[w > 0] = w[w > 0] * float(s["scale"])
-            return _clean(w)
-        w = prev[prev.index.isin(list(view.universe))].copy()
-        if s["enabled"] and s["response"] == "half":
-            before = shocked(shock_view_at(view, view.t - HOUR), s)
-            if now and not before:
-                w[w > 0] = w[w > 0] * float(s["scale"])
-            elif before and not now:
-                w[w > 0] = w[w > 0] / float(s["scale"])
-                w = cap_gross(w, longs_only=True)
-        return _clean(cap_gross(w))
+        prev = prev[prev.index.isin(list(view.universe))]
+        held, prev_shorts = prev[prev > 0], prev[prev < 0]
+        st, fc = self._forecasts(view, p)
+        spread = st.spread if st is not None else (lambda c: 0.0)
+        F = bool(p["forecast_longs"]["enabled"])
+        fcF = fc if F else None
+        if view.t.hour == int(p["decision_hour_utc"]) or held.empty:
+            longs = self._decide(view, held, p, fcF, spread, tr)
+        else:
+            longs = self._between(view, held, p, fcF, spread, st, tr)
+        shorts = pd.Series(dtype=float)
+        if p["forecast_shorts"]["enabled"]:
+            shorts = fs_layer(view, longs, prev_shorts, fc, p, spread, self.spec.band, tr)
+        return _clean(cap_gross(pd.concat([longs, shorts]))), fc
+
+    def _decide(self, view, held, p, fc, spread, tr: Trace) -> pd.Series:
+        B = run_base(view, held, p)
+        L = size_r(view, B, p) if p["size"]["enabled"] else B
+        if fc is not None:
+            full, out, m = f_full(L, fc, p, spread)
+        else:
+            full, out, m = L.copy(), set(), pd.Series(1.0, index=L.index)
+        fac = stage_factor(view, L, held, p) if p["stage"]["enabled"] else pd.Series(1.0, index=L.index)
+        w = full * fac.reindex(full.index)
+        for c in held.index.difference(B.index):
+            tr.set(c, "exit", "the base dropped it")
+        for c in L.index:
+            new = c not in held.index
+            if c in out:
+                tr.set(c, "wait" if new else "exit", "confident fall")
+            elif fac[c] < 1.0:
+                tr.set(c, "stage", "new coin: half now, the rest at 00:00 UTC")
+            else:
+                why = "base decision" + (f", multiplier {m[c]:.2f}" if m.get(c, 1.0) != 1.0 else "")
+                tr.set(c, "enter" if new else "hold", why)
+        return w
+
+    def _between(self, view, held, p, fc, spread, st, tr: Trace) -> pd.Series:
+        L = held.copy()
+        for c in L.index:
+            tr.set(c, "hold", "between decisions")
+        if fc is not None:
+            for c in list(L.index):
+                if confident_fall(c, fc, p):
+                    L = L.drop(c)
+                    tr.set(c, "exit", "confident fall")
+        dh = int(p["decision_hour_utc"])
+        topup = p["stage"]["enabled"] and view.t.hour == (dh + int(p["stage"]["topup_hours"])) % 24
+        if not (topup or fc is not None):
+            return L
+        Bp, v_d = base_between(view, L, p)
+        Lp = size_r(v_d, Bp, p) if p["size"]["enabled"] else Bp
+        if topup:
+            fc_d = st.at(v_d.t) if (fc is not None and st is not None) else None
+            full_d = f_full(Lp, fc_d, p, spread)[0] if fc_d is not None else Lp
+            vp = p["base_params"]
+            need = (vp["volume_long_days"] * 24 + max(vp["volume_short_hours"], vp["chase_return_hours"])
+                    + max(vp["exit_cooldown_hours"] + vp["exit_low_hours"], vp["chase_window_hours"]) + 1)
+            broken = breakdown_blocked(*view.tail(need), vp)
+            frac = float(p["stage"]["fraction"])
+            for c in L.index:
+                if c in full_d.index and abs(L[c] - frac * full_d[c]) <= 1e-9 * full_d[c]:
+                    if c in broken:
+                        tr.set(c, "hold", "staged half kept: broken down")
+                    else:
+                        L[c] = full_d[c]
+                        tr.set(c, "top_up", "staged coin completed at 00:00 UTC")
+        if fc is not None:
+            room = float(Bp.sum()) - float(L.sum())
+            cand = [c for c in Lp.index if c not in L.index]
+            ok = [c for c in cand if c not in fc.index or (fc.at[c, "q"] >= 0.0 and not confident_fall(c, fc, p))]
+            for c in set(cand) - set(ok):
+                tr.set(c, "wait", "q below 0 or confident fall")
+            ok.sort(key=lambda c: (-(fc.at[c, "q"] if c in fc.index else 0.0), c))
+            for c in ok:
+                size = min(float(Lp[c]) * multiplier(c, fc, p, spread), room)
+                if size <= 0.0:
+                    tr.set(c, "wait", "no room under the base's gross")
+                    continue
+                L[c] = size
+                room -= size
+                tr.set(c, "enter", "base coin, signal clear (q >= 0, no confident fall)")
+        return L
+
+
+def _num(x) -> float | None:
+    x = float(x)
+    return x if np.isfinite(x) else None
+
+
+def coin_log(view: MarketView, w: pd.Series, records: dict[str, dict], fc: pd.DataFrame | None, p: dict) -> list[dict]:
+    """The shadow-mode log (pre-registration v2, section 5.4): one record per coin at view.t, for every coin that is
+    held, targeted, forecast or decided on: coin, hour, signals, probabilities, decision, reason and size. Pure: the
+    caller writes the records (one JSON line each); nothing here starts shadow mode."""
+    prev = _clean(view.prev_targets)
+    coins = sorted(set(records) | set(w.index) | set(prev.index) | (set(fc.index) if fc is not None else set()))
+    cols = [c for c in coins if c in view.close.columns]
+    sig = hourly_vol(view.close, view.t, cols, 30.0) if cols else pd.Series(dtype=float)
+    s = trend_scores(view.close, view.t, cols, p["trend"]) if cols else pd.Series(dtype=float)
+    vp = p["base_params"]
+    need = (vp["volume_long_days"] * 24 + max(vp["volume_short_hours"], vp["chase_return_hours"])
+            + max(vp["exit_cooldown_hours"] + vp["exit_low_hours"], vp["chase_window_hours"]) + 1)
+    broken = breakdown_blocked(*view.tail(need), vp) if view.universe else set()
+    out = []
+    for c in coins:
+        probs = None
+        if fc is not None and c in fc.index:
+            r = fc.loc[c]
+            probs = {f"h{h}": {k: _num(r[f"p{x}{h}"]) for k, x in (("rise", "r"), ("flat", "n"), ("fall", "f"))}
+                     for h in (2, 4, 8)}
+            probs.update({k: _num(r[k]) for k in ("q", "p_rise", "p_fall", "pbar_rise", "pbar_fall", "e8")})
+            probs["confident_rise"] = bool(r["rise_margin"] >= float(p["forecasts"]["confident"]))
+            probs["confident_fall"] = bool(r["fall_margin"] >= float(p["forecasts"]["confident"]))
+        rec = records.get(c, {})
+        out.append({"coin": c, "hour": view.t.isoformat(),
+                    "signals": {"trend_score": _num(s.get(c, np.nan)), "sigma30": _num(sig.get(c, np.nan)),
+                                "broken_down": c in broken, "in_universe": c in view.universe,
+                                "liquid": fc is not None and c in fc.index, "previous_target": _num(prev.get(c, 0.0))},
+                    "probabilities": probs, "decision": rec.get("decision", "none"), "reason": rec.get("reason", ""),
+                    "size": _num(w.get(c, 0.0))})
+    return out
 
 
 MODEL = BookOrch()

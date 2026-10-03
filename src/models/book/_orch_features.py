@@ -1,97 +1,191 @@
-"""Features of book_orch's forecasts (not a model: the registry skips modules starting with "_").
+"""Features of book_orch's per-coin forecasts, v2 (not a model: the registry skips modules starting with "_").
 
-Pure functions of a MarketView, shared by the model (src/models/book/book_orch.py) and by its walk-forward training
-(backtest/orch_train.py), so both compute exactly the same numbers. Everything is looked up by timestamp: a coin's
-close at time x is its last close at or before x, at most `max_stale_hours` old (src/models/book/_trend.py).
+Pre-registered in reports/review/20261003-prereg-orch-v2.md, section 2.3. feature_frame computes the 37 features of
+the liquid coins at the requested hours from hourly closes and quote volumes. Training runs it once on the whole
+panel (backtest/orch_train.py); the live path runs it on a view (features_at), so both compute the same numbers.
+A value at t uses bars stamped at or before t only: every window ends at t.
 
-Per coin i at decision time t (columns COIN_FEATURES):
-- ret_{1,3,7,14,30}d: close(t) / close(t - L days) - 1
-- vol_{1,7,30}d: sample std of hourly returns over (t - L days, t] on the clock grid (_trend.hourly_vol); vol_ratio = 7d / 30d
-- dist_high30: close(t) / the highest close over (t - 30 days, t] - 1
-- qv_ratio: quote volume over (t - 24 h, t] / (quote volume over (t - 30 days, t] / 30)
-- base_w: the base's weight in the coin (0 if not held)
-Market-wide (MARKET_FEATURES, the same for every coin at t):
-- btc_ret_{1,7,30}d; btc_vol7_pct: mid-rank percentile of BTC's 7-day volatility at t among its values at
-  t - 24 h * k, k = 0..364
-- breadth: _trend.breadth; dispersion: cross-sectional std (ddof 1) of the 7-day returns of _trend.liquid_universe
+On the clock-hour grid:
+- px(x) = the last close at or before x, at most `max_stale_hours` (24) old; ret_L = px(t) / px(t - L) - 1;
+- hourly returns are close-to-close, missing across a missing hour; vol_L = their sample std over (t - L, t], at
+  least 2 returns (as _trend.hourly_vol); vol_ratio = vol_24h / vol_30d;
+- dist_hi24 / dist_lo24 / dist_hi7d = px(t) / the highest (lowest) close in (t - L, t] - 1;
+- qv_ratio_1h = qv(t) / (quote volume over (t - 24 h, t] / 24); qv_ratio_24h = quote volume over (t - 24 h, t] /
+  (quote volume over (t - 30 d, t] / 30); missing volume counts as 0;
+- beta_30d = cov / var of the coin's and BTC's hourly returns over (t - 30 d, t], pairwise complete, >= 48 pairs;
+- rel_btc_L = ret_L - BTC's ret_L; rel_univ_L = ret_L - the mean ret_L of the liquid universe (coins that have it);
+  vol_rel_btc = vol_7d / BTC's vol_7d; qv24_rel = 24-hour quote volume / its median over the liquid universe;
+- btc_vol7_pct = mid-rank percentile of BTC's vol_7d at t among its values at t - 24 h * k, k = 0..364 (as v1);
+- breadth = share of the liquid universe with trend score >= up_threshold (as _trend.breadth); dispersion =
+  cross-sectional std (ddof 1) of ret_7d over the liquid universe (as v1).
+The liquid universe at t is _trend.liquid_universe (top 20 of the point-in-time universe by 30-day quote volume).
+Cross-sectional numbers are computed per hour from that hour's coins only, so an hour's rows do not depend on which
+other hours are requested.
 """
 from __future__ import annotations
+
+from typing import Callable
 
 import numpy as np
 import pandas as pd
 
 from src.contracts import MarketView
-from src.models.book._trend import _last_close, breadth, hourly_vol, liquid_universe
+from src.models.book._trend import liquid_universe
 
-DAY = pd.Timedelta(days=1)
-HOUR = pd.Timedelta(hours=1)
-RET_DAYS = (1, 3, 7, 14, 30)
-VOL_DAYS = (1, 7, 30)
-COIN_FEATURES = ([f"ret_{d}d" for d in RET_DAYS] + [f"vol_{d}d" for d in VOL_DAYS]
-                 + ["vol_ratio", "dist_high30", "qv_ratio", "base_w"])
-MARKET_FEATURES = ["btc_ret_1d", "btc_ret_7d", "btc_ret_30d", "btc_vol7_pct", "breadth", "dispersion"]
-FEATURES = COIN_FEATURES + MARKET_FEATURES
 BTC = "BTCUSDT"
+RET_HOURS = {"1h": 1, "2h": 2, "4h": 4, "8h": 8, "24h": 24, "3d": 72, "7d": 168, "14d": 336}
+VOL_HOURS = {"24h": 24, "7d": 168, "30d": 720}
+REL = ("1h", "4h", "24h", "7d")
+COIN_FEATURES = ([f"ret_{k}" for k in RET_HOURS] + [f"vol_{k}" for k in VOL_HOURS]
+                 + ["vol_ratio", "dist_hi24", "dist_lo24", "dist_hi7d", "qv_ratio_1h", "qv_ratio_24h", "hour", "dow",
+                    "beta_30d"])
+RELATIVE_FEATURES = [f"rel_btc_{k}" for k in REL] + [f"rel_univ_{k}" for k in REL] + ["vol_rel_btc", "qv24_rel"]
+MARKET_FEATURES = [f"btc_ret_{k}" for k in REL] + ["btc_vol7_pct", "breadth", "dispersion"]
+FEATURES = COIN_FEATURES + RELATIVE_FEATURES + MARKET_FEATURES
+LOOKBACK = pd.Timedelta(days=400)       # history features_at needs: the 365-day BTC volatility percentile + 7 days
+BETA_HOURS, BETA_MIN_PAIRS = 720, 48
 
 
-def _returns(close: pd.DataFrame, t: pd.Timestamp, cols: list[str], days, stale: pd.Timedelta) -> pd.DataFrame:
-    sub = close.loc[t - max(days) * DAY - stale: t, cols]
-    now = _last_close(sub, t, stale)
-    return pd.DataFrame({f"ret_{d}d": now / _last_close(sub, t - d * DAY, stale) - 1.0 for d in days})
-
-
-def btc_vol_percentile(close: pd.DataFrame, t: pd.Timestamp) -> float:
-    """Mid-rank percentile of BTC's 7-day hourly-return volatility at t among its values at t - 24 h * k, k = 0..364."""
-    if BTC not in close.columns:
-        return np.nan
-    grid = pd.date_range(t - 372 * DAY, t, freq="h")
-    r = close[BTC].loc[grid[0]: t].reindex(grid).pct_change(fill_method=None)
-    vol = r.rolling(168, min_periods=2).std(ddof=1)
-    pts = vol.reindex(t - DAY * np.arange(365)).to_numpy()
-    pts = pts[np.isfinite(pts)]
-    if len(pts) == 0 or not np.isfinite(vol.iloc[-1]):
-        return np.nan
-    x = vol.iloc[-1]
-    return float(((pts < x).sum() + 0.5 * (pts == x).sum()) / len(pts))
-
-
-def market_features(view: MarketView, trend: dict) -> dict:
-    t = view.t
-    stale = pd.Timedelta(hours=float(trend["max_stale_hours"]))
+def liquid_sets(close: pd.DataFrame, qv: pd.DataFrame, times, universe_of: Callable, trend: dict) -> dict:
+    """{t: the liquid universe at t}, from _trend.liquid_universe itself (it reads quote volume in (t - 30 d, t])."""
     out = {}
-    if BTC in view.close.columns:
-        b = _returns(view.close, t, [BTC], (1, 7, 30), stale).iloc[0]
-        out.update({"btc_ret_1d": b["ret_1d"], "btc_ret_7d": b["ret_7d"], "btc_ret_30d": b["ret_30d"]})
-    else:
-        out.update({"btc_ret_1d": np.nan, "btc_ret_7d": np.nan, "btc_ret_30d": np.nan})
-    out["btc_vol7_pct"] = btc_vol_percentile(view.close, t)
-    out["breadth"] = breadth(view, trend)
-    liquid = liquid_universe(view, trend)
-    r7 = _returns(view.close, t, liquid, (7,), stale)["ret_7d"].dropna() if liquid else pd.Series(dtype=float)
-    out["dispersion"] = float(r7.std(ddof=1)) if len(r7) > 1 else np.nan
+    for t in times:
+        out[t] = liquid_universe(MarketView(t=t, close=close, quote_volume=qv, universe=tuple(universe_of(t))), trend)
     return out
 
 
-def coin_features(view: MarketView, coins, base_w: pd.Series, trend: dict, market: dict | None = None) -> pd.DataFrame:
-    """One row per coin (index = series id), columns FEATURES, from data at or before view.t only."""
-    t = view.t
-    cols = [c for c in coins if c in view.close.columns]
-    if not cols:
-        return pd.DataFrame(columns=FEATURES, dtype=float)
-    stale = pd.Timedelta(hours=float(trend["max_stale_hours"]))
-    f = _returns(view.close, t, cols, RET_DAYS, stale)
-    for d in VOL_DAYS:
-        f[f"vol_{d}d"] = hourly_vol(view.close, t, cols, d)
-    f["vol_ratio"] = f["vol_7d"] / f["vol_30d"]
-    win = view.close.loc[t - 30 * DAY: t, cols]
-    win = win[win.index > t - 30 * DAY]
-    f["dist_high30"] = _last_close(view.close.loc[t - stale: t, cols], t, stale) / win.max() - 1.0
-    qv = view.quote_volume.loc[t - 30 * DAY: t, cols]
-    qv = qv[qv.index > t - 30 * DAY]
-    q30 = qv.sum() / 30.0
-    f["qv_ratio"] = (qv[qv.index > t - DAY].sum() / q30).where(q30 > 0)
-    f["base_w"] = base_w.reindex(cols).fillna(0.0).astype(float)
-    m = market if market is not None else market_features(view, trend)
-    for k in MARKET_FEATURES:
-        f[k] = m[k]
-    return f[FEATURES].replace([np.inf, -np.inf], np.nan)
+def vol_percentile(v: pd.Series) -> pd.Series:
+    """On an hourly grid: mid-rank percentile of v(t) among the finite v(t - 24 h k), k = 0..364 (v(t) included)."""
+    a = v.to_numpy(dtype=float)
+    out = np.full(len(a), np.nan)
+    for h0 in range(24):
+        idx = np.arange(h0, len(a), 24)
+        s = a[idx]
+        if len(s) == 0:
+            continue
+        W = np.lib.stride_tricks.sliding_window_view(np.concatenate([np.full(364, np.nan), s]), 365)
+        fin = np.isfinite(W)
+        x = s[:, None]
+        cnt = fin.sum(axis=1)
+        res = ((W < x) & fin).sum(axis=1) + 0.5 * ((W == x) & fin).sum(axis=1)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out[idx] = np.where(np.isfinite(s) & (cnt > 0), res / np.maximum(cnt, 1), np.nan)
+    return pd.Series(out, index=v.index)
+
+
+def trend_score_panel(px: pd.DataFrame, trend: dict) -> pd.DataFrame:
+    """_trend.trend_scores on the whole grid: the share of available lookbacks with a positive return (0 if none)."""
+    hits = pd.DataFrame(0.0, index=px.index, columns=px.columns)
+    avail = hits.copy()
+    for L in trend["lookback_days"]:
+        past = px.shift(24 * int(L))
+        ok = px.notna() & past.notna()
+        avail += ok
+        hits += ok & (px / past - 1.0 > 0.0)
+    return (hits / avail).where(avail > 0, 0.0)
+
+
+def _group(values: np.ndarray, g: np.ndarray, n: int, how: str) -> np.ndarray:
+    """Per-group statistic over finite values (rows of one group are in a fixed order), as an array of length n."""
+    fin = np.isfinite(values)
+    x = np.where(fin, values, 0.0)
+    cnt = np.bincount(g, weights=fin.astype(float), minlength=n)
+    s1 = np.bincount(g, weights=x, minlength=n)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = np.where(cnt > 0, s1 / cnt, np.nan)
+        if how == "mean":
+            return mean
+        dev = np.where(fin, values - mean[g], 0.0)
+        ss = np.bincount(g, weights=dev * dev, minlength=n)
+        return np.where(cnt > 1, np.sqrt(ss / (cnt - 1)), np.nan)
+
+
+def feature_frame(close: pd.DataFrame, qv: pd.DataFrame, times, universe_of: Callable, trend: dict) -> pd.DataFrame:
+    """One row per (t, liquid coin at t), columns t, coin and FEATURES; rows sorted by t, then coin name.
+    close and qv are hourly frames indexed by bar time; every requested time must be <= their last row."""
+    times = pd.DatetimeIndex(times)
+    liquid = liquid_sets(close, qv, times, universe_of, trend)
+    coins = sorted({c for v in liquid.values() for c in v} | ({BTC} if BTC in close.columns else set()))
+    if not coins or len(times) == 0:
+        return pd.DataFrame(columns=["t", "coin"] + FEATURES)
+    grid = pd.date_range(close.index[0], close.index[-1], freq="h")
+    C = close[coins].reindex(grid)
+    Q = qv[coins].reindex(grid).fillna(0.0)
+    px = C.ffill(limit=int(trend["max_stale_hours"]))
+    r1 = C.pct_change(fill_method=None)
+    panel = {f"ret_{k}": px / px.shift(L) - 1.0 for k, L in RET_HOURS.items()}
+    for k, L in VOL_HOURS.items():
+        panel[f"vol_{k}"] = r1.rolling(L, min_periods=2).std(ddof=1)
+    panel["vol_ratio"] = panel["vol_24h"] / panel["vol_30d"]
+    panel["dist_hi24"] = px / C.rolling(24, min_periods=1).max() - 1.0
+    panel["dist_lo24"] = px / C.rolling(24, min_periods=1).min() - 1.0
+    panel["dist_hi7d"] = px / C.rolling(168, min_periods=1).max() - 1.0
+    s24 = Q.rolling(24, min_periods=1).sum()
+    s720 = Q.rolling(720, min_periods=1).sum()
+    panel["qv_ratio_1h"] = Q / (s24 / 24.0).where(s24 > 0)
+    panel["qv_ratio_24h"] = s24 / (s720 / 30.0).where(s720 > 0)
+    panel["s24"] = s24
+    if BTC in coins:
+        rb = r1[BTC]
+        pair = r1.notna() & rb.notna().to_numpy()[:, None]
+        X, Y = r1.where(pair), pair.mul(rb.fillna(0.0), axis=0).where(pair)
+        n = pair.rolling(BETA_HOURS, min_periods=1).sum()
+        sx, sy = X.rolling(BETA_HOURS, min_periods=1).sum(), Y.rolling(BETA_HOURS, min_periods=1).sum()
+        sxy, syy = (X * Y).rolling(BETA_HOURS, min_periods=1).sum(), (Y * Y).rolling(BETA_HOURS, min_periods=1).sum()
+        var = syy - sy * sy / n
+        panel["beta_30d"] = ((sxy - sx * sy / n) / var.where(var > 0)).where(n >= BETA_MIN_PAIRS)
+        btc_vol7 = panel["vol_7d"][BTC]
+        btc_pct = vol_percentile(btc_vol7)
+    s = trend_score_panel(px, trend)
+
+    tpos = grid.get_indexer(times)
+    if (tpos < 0).any():
+        raise ValueError("feature_frame: every requested time must be an hour inside the frames")
+    cpos = {c: j for j, c in enumerate(coins)}
+    rows_t, rows_c, g = [], [], []
+    for k, t in enumerate(times):
+        for c in sorted(liquid[t]):
+            rows_t.append(tpos[k])
+            rows_c.append(cpos[c])
+            g.append(k)
+    ti, ci, g = np.asarray(rows_t, dtype=int), np.asarray(rows_c, dtype=int), np.asarray(g, dtype=int)
+    if len(ti) == 0:
+        return pd.DataFrame(columns=["t", "coin"] + FEATURES)
+    n = len(times)
+    out = {"t": times[g], "coin": np.asarray(coins, dtype=object)[ci]}
+    vals = {k: v.to_numpy(dtype=float)[ti, ci] for k, v in panel.items()}
+    for k in COIN_FEATURES:
+        if k in vals:
+            out[k] = vals[k]
+    out["hour"] = times.hour.to_numpy()[g].astype(float)
+    out["dow"] = times.dayofweek.to_numpy()[g].astype(float)
+    if BTC not in coins:
+        out["beta_30d"] = np.full(len(ti), np.nan)
+    bt = tpos[g]
+    bj = cpos.get(BTC)
+    for k in REL:
+        b = panel[f"ret_{k}"].to_numpy(dtype=float)[bt, bj] if bj is not None else np.full(len(ti), np.nan)
+        out[f"rel_btc_{k}"] = vals[f"ret_{k}"] - b
+        out[f"rel_univ_{k}"] = vals[f"ret_{k}"] - _group(vals[f"ret_{k}"], g, n, "mean")[g]
+        out[f"btc_ret_{k}"] = b
+    if bj is not None:
+        out["vol_rel_btc"] = vals["vol_7d"] / panel["vol_7d"].to_numpy(dtype=float)[bt, bj]
+        out["btc_vol7_pct"] = btc_pct.to_numpy()[bt]
+    else:
+        out["vol_rel_btc"] = out["btc_vol7_pct"] = np.full(len(ti), np.nan)
+    med = pd.Series(vals["s24"]).groupby(g).transform("median").to_numpy()
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out["qv24_rel"] = np.where(med > 0, vals["s24"] / np.where(med > 0, med, 1.0), np.nan)
+    up = (s.to_numpy(dtype=float)[ti, ci] >= float(trend["up_threshold"])).astype(float)
+    out["breadth"] = _group(up, g, n, "mean")[g]
+    out["dispersion"] = _group(vals["ret_7d"], g, n, "std")[g]
+    df = pd.DataFrame(out)
+    df[FEATURES] = df[FEATURES].astype(float).replace([np.inf, -np.inf], np.nan)
+    return df[["t", "coin"] + FEATURES].reset_index(drop=True)
+
+
+def features_at(view: MarketView, trend: dict) -> pd.DataFrame:
+    """The live path: features of the liquid coins at view.t (index = coin), from the view's last 400 days."""
+    lo = view.t - LOOKBACK
+    f = feature_frame(view.close.loc[lo:], view.quote_volume.loc[lo:], [view.t], lambda t: view.universe, trend)
+    return f.set_index("coin")[FEATURES]
