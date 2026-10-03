@@ -516,3 +516,29 @@ models:
     sleeves:
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
+  # --- book, after the baitoey blocks (the vt_mom anchor these models use is defined above) ---
+  # Batch 4, pre-registered: reports/review/20261003-prereg-batch4.md
+  book_coin_trend:                # per-coin trend bots plus a manager (long-only)
+    trend: &book_trend            # the shared trend signal (src/models/book/_trend.py), one copy for all three models
+      lookback_days: [5, 10, 20, 30, 60]
+      up_threshold: 0.6           # up-trend: at least 3 of the 5 returns positive
+      max_stale_hours: 24         # a lookback point with no close in the 24 h up to it is unavailable
+      liquid_n: 20                # liquid universe: the 20 coins of the universe with the most quote volume ...
+      volume_days: 30             # ... over the last 30 days
+    vol_days: 30                  # sigma_i: hourly returns over the last 30 days
+    max_weight: 0.25              # per coin; the excess stays in cash
+    shorts: false                 # variant 3.2b (scratch only): short s_i = 0 coins while breadth < short_breadth
+    short_breadth: 0.3
+    short_scale: 0.5              # a short is -0.5 / sigma_i / sum(1 / sigma_j)
+  book_vt_dual:                   # vt_mom's choices, each held only while in an up-trend; otherwise cash
+    vt: *baitoey_vt_mom
+    trend: *book_trend
+  book_vt_breadth:                # vt_mom times clip(breadth / 0.6, 0.25, 1), rounded half up to 0.25
+    vt: *baitoey_vt_mom
+    trend: *book_trend
+    full_breadth: 0.6
+    min_exposure: 0.25
+    exposure_step: 0.25
+  book_vt_top4:                   # vt_mom holding 4 coins instead of 6
+    <<: *baitoey_vt_mom
+    k: 4
