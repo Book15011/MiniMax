@@ -295,11 +295,13 @@ def test_all_layers_on_keep_the_contract_and_gross(market):
             for k in range(30) for j, c in enumerate(market.close.columns)]
     p = params(size={"enabled": True}, stage={"enabled": True}, forecast_longs={"enabled": True},
                forecast_shorts={"enabled": True}, forecasts=fake_store(rows, "allon"))
-    out = chain(MODEL, market, p, T0, 30)
+    m = copy.copy(MODEL)                                               # v2's band: FS's 2% / 5% shorts need one below 5%
+    m.spec = replace(MODEL.spec, band=0.015)
+    out = chain(m, market, p, T0, 30)
     assert all(w.abs().sum() <= 1.0 + 1e-12 for _, _, w in out)
     assert any((w < 0).any() for _, _, w in out) and all((w > 0).any() for _, _, w in out)
     v5 = view(market, T0 + 5 * H, p, out[4][2])
-    w, rec = MODEL.explain(v5)
+    w, rec = m.explain(v5)
     assert w.equals(out[5][2]) and rec and all({"decision", "reason"} <= set(r) for r in rec.values())
     log = book_orch.coin_log(v5, w, rec, _orch_ml._CACHE[("allon", "allon")].at(v5.t), p)
     assert {r["coin"] for r in log} >= set(w.index) | set(rec)
@@ -307,6 +309,112 @@ def test_all_layers_on_keep_the_contract_and_gross(market):
         assert set(r) == {"coin", "hour", "signals", "probabilities", "decision", "reason", "size"}
         assert r["size"] == pytest.approx(float(w.get(r["coin"], 0.0)))
         json.dumps(r)                                                    # one JSON line per record
+
+
+# ------------------------------------------------------------- TS, BH (v3) --------------------------------------------
+
+def crashed(market: Market, coins, t, factor: float = 0.5) -> Market:
+    """The market with `coins` marked down by `factor` from hour t on."""
+    c = market.close.copy()
+    c.loc[c.index >= t, list(coins)] *= factor
+    return replace(market, close=c)
+
+
+def test_TS_stop_condition_matches_its_definition(market):
+    ts = {**P["trailing_stop"], "k": 1.0}                              # k = 1 so that both outcomes occur
+    t = T0 + 5 * H
+    coins = list(market.close.columns)
+    s = book_orch.stop_panel(market.close.loc[:t], t, coins, ts, 30)
+    assert list(s.index) == list(pd.date_range(t - 29 * H, t, freq="h"))
+    for h in s.index[::4]:
+        for c in coins:
+            sig = hourly_vol(market.close.loc[:h], h, [c], 30).get(c, np.nan) * np.sqrt(24)
+            hi = market.close.loc[h - 167 * H: h, c].max()
+            x = market.close.at[h, c]
+            assert bool(s.at[h, c]) == bool(np.isfinite(x) and np.isfinite(sig) and x < hi * (1 - sig)), (h, c)
+    assert s.to_numpy().any() and not s.to_numpy().all()
+
+
+def test_TS_exits_a_stopped_coin_keeps_the_rest_and_leaves_it_out_for_48_hours(market):
+    p = params(trailing_stop={"enabled": True})
+    w0 = MODEL.targets(view(market, T0, p))
+    x = w0.index[0]
+    mk = crashed(market, [x], T0 + 3 * H)
+    out = chain(MODEL, mk, p, T0, 25)                                  # 16:00 ... next day 16:00 UTC
+    assert out[0][2].equals(w0)
+    for k, (t, prev, w) in enumerate(out[1:24], start=1):
+        assert w.equals(prev.drop(x) if k == 3 else prev), t           # exit at 19:00; nothing else moves, no refill
+    _, rec = MODEL.explain(view(mk, T0 + 3 * H, p, out[2][2]))
+    assert rec[x]["decision"] == "exit" and rec[x]["reason"].startswith("trailing stop")
+    t, prev, w = out[24]                                               # the next decision: x is still cooling down
+    v = view(mk, t, p, prev)
+    out_c = book_orch.cooled(v, list(v.universe), p)
+    assert x in out_c and x not in w.index
+    b = VT_MOM.targets(replace(view(mk, t, p["base_params"], prev), universe=tuple(c for c in v.universe if c not in out_c)))
+    assert np.allclose(w.reindex(b.index).to_numpy(), b.to_numpy(), atol=1e-15) and set(w.index) == set(b.index)
+
+
+def test_TS_an_empty_book_waits_for_the_decision_only_after_a_stop(market, monkeypatch):
+    p = params(trailing_stop={"enabled": True})
+    t = T0 + 5 * H                                                     # 21:00 UTC, an empty book
+    v = view(market, t, p)
+    B = run_base(v, pd.Series(dtype=float), p, stops=False)
+    assert not B.empty
+    real = book_orch.stop_panel
+
+    def stop_at_decision(close, tt, coins, ts, hours):                 # B's first coin had a stop at 16:00 only
+        s = real(close, tt, coins, ts, hours) & False
+        if B.index[0] in s.columns and T0 in s.index:
+            s.loc[T0, B.index[0]] = True
+        return s
+
+    monkeypatch.setattr(book_orch, "stop_panel", stop_at_decision)
+    w, rec = MODEL.explain(v)
+    assert w.empty and rec[B.index[0]]["decision"] == "wait"
+    monkeypatch.setattr(book_orch, "stop_panel", lambda close, tt, coins, ts, hours: real(close, tt, coins, ts, hours) & False)
+    w = MODEL.targets(v)                                               # no stop: a window's first hour, the base runs
+    assert np.allclose(w.reindex(B.index).to_numpy(), B.to_numpy(), atol=1e-15) and set(w.index) == set(B.index)
+
+
+def test_BH_shorts_btc_with_spare_cash_only_in_the_down_state_and_weak_breadth(market, monkeypatch):
+    from src.models.pol import _combo
+    p = params(btc_hedge={"enabled": True})
+    t = T0 + 2 * H                                                     # between decisions: longs held as they are
+    state, br, seen = {"s": "down"}, {"b": 0.2}, []
+    monkeypatch.setattr(_combo, "btc_state", lambda v, q: seen.append(q) or state["s"])
+    monkeypatch.setattr(book_orch, "breadth", lambda v, q: br["b"])
+    u = [c for c in view(market, t, p).universe if c != "BTCUSDT"][:2]
+    assert len(u) == 2 and "BTCUSDT" in view(market, t, p).universe
+    prev = pd.Series({u[0]: 0.45, u[1]: 0.45})
+    w, rec = MODEL.explain(view(market, t, p, prev))
+    assert w.drop("BTCUSDT").equals(prev) and w["BTCUSDT"] == pytest.approx(-0.10)      # min(20%, 1 - 0.90)
+    assert rec["BTCUSDT"]["decision"] == "hedge" and seen[-1]["ema_days"] == 20 and seen[-1]["hysteresis"] == 0.03
+    w = MODEL.targets(view(market, t, p, pd.Series({u[0]: 0.3})))
+    assert w["BTCUSDT"] == pytest.approx(-0.20) and w[u[0]] == 0.3 and w.abs().sum() <= 1.0
+    hedged = pd.Series({u[0]: 0.3, "BTCUSDT": -0.2})
+    for s_, b_ in (("up", 0.2), ("down", 0.3)):                        # either condition ends: closed at once
+        state["s"], br["b"] = s_, b_
+        w, rec = MODEL.explain(view(market, t, p, hedged))
+        assert "BTCUSDT" not in w.index and w[u[0]] == 0.3 and rec["BTCUSDT"]["decision"] == "close_hedge"
+    state["s"], br["b"] = "down", 0.2                                  # BTC held long: no hedge, the long is kept
+    w, rec = MODEL.explain(view(market, t, p, pd.Series({"BTCUSDT": 0.3, u[0]: 0.3})))
+    assert w["BTCUSDT"] == 0.3 and rec["BTCUSDT"]["decision"] == "no_hedge"
+
+
+def test_TS_and_BH_keep_the_contract_and_have_no_look_ahead(market):
+    p = params(trailing_stop={"enabled": True, "k": 1.0}, btc_hedge={"enabled": True, "breadth_max": 1.01})
+    out = chain(MODEL, market, p, T0 - 4 * H, 40)                      # from a window's first hour (12:00 UTC)
+    assert all(w.abs().sum() <= 1.0 + 1e-12 for _, _, w in out)
+    assert any(set(prev[prev > 0].index) - set(w.index) for _, prev, w in out if prev.index.size)   # stops fired
+    assert all(w.get("BTCUSDT", 0.0) >= -0.2 - 1e-12 for _, _, w in out)
+    for t, prev, w in (out[0], out[6], out[21]):
+        cut = replace(market, close=market.close.loc[:t], quote_volume=market.quote_volume.loc[:t])
+        noisy = market.close.copy()
+        later = noisy.index > t
+        noisy.loc[later] *= np.exp(np.random.default_rng(1).normal(0, 0.05, noisy.loc[later].shape))
+        for mk in (cut, replace(market, close=noisy)):
+            book_orch._B_CACHE.clear()
+            assert MODEL.targets(view(mk, t, p, prev)).equals(w)
 
 
 # ------------------------------------------------------------- no look-ahead ------------------------------------------

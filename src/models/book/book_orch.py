@@ -1,10 +1,11 @@
-"""book_orch v2: a daily base strategy with equal-risk sizing (R), staged entries (E), forecast longs (F) and forecast
-shorts (FS), the last two from a per-coin 2/4/8-hour forecaster.
+"""book_orch v3: a daily base strategy with equal-risk sizing (R), staged entries (E), forecast longs (F) and forecast
+shorts (FS), the last two from a per-coin 2/4/8-hour forecaster (v2), and a per-coin trailing stop (TS) and a BTC-only
+hedge (BH) (v3).
 
-Pre-registered in reports/review/20261003-prereg-orch-v2.md, section 3. Every number lives in config.yaml under
-`book_orch:`; each layer has an `enabled` switch, and with every layer off the model is its base, held between
-decisions (version A'). v1's layers (ML weight adjustment, shock, short sleeve, partial moves) are recorded at
-183827f.
+Pre-registered in reports/review/20261003-prereg-orch-v2.md, section 3, and reports/review/20261003-prereg-orch-v3.md,
+section 2. Every number lives in config.yaml under `book_orch:`; each layer has an `enabled` switch, and with every
+layer off the model is its base, held between decisions (version A, band 0.05; v2's A' used 0.015). v1's layers (ML
+weight adjustment, shock, short sleeve, partial moves) are recorded at 183827f.
 
 - Base (default baitoey_vt_mom, unchanged): runs at its decision hour (16:00 UTC) and at any hour with no long
   target, on the current view, with this model's current long targets as its previous holdings (option 2).
@@ -23,7 +24,14 @@ decisions (version A'). v1's layers (ML weight adjustment, shock, short sleeve, 
   is not held enters when q >= 0 and there is no confident FALL.
 - FS: shorts of 2% (5% on a strong FALL) on liquid coins not held long, with a confident FALL and an expected
   8-hour drop of at least 2 short round trips; at most 4, and at most min(20%, 1 - long gross); closed when P(fall)
-  drops below its base rate.
+  drops below its base rate. Its 2% / 5% shorts need a band below 5% (v2 ran at 0.015); at v3's 0.05 FS opens none.
+- TS (hourly): a held long exits when its close falls below its highest close of the last 7 days x (1 - k sigma_d),
+  sigma_d = 30-day hourly volatility x sqrt(24). A coin with that condition at any of the last 48 hours is never
+  targeted and is left out of the base's universe (read from the view alone, like the shock rule). Removed weight
+  stays in cash until the next decision; a book emptied by stops stays in cash until then.
+- BH (hourly): short BTC at min(20%, 1 - long gross) while BTC is in Pol's 20-day trend switch DOWN state
+  (src/models/pol/_combo.btc_state, imported) and breadth is below 0.3; never when BTC is held long; longs are never
+  cut; closed as soon as either condition ends.
 Forecasts are the stored out-of-sample forecasts of backtest/orch_train.py (src/models/book/_orch_ml.py), read once
 per process; F and FS do nothing to a coin without one (outside the liquid 20, or before the first model).
 `explain(view)` returns the targets and a per-coin record of each decision and its reason (the shadow log). A held
@@ -41,7 +49,7 @@ import pandas as pd
 from src.contracts import MarketView, ModelSpec
 from src.models.baitoey._volume_signals import breakdown_blocked
 from src.models.baitoey.baitoey_vt_mom import MODEL as VT_MOM
-from src.models.book._trend import hourly_vol, trend_scores
+from src.models.book._trend import breadth, hourly_vol, trend_scores
 
 HOUR, DAY = pd.Timedelta(hours=1), pd.Timedelta(days=1)
 CARRY_ROWS = 48                                   # as the engine and the live store: carry a price at most 48 hours
@@ -101,8 +109,13 @@ class _NoTrace(Trace):
 
 # ------------------------------------------------------------------ the base ------------------------------------------
 
-def run_base(view: MarketView, held: pd.Series, p: dict) -> pd.Series:
-    """The base's long targets on this view, given our long targets as its previous holdings (option 2)."""
+def run_base(view: MarketView, held: pd.Series, p: dict, stops: bool = True) -> pd.Series:
+    """The base's long targets on this view, given our long targets as its previous holdings (option 2). With TS on,
+    the coins in TS's cool-down at view.t are left out of its universe (the next-ranked coin takes the slot)."""
+    if stops and p["trailing_stop"]["enabled"]:
+        out = cooled(view, list(view.universe), p)
+        if out:
+            view = replace(view, universe=tuple(c for c in view.universe if c not in out))
     w = _clean(base_model(p["base"]).targets(replace(view, params=p["base_params"], prev_targets=held)))
     return w[w > 0]
 
@@ -115,7 +128,8 @@ def base_between(view: MarketView, held: pd.Series, p: dict) -> tuple[pd.Series,
     fp = hashlib.blake2b(np.ascontiguousarray(tail_c.to_numpy(dtype=float)).tobytes()
                          + np.ascontiguousarray(tail_q.to_numpy(dtype=float)).tobytes()
                          + "|".join(map(str, tail_c.columns)).encode()
-                         + json.dumps(p["base_params"], sort_keys=True, default=str).encode(), digest_size=16).hexdigest()
+                         + json.dumps([p["base_params"], p["trailing_stop"]], sort_keys=True, default=str).encode(),
+                         digest_size=16).hexdigest()
     key = (p["base"], t_d.value, tuple(sorted(held.round(15).items())), tuple(view.universe), fp)
     if key not in _B_CACHE:
         if len(_B_CACHE) >= _B_CACHE_MAX:
@@ -252,13 +266,88 @@ def fs_layer(view: MarketView, longs: pd.Series, prev_shorts: pd.Series, fc: pd.
     return S
 
 
+# ------------------------------------------------------------------ TS and BH (v3) ------------------------------------
+
+def stop_panel(close: pd.DataFrame, t: pd.Timestamp, coins, ts: dict, hours: int) -> pd.DataFrame:
+    """TS's stop condition at each of the last `hours` hourly closes up to t (rows: hours, columns: coins): close <
+    (highest close over the last `high_hours` hours, this one included) x (1 - k sigma_d), with sigma_d = the
+    `vol_days`-day hourly volatility (as _trend.hourly_vol, on the clock grid) x sqrt(24). False where the close, the
+    high or sigma is missing."""
+    cols = [c for c in coins if c in close.columns]
+    vol_h, hi_h = int(ts["vol_days"]) * 24, int(ts["high_hours"])
+    grid = pd.date_range(t - (hours - 1 + max(vol_h, hi_h)) * HOUR, t, freq="h")
+    c = close.loc[grid[0]: t, cols].reindex(grid)
+    sig = c.pct_change(fill_method=None).rolling(vol_h, min_periods=2).std(ddof=1) * np.sqrt(24.0)
+    hi = c.rolling(hi_h, min_periods=1).max()
+    return (c < hi * (1.0 - float(ts["k"]) * sig)).iloc[-hours:]
+
+
+def cooled(view: MarketView, coins, p: dict) -> set[str]:
+    """TS's cool-down C(t): the coins with the stop condition at any of the last `cooldown_hours` hourly closes,
+    whether or not they were held (the view is all the model keeps)."""
+    ts = p["trailing_stop"]
+    if not coins:
+        return set()
+    s = stop_panel(view.close, view.t, coins, ts, int(ts["cooldown_hours"]))
+    return set(s.columns[s.any(axis=0).to_numpy()])
+
+
+def stop_wait(view: MarketView, p: dict) -> list[str]:
+    """TS with an empty book at a non-decision hour: the coins the base would pick on the full universe (from an empty
+    book) that had the stop condition at any hour since the latest decision, that hour included. If there are any,
+    the book stays in cash until the next decision: stops emptied it, which the view cannot tell from a window's first
+    hour otherwise."""
+    B = run_base(view, pd.Series(dtype=float), p, stops=False)
+    if B.empty:
+        return []
+    n = int((view.t - last_decision(view.t, int(p["decision_hour_utc"]))) / HOUR) + 1
+    s = stop_panel(view.close, view.t, list(B.index), p["trailing_stop"], n)
+    return [c for c in B.index if c in s.columns and bool(s[c].any())]
+
+
+def bh_layer(view: MarketView, longs: pd.Series, shorts: pd.Series, prev_shorts: pd.Series, p: dict,
+             tr: Trace) -> pd.Series:
+    """BH: short BTC at min(size, 1 - long gross) while BTC is in the switch's DOWN state and breadth < breadth_max;
+    not while BTC is held long (longs are never cut); target 0 as soon as either condition ends."""
+    h = p["btc_hedge"]
+    c = h["coin"]
+    had = c in prev_shorts.index
+
+    def off(why: str) -> pd.Series:
+        if had:
+            tr.set(c, "close_hedge", why)
+        return pd.Series(dtype=float)
+
+    if c not in view.universe:
+        return off("BTC not in the universe")
+    if c in shorts.index:
+        return off("BTC already shorted by FS")
+    from src.models.pol._combo import btc_state      # Pol's switch state (team_trend_2's rule), imported, not copied
+    if btc_state(view, h["state"]) != "down":
+        return off("BTC left the DOWN state")
+    b = breadth(view, p["trend"])
+    if b >= float(h["breadth_max"]):
+        return off(f"breadth {b:.2f} >= {float(h['breadth_max']):.2f}")
+    if longs.get(c, 0.0) > 0.0:
+        if not had:
+            tr.set(c, "no_hedge", "BTC held long")
+        return off("BTC held long")
+    size = min(float(h["size"]), 1.0 - float(longs[longs > 0].sum()))
+    if size <= 0.0:
+        return off("no cash left by the longs")
+    tr.set(c, "hold_hedge" if had else "hedge",
+           f"BTC in the DOWN state, breadth {b:.2f} < {float(h['breadth_max']):.2f}: short {size:.3f}")
+    return pd.Series({c: -size})
+
+
 # ------------------------------------------------------------------ the model -----------------------------------------
 
 class BookOrch:
-    spec = ModelSpec(name="book_orch", method="momentum", author="book", rebalance_hours=1, band=0.015,
+    spec = ModelSpec(name="book_orch", method="momentum", author="book", rebalance_hours=1, band=0.05,
                      uses_shorts=True,
-                     description="baitoey_vt_mom daily with equal-risk sizing, staged entries, and longs and shorts "
-                                 "steered by a per-coin 2/4/8-hour forecaster (each layer switchable)")
+                     description="baitoey_vt_mom daily with equal-risk sizing, staged entries, longs and shorts "
+                                 "steered by a per-coin 2/4/8-hour forecaster, a per-coin trailing stop and a BTC "
+                                 "hedge (each layer switchable)")
 
     def targets(self, view: MarketView) -> pd.Series:
         return self._run(view, _NoTrace())[0]
@@ -284,18 +373,38 @@ class BookOrch:
             tr.set(c, "exit" if x > 0 else "close_short", LEFT_UNIVERSE)
         prev = prev.drop(gone.index)
         held, prev_shorts = prev[prev > 0], prev[prev < 0]
+        ts_on = bool(p["trailing_stop"]["enabled"])
+        if ts_on and not held.empty:
+            held = self._stops(view, held, p, tr)
         st, fc = self._forecasts(view, p)
         spread = st.spread if st is not None else (lambda c: 0.0)
         F = bool(p["forecast_longs"]["enabled"])
         fcF = fc if F else None
-        if view.t.hour == int(p["decision_hour_utc"]) or held.empty:
+        if view.t.hour == int(p["decision_hour_utc"]):
             longs = self._decide(view, held, p, fcF, spread, tr)
+        elif held.empty:
+            wait = stop_wait(view, p) if ts_on else []
+            for c in wait:
+                tr.set(c, "wait", "trailing stop since the last decision: cash until the next decision")
+            longs = pd.Series(dtype=float) if wait else self._decide(view, held, p, fcF, spread, tr)
         else:
             longs = self._between(view, held, p, fcF, spread, st, tr)
         shorts = pd.Series(dtype=float)
         if p["forecast_shorts"]["enabled"]:
             shorts = fs_layer(view, longs, prev_shorts, fc, p, spread, self.spec.band, tr)
+        if p["btc_hedge"]["enabled"]:
+            shorts = pd.concat([shorts, bh_layer(view, longs, shorts, prev_shorts, p, tr)])
         return _clean(cap_gross(pd.concat([longs, shorts]))), fc
+
+    def _stops(self, view, held, p, tr: Trace) -> pd.Series:
+        """TS on the held longs: exit every held coin in the cool-down (its stop condition now or in the last 48 h)."""
+        ts = p["trailing_stop"]
+        s = stop_panel(view.close, view.t, list(held.index), ts, int(ts["cooldown_hours"]))
+        out = [c for c in held.index if c in s.columns and bool(s[c].any())]
+        for c in out:
+            tr.set(c, "exit", f"trailing stop: close below the 7-day high x (1 - {float(ts['k']):g} x daily vol)"
+                   if bool(s[c].iloc[-1]) else "trailing-stop cool-down")
+        return held.drop(out)
 
     def _decide(self, view, held, p, fc, spread, tr: Trace) -> pd.Series:
         B = run_base(view, held, p)

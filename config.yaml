@@ -645,6 +645,19 @@ models:
       max_gross: 0.20             # and never more than the cash the long book leaves (1 - long gross)
       fee_open: 0.001
       fee_close: 0.001
+    # v3 layers: reports/review/20261003-prereg-orch-v3.md
+    trailing_stop:                # TS (hourly): exit a held long at close < 7-day high x (1 - k sigma_d)
+      enabled: false
+      k: 3.0                      # primary; TS-k2 (report-only) uses 2
+      high_hours: 168             # the highest hourly close over the last 7 days, this hour included
+      vol_days: 30                # sigma_d = 30-day hourly volatility x sqrt(24)
+      cooldown_hours: 48          # a coin with the stop condition in the last 48 hours is never targeted
+    btc_hedge:                    # BH (hourly): short BTC with the cash the longs leave; longs are never cut
+      enabled: false
+      coin: BTCUSDT
+      size: 0.20                  # min(size, 1 - long gross)
+      breadth_max: 0.3            # and the share of the liquid 20 in an up-trend below this
+      state: {<<: *team_trend_2, ema_days: 20}   # Pol's switch state, as pol_switch_vt_tl_e20v45's switch: DOWN = not up
 
 # Leaderboard pick rule (backtest/scoring/selection.py). Not part of the tool version: changing it rescores nothing.
 # The leaderboard always shows both picks; `rule` only sets which one orders the table. Changing it is a team decision.
