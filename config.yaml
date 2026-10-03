@@ -613,6 +613,38 @@ models:
   book_vt_top4:                   # vt_mom holding 4 coins instead of 6
     <<: *baitoey_vt_mom
     k: 4
+  book_orch:                      # base + ML weight adjustment + shock + short sleeve: reports/review/20261003-prereg-orch.md
+    base: baitoey_vt_mom          # called at its own decision hour only; it reads which coins are held, never the weights
+    base_params: *baitoey_vt_mom
+    decision_hour_utc: 16
+    trend: *book_trend            # breadth, liquid universe and trend scores (src/models/book/_trend.py)
+    ml:                           # layer T, at 16:00 UTC decisions only
+      enabled: false
+      manifest: validation/book_orch_ml_v1.json
+      manifest_sha256: 489f8c9ae67e0c0a7a0cbb39ad048ab13bb865ed1fdf8996a5b93b94ef9eb014   # validation/book_orch_ml_v1.json (backtest.orch_train); the run key changes with it
+      k: 0.5                      # adj = clip(k * mu3 / q, -cap, cap), 0 if mu1 and mu3 disagree in sign
+      cap: 0.5
+      fee: 0.001                  # round trip = 2 x (fee + the engine half-spread of the coin)
+      filter_mult: 2.0            # move a coin only if |mu3| >= filter_mult x round trip
+    shock:                        # layer S, checked every hour: Pol trigger (pol_abl_shock.ShockOverride.shocked)
+      enabled: false
+      shock_4h: 0.05              # BTC 4-hour return of -5% or worse ...
+      cooldown_hours: 24          # ... at any hour of the last 24 h
+      response: half              # half: longs x scale, shorts unchanged; cash: the pol_abl_shock response (report-only)
+      scale: 0.5
+    short:                        # layer X, at 16:00 UTC decisions only
+      enabled: false
+      candidates: trend           # the ML gate failed (shuffled control): s_i = 0; ml: mu3 <= -filter_mult x short round trip
+      breadth_max: 0.3            # gate: breadth < 0.3
+      max_coins: 5
+      max_gross: 0.25             # sleeve = min(max_gross, 1 - long gross); the longs are never reduced
+      vol_days: 30                # weights proportional to -1 / sigma_i over 30 days
+      fee_open: 0.001
+      fee_close: 0.001
+      filter_mult: 2.0
+    partial:                      # report-only version P
+      enabled: false
+      alpha: 0.5
 
 # Leaderboard pick rule (backtest/scoring/selection.py). Not part of the tool version: changing it rescores nothing.
 # The leaderboard always shows both picks; `rule` only sets which one orders the table. Changing it is a team decision.
