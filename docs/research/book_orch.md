@@ -48,6 +48,7 @@ It scores **HEADLINE_RET 0.609**. The question for book_orch was whether extra l
 | **v2** | `70ebc8c` | A per-coin forecaster for the next 2, 4 and 8 hours (gradient-boosted classifier, retrained weekly), and four layers:<br>**R:** equal-risk sizing<br>**E:** staged entries (half now, half later)<br>**F:** forecast-led longs<br>**FS:** forecast-led shorts<br>A′ is the base at a smaller trading band (0.015) | Forecaster **failed** its skill gate, so F and FS were not scored<br>R and E **failed** the keep rule<br>Nothing kept | [v2 report](../../reports/review/20261003-orch-v2.md) |
 | **Checks** | `f2ee1d4` (plan) | Read-only checks:<br>does the forecast rank pay once volatility is controlled?<br>do stretched entries do worse?<br>does shorting a confirmed breakdown pay?<br>does the strategy trade as written?<br>fees<br>data | Both decision rules said no: the ML line stops, and no short rule | [Checks](../../reports/review/20261003-orch-checks.md) |
 | **Final steps** | `b49ecb0` | A macro risk brake (VIX, S&P 500, dollar, BTC funding)<br>"Hold longer": keep a coin while in the top 15 (or 18) instead of 12 | Both decision rules said no; nothing registered | [Final steps](../../reports/review/20261003-final-steps.md) |
+| **v3** | `c0c0730` | **TS:** a per-coin trailing stop (exit below the 7-day high minus 3 daily volatilities; 48-hour cool-down), with **TS-k2** (2 volatilities) report-only<br>**BH:** a 20% BTC short with spare cash when BTC is in a down-trend and few coins are trending up<br>Also a read-only check of how much the score depends on recent windows | TS, BH and TS+BH all **failed** the keep rule<br>Nothing registered | [v3](../../reports/review/20261004-orch-v3.md) |
 
 ## 4. Results
 
@@ -69,6 +70,10 @@ All runs use the same scoring tool (version `3036a0d8bfdaa6a0`) and the same 2,2
 | v2 E: staged entries | 0.583 | 0.458 | 0.590 | 0.779 / 0.349 | −31.2% | 3.46 | no |
 | Hold longer, top 15 | 0.540 | 0.471 | 0.551 | 0.742 / 0.299 | −30.9% | 3.05 | no |
 | Hold longer, top 18 | 0.552 | 0.476 | 0.544 | 0.747 / 0.320 | −29.6% | 2.74 | report-only |
+| v3 TS: trailing stop | 0.537 | 0.417 | 0.499 | 0.774 / 0.255 | −25.3% | 4.49 | no |
+| v3 TS-k2: tighter stop | 0.520 | 0.402 | 0.503 | 0.695 / 0.312 | −20.6% | 5.36 | report-only |
+| v3 BH: BTC hedge | 0.601 | 0.429 | 0.580 | 0.785 / 0.382 | −30.8% | 4.40 | no |
+| v3 TS+BH | 0.521 | 0.397 | 0.479 | 0.748 / 0.251 | −23.8% | 5.62 | no |
 
 **Not scored, because their gate failed:** v1's ML tilt (T), and v2's forecast longs and shorts (F, FS).
 
@@ -113,6 +118,25 @@ All runs use the same scoring tool (version `3036a0d8bfdaa6a0`) and the same 2,2
 **Holding longer cut trading but cleared the bar less often.**
 - Keeping coins while in the top 15 cut turnover by 15% and quick round trips by a third.
 - But HEADLINE_RET fell from 0.609 to 0.540, in both rising and falling markets (HIT UP 0.805 to 0.742, HIT DOWN 0.376 to 0.299).
+
+**Trailing stops sold before bounces.**
+- A stop 3 daily volatilities below a coin's 7-day high (v3 TS) improved the worst window from −30.8% to −25.3%.
+- But the coins it sold rose on average afterwards: +0.75% the next day and +0.99% over 3 days. Over 7 days it was a
+  coin flip.
+- It cleared the bar much less often in falling markets (HIT DOWN 0.376 to 0.255), and HEADLINE_RET fell from
+  0.609 to 0.537.
+
+**A BTC-only hedge cost about its trading costs.**
+- Shorting 20% of BTC while BTC trended down and few coins trended up (v3 BH) switched on and off quickly, with a
+  median episode of 4 hours.
+- Only 31% of the episodes made money after costs.
+- It moved HIT DOWN by +0.006 and HEADLINE_RET by −0.008, and gave back 2 points in rebound windows.
+
+**Much of the score weight sits on recent windows.**
+- The 52 most recent windows carry 22% of the weight, and 2026 carries 48%.
+- vt_mom ranks first under the current weights, but its margin over the next-best variants comes mostly from 2026.
+- Without the most recent windows, one variant (v2 E) is narrowly ahead of it.
+- With each year weighted equally, three variants are statistically tied with it.
 
 **Trading more often did not help either.**
 - A smaller trading band (v2 A′, 0.015 instead of 0.05) made 20 times more trades between daily decisions (8,553 vs 415), for the same turnover.
@@ -167,3 +191,4 @@ PUMP's worst entry lost 18.8% at its lowest point.
 | [`20261003-orch-v2.md`](../../reports/review/20261003-orch-v2.md) | [`20261003-prereg-orch-v2.md`](../../reports/review/20261003-prereg-orch-v2.md) (`70ebc8c`) | v2: forecaster gate, R and E, per-coin analysis |
 | [`20261003-orch-checks.md`](../../reports/review/20261003-orch-checks.md) | [`20261003-orch-checks-plan.md`](../../reports/review/20261003-orch-checks-plan.md) (`f2ee1d4`) | volatility-controlled ranking, stretched entries, breakdown shorts, behaviour, fees, data |
 | [`20261003-final-steps.md`](../../reports/review/20261003-final-steps.md) | [`20261003-prereg-final-steps.md`](../../reports/review/20261003-prereg-final-steps.md) (`b49ecb0`) | macro risk check, hold longer, logging fixes, the batch 4 table |
+| [`20261004-orch-v3.md`](../../reports/review/20261004-orch-v3.md) | [`20261003-prereg-orch-v3.md`](../../reports/review/20261003-prereg-orch-v3.md) (`c0c0730`) | score robustness, trailing stop, BTC hedge, per-coin stops |
