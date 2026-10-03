@@ -189,3 +189,17 @@ def test_paper_short_gains_when_price_falls():
     pb.execute(orders, QUOTES)
     lower = {"BTC/USD": Quote(bid=90_000.0, ask=90_010.0)}
     assert equity(h, lower) > equity(h, QUOTES)
+
+
+def test_the_cash_reserve_comes_from_every_coin_not_only_from_the_top_ups():
+    """Equal targets adding to 100%, one coin fallen behind (the Oct 3 test run: PUMP's top-up was cut to 32% because
+    the 1% reserve was taken from the buys alone). The targets shrink evenly to 99%, so the trims pay for the top-up."""
+    rules = {f"C{i}/USD": PairRule(f"C{i}/USD", 4, 4, Decimal("1")) for i in range(6)}
+    quotes = {p: Quote(bid=1.0, ask=1.0) for p in rules}
+    h = Holdings(1_000.0, {**{f"C{i}/USD": 17_000.0 for i in range(5)}, "C5/USD": 14_000.0})   # 5 x 17%, 14%, 1% cash
+    orders, notes = plan_orders({p: 1 / 6 for p in rules}, h, quotes, rules, band=0.03, exact=True)
+    buy = [o for o in orders if o.kind == BUY]
+    assert len(buy) == 1 and buy[0].pair == "C5/USD"
+    assert float(buy[0].quantity) >= 0.99 * (16_500.0 - 14_000.0)          # nearly the full top-up to 16.5%
+    sells = [o for o in orders if o.kind == SELL]
+    assert len(sells) == 5 and all(abs(float(o.quantity) - 500.0) < 1.0 for o in sells)   # each 17% -> 16.5%

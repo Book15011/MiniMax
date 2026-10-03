@@ -29,7 +29,7 @@ a strong rally it gives up further gains (`live.endgame`, `reports/review/202610
 - **No leverage.** Longs are bought only with free cash and 1% of equity always stays in USD; a short is 1x and
   fully backed by its own collateral. Total exposure never exceeds 100% of equity.
 - **Volatility caps.** In the momentum state the book is scaled down whenever its estimated daily volatility
-  (30-day, assuming the coins move together) would exceed 4.5%. In the trend state, coins get inverse-volatility weights
+  (30 days of hourly moves, including how the coins move together) would exceed 4.5%. In the trend state, coins get inverse-volatility weights
   and the book targets 35% annualised volatility. The rest stays in cash.
 - **Concentration.** At most 6 coins in the momentum state (equal weights) and at most 15 in the trend state.
 - **Exits.** A momentum holding leaves when it drops out of the top 12, or for a day after it breaks its
