@@ -18,7 +18,7 @@ from src.config import load_config
 from src.contracts import MarketView, check_targets
 from src.models.book import _orch_ml, book_orch
 from src.models.book._orch_features import FEATURES, coin_features, market_features
-from src.models.book.book_orch import MODEL, drift, short_sleeve
+from src.models.book.book_orch import MODEL, short_sleeve
 from tests.synth import make_market
 
 CFG = load_config()
@@ -101,20 +101,17 @@ def test_every_layer_off_gives_the_base_at_every_base_decision(market):
     for t, w in bt.items():
         if t in got:
             assert got[t].sort_index().equals(w.astype(float).sort_index()), t
-    # between decisions the long set never changes and the weights only drift
+    # between decisions the last decision's targets are returned unchanged
     for (t0, a), (t1, b) in zip(ours, ours[1:]):
         if t1.hour != 16:
-            assert set(a.index) == set(b.index)
+            assert b.equals(a)
 
 
-def test_drift_is_the_engines_update(market):
+def test_hold_returns_the_last_decision_unchanged(market):
     t = pd.Timestamp("2021-03-02 03:00", tz="UTC")
-    prev = pd.Series({"BTCUSDT": 0.4, "ETHUSDT": -0.2, "AAAUSDT": 0.3})
-    w = drift(prev, view(market, t, P))
-    px = market.close[prev.index].ffill()
-    r = (px.loc[t] / px.loc[t - H] - 1.0)
-    pr = float((prev * r).sum())
-    assert np.allclose(w.to_numpy(), (prev * (1 + r) / (1 + pr)).to_numpy(), rtol=0, atol=1e-15)
+    v = view(market, t, P)
+    prev = pd.Series({c: w for c, w in zip(list(v.universe)[:3], (0.4, -0.2, 0.3))})
+    assert MODEL.targets(view(market, t, P, prev)).equals(prev.astype(float))
 
 
 def test_held_long_set_equals_the_base_and_the_sleeve_never_moves_it(market):
@@ -191,10 +188,9 @@ def test_shock_trigger_and_response_by_hand(market):
     p = params(shock={"enabled": True})
     prev = pd.Series({"ETHUSDT": 0.3, "AAAUSDT": 0.2, "BBBUSDT": -0.1})
     w = MODEL.targets(view(mk, at, p, prev))                             # turns on: longs x 0.5, shorts unchanged
-    d = drift(prev, view(mk, at, p))
-    assert np.allclose(w[["ETHUSDT", "AAAUSDT"]], 0.5 * d[["ETHUSDT", "AAAUSDT"]]) and w["BBBUSDT"] == d["BBBUSDT"]
+    assert np.allclose(w[["ETHUSDT", "AAAUSDT"]], 0.5 * prev[["ETHUSDT", "AAAUSDT"]]) and w["BBBUSDT"] == prev["BBBUSDT"]
     w2 = MODEL.targets(view(mk, at + H, p, w))                            # still on: just held
-    assert np.allclose(w2, drift(w, view(mk, at + H, p)))
+    assert w2.equals(w)
     prev_at = w2
     off = at + 27 * H                                                     # 08:00: not a decision hour
     held = w2
@@ -207,9 +203,8 @@ def test_shock_trigger_and_response_by_hand(market):
             assert np.allclose(held.sort_index(), 0.5 * base[base != 0].sort_index())
         prev_at = held
     w3 = MODEL.targets(view(mk, off, p, held))
-    d3 = drift(held, view(mk, off, p))
     assert set(w3.index) == set(held.index)                               # the coins never change
-    assert np.allclose(w3[w3 > 0], 2.0 * d3[d3 > 0])                      # longs back to full
+    assert np.allclose(w3[w3 > 0], 2.0 * held[held > 0])                  # longs back to full
     cash = params(shock={"enabled": True, "response": "cash"})
     assert MODEL.targets(view(mk, at, cash, prev)).empty                  # Pol's response: cash while active
     assert not MODEL.targets(view(mk, off, cash, pd.Series(dtype=float))).empty   # then the base decides afresh

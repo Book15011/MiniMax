@@ -6,8 +6,10 @@ each layer has an `enabled` switch, and with every layer off the model is its ba
 - Base (default baitoey_vt_mom, unchanged): called only at its own decision hour (16:00 UTC), or when the book is
   empty (a window's first hour, as the live bot's first decision). It is given this model's current holdings as its
   previous holdings; vt_mom reads only which coins are held long, so no layer may change that set.
-- Between decisions the model holds: it returns its holdings drifted by the last hour's returns, with the engine's
-  own drift formula w (1 + r) / (1 + sum w r), so the engine does not trade them back to stale targets.
+- Between decisions the model holds: it returns its last decision's targets unchanged, as pol_abl_shock does (option
+  1 of the team's decision, a DEVIATION from the pre-registered drift hold, which failed the parity check). The engine
+  then trades between decisions only where a weight has drifted past the band, and its daily guard rebalances to
+  these targets exactly as it does for the base alone.
 - T, ML adjustment (16:00 only): pooled walk-forward forecasts of each held coin's 1-day and 3-day return
   (src/models/book/_orch_ml.py) scale its weight between 0.5 and 1.5 times the base's; a coin moves only if
   |mu3| >= 2 round-trip costs, and the gross never exceeds the base's.
@@ -48,19 +50,6 @@ def base_model(name: str):
         from src.models import get                # deferred: src.models imports every model module
         _BASES[name] = get(name)
     return _BASES[name]
-
-
-def drift(prev: pd.Series, view: MarketView) -> pd.Series:
-    """The holdings after the last hour's price move: w (1 + r) / (1 + sum w r), r = the last close over the previous
-    one (last known price carried, 0 if none), exactly the engine's update (backtest/engine.py)."""
-    if prev.empty:
-        return prev
-    c = view.close.reindex(columns=list(prev.index)).iloc[-(CARRY_ROWS + 2):].ffill()
-    if len(c) < 2:
-        return prev
-    r = (c.iloc[-1] / c.iloc[-2] - 1.0).fillna(0.0)
-    pr = float((prev * r).sum())
-    return prev * (1.0 + r) / (1.0 + pr)
 
 
 def cap_gross(w: pd.Series, longs_only: bool = False) -> pd.Series:
@@ -175,8 +164,7 @@ class BookOrch:
             if now:
                 w[w > 0] = w[w > 0] * float(s["scale"])
             return _clean(w)
-        w = drift(prev, view)
-        w = w[w.index.isin(list(view.universe))]
+        w = prev[prev.index.isin(list(view.universe))].copy()
         if s["enabled"] and s["response"] == "half":
             before = shocked(shock_view_at(view, view.t - HOUR), s)
             if now and not before:
