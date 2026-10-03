@@ -368,6 +368,7 @@ def test_TS_an_empty_book_waits_for_the_decision_only_after_a_stop(market, monke
             s.loc[T0, B.index[0]] = True
         return s
 
+    monkeypatch.setattr(book_orch, "_memo", lambda key, frames, fn: fn())     # the signals change by hand here
     monkeypatch.setattr(book_orch, "stop_panel", stop_at_decision)
     w, rec = MODEL.explain(v)
     assert w.empty and rec[B.index[0]]["decision"] == "wait"
@@ -381,6 +382,7 @@ def test_BH_shorts_btc_with_spare_cash_only_in_the_down_state_and_weak_breadth(m
     p = params(btc_hedge={"enabled": True})
     t = T0 + 2 * H                                                     # between decisions: longs held as they are
     state, br, seen = {"s": "down"}, {"b": 0.2}, []
+    monkeypatch.setattr(book_orch, "_memo", lambda key, frames, fn: fn())     # the signals change by hand here
     monkeypatch.setattr(_combo, "btc_state", lambda v, q: seen.append(q) or state["s"])
     monkeypatch.setattr(book_orch, "breadth", lambda v, q: br["b"])
     u = [c for c in view(market, t, p).universe if c != "BTCUSDT"][:2]
@@ -401,12 +403,15 @@ def test_BH_shorts_btc_with_spare_cash_only_in_the_down_state_and_weak_breadth(m
     assert w["BTCUSDT"] == 0.3 and rec["BTCUSDT"]["decision"] == "no_hedge"
 
 
-def test_TS_and_BH_keep_the_contract_and_have_no_look_ahead(market):
+def test_TS_and_BH_keep_the_contract_have_no_look_ahead_and_cache_exactly(market, monkeypatch):
     p = params(trailing_stop={"enabled": True, "k": 1.0}, btc_hedge={"enabled": True, "breadth_max": 1.01})
+    book_orch._M_CACHE.clear()
     out = chain(MODEL, market, p, T0 - 4 * H, 40)                      # from a window's first hour (12:00 UTC)
     assert all(w.abs().sum() <= 1.0 + 1e-12 for _, _, w in out)
     assert any(set(prev[prev > 0].index) - set(w.index) for _, prev, w in out if prev.index.size)   # stops fired
     assert all(w.get("BTCUSDT", 0.0) >= -0.2 - 1e-12 for _, _, w in out)
+    again = chain(MODEL, market, p, T0 - 4 * H, 40)                    # every signal now from the cache
+    assert all(a[2].equals(b[2]) for a, b in zip(out, again))
     for t, prev, w in (out[0], out[6], out[21]):
         cut = replace(market, close=market.close.loc[:t], quote_volume=market.quote_volume.loc[:t])
         noisy = market.close.copy()
@@ -414,7 +419,11 @@ def test_TS_and_BH_keep_the_contract_and_have_no_look_ahead(market):
         noisy.loc[later] *= np.exp(np.random.default_rng(1).normal(0, 0.05, noisy.loc[later].shape))
         for mk in (cut, replace(market, close=noisy)):
             book_orch._B_CACHE.clear()
+            book_orch._M_CACHE.clear()
             assert MODEL.targets(view(mk, t, p, prev)).equals(w)
+    monkeypatch.setattr(book_orch, "_memo", lambda key, frames, fn: fn())     # no cache at all: the same targets
+    book_orch._B_CACHE.clear()
+    assert all(a[2].equals(b[2]) for a, b in zip(out, chain(MODEL, market, p, T0 - 4 * H, 40)))
 
 
 # ------------------------------------------------------------- no look-ahead ------------------------------------------

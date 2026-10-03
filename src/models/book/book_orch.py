@@ -55,6 +55,7 @@ HOUR, DAY = pd.Timedelta(hours=1), pd.Timedelta(days=1)
 CARRY_ROWS = 48                                   # as the engine and the live store: carry a price at most 48 hours
 _BASES = {VT_MOM.spec.name: VT_MOM}
 _B_CACHE: dict = {}
+_M_CACHE: dict = {}                               # TS and BH market signals (see _memo)
 _B_CACHE_MAX = 50_000
 LEFT_UNIVERSE = "left the point-in-time universe"   # the shadow-log reason when a held coin drops out of it
 
@@ -282,13 +283,40 @@ def stop_panel(close: pd.DataFrame, t: pd.Timestamp, coins, ts: dict, hours: int
     return (c < hi * (1.0 - float(ts["k"]) * sig)).iloc[-hours:]
 
 
-def cooled(view: MarketView, coins, p: dict) -> set[str]:
-    """TS's cool-down C(t): the coins with the stop condition at any of the last `cooldown_hours` hourly closes,
-    whether or not they were held (the view is all the model keeps)."""
+def _memo(key: tuple, frames: list[pd.DataFrame], fn):
+    """A cache of a pure function of the view (TS's and BH's market signals; the engine asks for the same hour once
+    per window's first decisions and once in the shared history). The key holds the hour, the coins and parameters,
+    and a hash of every bar the function reads, so a cached value is the value."""
+    h = hashlib.blake2b(digest_size=16)
+    for f in frames:
+        h.update(np.ascontiguousarray(f.to_numpy(dtype=float)).tobytes())
+        h.update(np.ascontiguousarray(f.index.asi8).tobytes())
+        h.update("|".join(map(str, f.columns)).encode())
+    k = key + (h.hexdigest(),)
+    if k not in _M_CACHE:
+        if len(_M_CACHE) >= _B_CACHE_MAX:
+            _M_CACHE.clear()
+        _M_CACHE[k] = fn()
+    return _M_CACHE[k]
+
+
+def stop48(view: MarketView, p: dict) -> pd.DataFrame:
+    """TS's stop condition for every universe coin over the last `cooldown_hours` hours (memoized; read-only)."""
     ts = p["trailing_stop"]
+    n = int(ts["cooldown_hours"])
+    cols = [c for c in view.universe if c in view.close.columns]
+    t0 = view.t - (n - 1 + max(int(ts["vol_days"]) * 24, int(ts["high_hours"]))) * HOUR
+    return _memo(("stop", view.t.value, tuple(cols), json.dumps(ts, sort_keys=True, default=str)),
+                 [view.close.loc[t0: view.t, cols]], lambda: stop_panel(view.close, view.t, cols, ts, n))
+
+
+def cooled(view: MarketView, coins, p: dict) -> set[str]:
+    """TS's cool-down C(t): the coins (of the universe) with the stop condition at any of the last `cooldown_hours`
+    hourly closes, whether or not they were held (the view is all the model keeps)."""
     if not coins:
         return set()
-    s = stop_panel(view.close, view.t, coins, ts, int(ts["cooldown_hours"]))
+    s = stop48(view, p)
+    s = s[[c for c in coins if c in s.columns]]
     return set(s.columns[s.any(axis=0).to_numpy()])
 
 
@@ -301,8 +329,29 @@ def stop_wait(view: MarketView, p: dict) -> list[str]:
     if B.empty:
         return []
     n = int((view.t - last_decision(view.t, int(p["decision_hour_utc"]))) / HOUR) + 1
-    s = stop_panel(view.close, view.t, list(B.index), p["trailing_stop"], n)
+    s = stop48(view, p)
+    s = s.iloc[-n:] if n <= len(s) else stop_panel(view.close, view.t, list(B.index), p["trailing_stop"], n)
     return [c for c in B.index if c in s.columns and bool(s[c].any())]
+
+
+def bh_signals(view: MarketView, p: dict) -> tuple[str, float | None]:
+    """BH's two conditions at view.t: Pol's switch state of BTC, and (only when it is 'down') the breadth. Memoized."""
+    h, tp = p["btc_hedge"], p["trend"]
+    c, st = h["coin"], h["state"]
+    from src.models.pol._combo import btc_state      # Pol's switch state (team_trend_2's rule), imported, not copied
+    need = (int(st["state_days"]) + 3 * int(st["ema_days"])) * 24 + 1
+    state = _memo(("btc_state", view.t.value, c, json.dumps(st, sort_keys=True, default=str)),
+                  [view.close[[c]].iloc[-need:]], lambda: btc_state(view, st))
+    if state != "down":
+        return state, None
+    lb = max(int(L) for L in tp["lookback_days"]) * DAY + pd.Timedelta(hours=float(tp["max_stale_hours"]))
+    cols = [x for x in view.universe if x in view.close.columns]
+    qcols = [x for x in view.universe if x in view.quote_volume.columns]
+    b = _memo(("breadth", view.t.value, tuple(view.universe), json.dumps(tp, sort_keys=True, default=str)),
+              [view.close.loc[view.t - lb: view.t, cols],
+               view.quote_volume.loc[view.t - float(tp["volume_days"]) * DAY: view.t, qcols]],
+              lambda: breadth(view, tp))
+    return state, b
 
 
 def bh_layer(view: MarketView, longs: pd.Series, shorts: pd.Series, prev_shorts: pd.Series, p: dict,
@@ -322,10 +371,9 @@ def bh_layer(view: MarketView, longs: pd.Series, shorts: pd.Series, prev_shorts:
         return off("BTC not in the universe")
     if c in shorts.index:
         return off("BTC already shorted by FS")
-    from src.models.pol._combo import btc_state      # Pol's switch state (team_trend_2's rule), imported, not copied
-    if btc_state(view, h["state"]) != "down":
+    state, b = bh_signals(view, p)
+    if state != "down":
         return off("BTC left the DOWN state")
-    b = breadth(view, p["trend"])
     if b >= float(h["breadth_max"]):
         return off(f"breadth {b:.2f} >= {float(h['breadth_max']):.2f}")
     if longs.get(c, 0.0) > 0.0:
@@ -399,7 +447,7 @@ class BookOrch:
     def _stops(self, view, held, p, tr: Trace) -> pd.Series:
         """TS on the held longs: exit every held coin in the cool-down (its stop condition now or in the last 48 h)."""
         ts = p["trailing_stop"]
-        s = stop_panel(view.close, view.t, list(held.index), ts, int(ts["cooldown_hours"]))
+        s = stop48(view, p)                                            # held coins are in the universe (see _run)
         out = [c for c in held.index if c in s.columns and bool(s[c].any())]
         for c in out:
             tr.set(c, "exit", f"trailing stop: close below the 7-day high x (1 - {float(ts['k']):g} x daily vol)"
