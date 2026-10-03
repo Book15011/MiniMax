@@ -1,0 +1,14 @@
+Lock-in vs the top-20 cut proxy (max(0, best of 6 benchmarks)), pol_switch_vt_tl_e20v45, 2298 rounds
+
+lock fires in 1206 rounds (52%); in the others nothing changes
+
+BTC move when the lock fires        n   cut (avg)   our R then top-20 if lock  top-20 if not  behind cut then of those, caught up
+BTC down                          340       +7.9%        +7.0%            59%            59%              41%              25%
+BTC 0 to +5%                      307      +10.3%        +8.6%            45%            39%              54%              28%
+BTC +5 to +10%                    242      +16.5%       +11.0%            29%            27%              71%              18%
+BTC +10% or more                  317      +29.1%       +18.3%            18%            29%              81%              20%
+all                              1206      +15.8%       +11.2%            39%            40%              61%              22%
+
+top-20 if lock / if not: share of rounds whose final R clears the cut with the lock-in on / off.
+behind cut then: share where our return when the lock fires is below the round's final cut (the lock then
+guarantees a miss); caught up: of those, the share where continuing would have ended above the cut.
