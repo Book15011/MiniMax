@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from backtest.data import Market, load_market
+import backtest.scoring.score as scoring
 from backtest.scoring.registry import resolve
 from backtest.scoring.score import dumps, score_model
 from research.baitoey.shock_plateau import TYPES, volatile_hit
@@ -99,6 +100,8 @@ def main() -> None:
         bars[p] = np.array(s["per_window"]["bar_STRICT"], dtype=float)
         rows[f"{p}0"] = {**summarize(f"{p}0", "all", s, btc), "volatile": volatile_hit(s, btc), "cs_hit": s["primary"]["cs_hit"]}
     market = load_market(cfg)
+    field_runs = scoring.field_runs                     # the benchmarks (and so the bars) use the usual universe
+    scoring.field_runs = lambda _m, *a, **k: field_runs(market, *a, **k)
     for n in SIZES:
         m = top_by_volume(market, n)
         log.info("top %d: universe size median %d", n, int(np.median([len(x) for x in m.universe_by_day])))
