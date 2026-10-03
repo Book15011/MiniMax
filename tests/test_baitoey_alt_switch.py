@@ -50,3 +50,10 @@ def test_the_momentum_basket_follows_the_recent_winners_without_look_ahead():
     a, b = momentum_index(cut, 100), momentum_index(full, 300)
     common = a.index
     assert np.allclose(a / a.iloc[0], b.loc[common] / b.loc[common].iloc[0])   # later prices do not change the past
+
+
+def test_an_empty_universe_gives_a_flat_basket():
+    from src.models.baitoey._alt_switch import momentum_index
+    v = noisy_view()
+    empty = MarketView(t=v.t, close=v.close, quote_volume=v.quote_volume, universe=(), params={}, prev_targets=v.prev_targets)
+    assert (momentum_index(empty, 100) == 1.0).all()

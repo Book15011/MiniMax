@@ -37,6 +37,8 @@ def momentum_index(view: MarketView, hours: int) -> pd.Series:
     """The momentum basket over the last `hours` hours: top K picked daily at GRID_HOUR, held for the next 24 hours."""
     need = max(LOOKBACKS) * 24 + 1
     close, _ = view.tail(hours + need + 24)
+    if close.shape[1] == 0:                                            # no coins yet: a flat index (no trend)
+        return pd.Series(1.0, index=close.index).iloc[-hours:]
     cols = tuple(close.columns)
     grid = [t for t in close.index[close.index.hour == GRID_HOUR] if close.index.get_loc(t) >= need]
     picks = np.full((len(grid), K), -1)
