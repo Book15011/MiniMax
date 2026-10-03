@@ -139,6 +139,52 @@ def test_E_stages_new_coins_and_tops_them_up_at_midnight_unless_broken(market, m
         assert nxt[c] == pytest.approx(b2[c], rel=1e-12)
 
 
+def test_E_stage_reason_states_when_the_half_is_completed(market):
+    p = params(stage={"enabled": True})
+    # staged at the 16:00 decision: completed at 00:00 UTC (the previous test checks the trading)
+    w, rec = MODEL.explain(view(market, T0, p))
+    staged = [c for c, r in rec.items() if r["decision"] == "stage"]
+    assert staged and all(rec[c]["reason"] == "new coin: half now, the rest at 00:00 UTC (at the next 16:00 UTC "
+                          "decision if it has broken down by then)" for c in staged)
+    # staged at a window's first hour (12:00 UTC, empty book): completed at the next 16:00 decision, as the text says
+    start = T0 - 4 * H
+    w0, rec0 = MODEL.explain(view(market, start, p))
+    staged0 = [c for c, r in rec0.items() if r["decision"] == "stage"]
+    assert staged0, "the synthetic case needs at least one coin staged at the window start"
+    assert all(rec0[c]["reason"] == "new coin: half now, the rest at the next 16:00 UTC decision" for c in staged0)
+    out = chain(MODEL, market, p, start + H, 4, prev=w0)                 # 13:00 ... 16:00 UTC
+    for t, prev, x in out[:-1]:
+        assert x.equals(w0)                                              # still half before the decision
+    t, prev, x = out[-1]
+    assert t.hour == 16
+    b16 = VT_MOM.targets(view(market, t, p["base_params"], prev))
+    for c in staged0:
+        if c in b16.index:
+            assert x[c] == pytest.approx(b16[c], rel=1e-12)              # the base's full weight
+        else:
+            assert c not in x.index                                      # the base dropped it instead
+
+
+def test_a_held_coin_that_leaves_the_universe_is_logged_as_an_exit(market):
+    p = params(forecast_shorts={"enabled": True}, forecasts=fake_store(
+        [{"t": T0 + k * H, "coin": c, **NEUTRAL} for k in range(3) for c in market.close.columns], "gone"))
+    for t in (T0, T0 + 2 * H):                                           # at the decision and between decisions
+        v = view(market, t, p)
+        uni = list(v.universe)
+        assert len(uni) >= 3
+        out_long, out_short = uni[0], uni[1]
+        prev = pd.Series({out_long: 0.10, out_short: -0.02, uni[2]: 0.10})
+        v = replace(v, prev_targets=prev, universe=tuple(c for c in uni if c not in (out_long, out_short)))
+        w, rec = MODEL.explain(v)
+        assert out_long not in w.index and out_short not in w.index
+        assert rec[out_long] == {"decision": "exit", "reason": "left the point-in-time universe"}
+        assert rec[out_short] == {"decision": "close_short", "reason": "left the point-in-time universe"}
+        assert w.equals(MODEL.targets(v))                                # logging only: the targets are unchanged
+        log = {r["coin"]: r for r in book_orch.coin_log(v, w, rec, None, p)}
+        assert log[out_long]["decision"] == "exit" and log[out_long]["signals"]["in_universe"] is False
+        assert log[out_long]["reason"] == "left the point-in-time universe" and log[out_long]["size"] == 0.0
+
+
 # ------------------------------------------------------------- F ------------------------------------------------------
 
 def test_F_multiplier_filter_and_rescale_by_hand():

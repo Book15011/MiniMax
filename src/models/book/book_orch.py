@@ -16,7 +16,8 @@ decisions (version A'). v1's layers (ML weight adjustment, shock, short sleeve, 
 - R: at base decisions, weights proportional to 1 / 30-day volatility within the base's coins, at the base's gross.
 - E: at base decisions a new coin enters in full if its trend score is 1 and its volatility is below the median of
   the base's coins, else at half; the half is completed at 00:00 UTC if the coin is still in B' and not broken down
-  (vt_mom's early-exit signal).
+  (vt_mom's early-exit signal), else at the next decision. A coin staged at another hour (a window's first hour) is
+  completed at the next 16:00 UTC decision.
 - F: a confident FALL exits a held coin or holds back a new one; a size multiplier clip(1 + q, 0.5, 1.5) applies at
   base decisions only where the expected 8-hour return clears 2 round trips; between decisions a coin of B' that
   is not held enters when q >= 0 and there is no confident FALL.
@@ -25,7 +26,8 @@ decisions (version A'). v1's layers (ML weight adjustment, shock, short sleeve, 
   drops below its base rate.
 Forecasts are the stored out-of-sample forecasts of backtest/orch_train.py (src/models/book/_orch_ml.py), read once
 per process; F and FS do nothing to a coin without one (outside the liquid 20, or before the first model).
-`explain(view)` returns the targets and a per-coin record of each decision and its reason (the shadow log).
+`explain(view)` returns the targets and a per-coin record of each decision and its reason (the shadow log). A held
+coin that drops out of the point-in-time universe is recorded as an exit (a short as a close) with that reason.
 """
 from __future__ import annotations
 
@@ -46,6 +48,7 @@ CARRY_ROWS = 48                                   # as the engine and the live s
 _BASES = {VT_MOM.spec.name: VT_MOM}
 _B_CACHE: dict = {}
 _B_CACHE_MAX = 50_000
+LEFT_UNIVERSE = "left the point-in-time universe"   # the shadow-log reason when a held coin drops out of it
 
 
 def _clean(w: pd.Series) -> pd.Series:
@@ -155,6 +158,18 @@ def stage_factor(view: MarketView, L: pd.Series, held: pd.Series, p: dict) -> pd
     return fac
 
 
+def stage_reason(hour: int, p: dict) -> str:
+    """E's shadow-log reason for a staged coin, with the time the half is actually completed. Staged at the base
+    decision: at the top-up hour (00:00 UTC), or at the next decision if it has broken down by then. Staged at any
+    other hour (a window's first hour, or an empty book): at the next base decision, where it is a held coin."""
+    dh = int(p["decision_hour_utc"])
+    if hour == dh:
+        top = (dh + int(p["stage"]["topup_hours"])) % 24
+        return (f"new coin: half now, the rest at {top:02d}:00 UTC (at the next {dh:02d}:00 UTC decision "
+                "if it has broken down by then)")
+    return f"new coin: half now, the rest at the next {dh:02d}:00 UTC decision"
+
+
 def multiplier(c: str, fc: pd.DataFrame | None, p: dict, spread) -> float:
     """F's size multiplier: clip(1 + q, m_min, m_max), only where the expected 8-hour return clears filter_mult round
     trips in the direction of the change; else 1. 1 without a forecast."""
@@ -196,7 +211,7 @@ def fs_layer(view: MarketView, longs: pd.Series, prev_shorts: pd.Series, fc: pd.
     s = p["forecast_shorts"]
     S = prev_shorts[prev_shorts.index.isin(list(view.universe))].copy()
     for c in prev_shorts.index.difference(S.index):
-        tr.set(c, "close_short", "left the universe")
+        tr.set(c, "close_short", LEFT_UNIVERSE)
     if fc is None:
         for c in S.index:
             tr.set(c, "close_short", "no forecast")
@@ -264,7 +279,10 @@ class BookOrch:
     def _run(self, view: MarketView, tr: Trace) -> tuple[pd.Series, pd.DataFrame | None]:
         p = view.params
         prev = _clean(view.prev_targets)
-        prev = prev[prev.index.isin(list(view.universe))]
+        gone = prev[~prev.index.isin(list(view.universe))]
+        for c, x in gone.items():
+            tr.set(c, "exit" if x > 0 else "close_short", LEFT_UNIVERSE)
+        prev = prev.drop(gone.index)
         held, prev_shorts = prev[prev > 0], prev[prev < 0]
         st, fc = self._forecasts(view, p)
         spread = st.spread if st is not None else (lambda c: 0.0)
@@ -295,7 +313,7 @@ class BookOrch:
             if c in out:
                 tr.set(c, "wait" if new else "exit", "confident fall")
             elif fac[c] < 1.0:
-                tr.set(c, "stage", "new coin: half now, the rest at 00:00 UTC")
+                tr.set(c, "stage", stage_reason(view.t.hour, p))
             else:
                 why = "base decision" + (f", multiplier {m[c]:.2f}" if m.get(c, 1.0) != 1.0 else "")
                 tr.set(c, "enter" if new else "hold", why)
