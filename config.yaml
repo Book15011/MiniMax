@@ -629,11 +629,11 @@ models:
       enabled: false
       vol_days: 30
     stage:                        # E: a new coin enters at `fraction` unless trend score 1 and sigma below the median
-      enabled: false
+      enabled: true               # default = hybrid H1 "E-breadth", registered (reports/review/20261004-hybrids.md)
       fraction: 0.5
       topup_hours: 8              # the rest at 16:00 + 8 h = 00:00 UTC, if still in the base and not broken down
       vol_days: 30
-      gate: none                  # H1 / H2 (reports/review/20261004-prereg-hybrids.md), read at the decision only:
+      gate: breadth               # H1 / H2 (reports/review/20261004-prereg-hybrids.md), read at the decision only:
                                   # none = plain E; breadth = stage only while breadth < gate_breadth_max;
                                   # btc_down = stage only while Pol's e20 BTC switch reads down
       gate_breadth_max: 0.60

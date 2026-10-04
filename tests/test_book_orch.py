@@ -431,6 +431,13 @@ def test_TS_and_BH_keep_the_contract_have_no_look_ahead_and_cache_exactly(market
 
 # ------------------------------------------------------------- H1, H2: gated staging ----------------------------------
 
+def test_config_default_is_the_registered_hybrid_H1():
+    d = CFG["models"]["book_orch"]
+    assert d["stage"]["enabled"] and d["stage"]["gate"] == "breadth" and d["stage"]["gate_breadth_max"] == 0.60
+    assert not any(d[k]["enabled"] for k in ("size", "forecast_longs", "forecast_shorts", "trailing_stop", "btc_hedge"))
+    assert MODEL.spec.band == 0.05
+
+
 def test_H1_H2_gate_staging_from_the_decisions_view(market, monkeypatch):
     from src.models.pol import _combo
     monkeypatch.setattr(book_orch, "_memo", lambda key, frames, fn: fn())     # the signals change by hand here
