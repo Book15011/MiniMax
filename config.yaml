@@ -506,6 +506,19 @@ models:
   baitoey_vt_dual:                # research/baitoey/prereg/20261002-dual-momentum.md
     <<: *baitoey_vt_mom
     min_score: 0.0                # a coin holds a slot only while its own momentum score is above this
+  baitoey_two_sleeve:               # trend sleeve + momentum sleeve (spec 2026-10-04); these defaults are variant C
+    band: 0.02                      # records the ModelSpec band (the harness reads the band from the model spec)
+    universe_volume_days: 7         # liquidity rank: quote volume over the last 7 days
+    min_history_hours: 800          # a coin needs 800 hourly bars of history
+    cap: 0.25                       # per coin, long or short
+    max_gross: 0.95                 # the book is scaled down to at most this gross
+    trend: {top_n: 15, lookback_days: [7, 14, 30], clip: 2.0, vol_days: 30, target_vol_annual: 0.25}
+    momentum: {top_n: 25, lookback_days: 14, k: 5, vol_days: 30, long_gross: 0.30, short_gross: 0.0}
+    stagger_hours: [0, 8, 16]       # variant D only: tranche rebalance hours (UTC)
+    variants:                       # research only (research/baitoey/prereg/20261004-two-sleeve.md); C = the defaults
+      A: {momentum: {long_gross: 0.0}}       # trend sleeve only
+      B: {momentum: {short_gross: 0.30}}     # + momentum shorts on the bottom 5: research only, never live
+      D: {}                                  # C in three tranches rebalanced at 00, 08 and 16 UTC
   # --- pol, after the baitoey blocks (the YAML anchors these switches use are defined above) ---
   pol_switch_rmax_tl:             # pre-registered: reports/review/20261001-prereg-strict-bar.md
     prev: own
