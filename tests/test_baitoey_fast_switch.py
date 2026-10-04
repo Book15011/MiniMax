@@ -47,3 +47,20 @@ def test_down_only_and_never():
     assert run(up, 44, "up_and_down")[1] == 1
     down = {h: "down" for h in range(44, 60)}
     assert run(down, 44, "never")[1] == 0
+
+
+def test_the_decision_grid_acts_only_at_its_six_hour_points():
+    flip = {h: "down" for h in range(41, 60)}                         # flips at 17:00 day 2 (hour 41)
+    def run_grid(end):
+        fs._STATE.clear()
+        m = fs.FastSwitch(); m.INNER = Inner(); Inner.calls = 0
+        orig = fs.state_at
+        fs.state_at = lambda v, t, sw: flip.get(t.hour + 24 * (t.day - 1), "up")
+        v = view(end); v.params["grid"] = "decision"
+        try:
+            m.targets(v); return Inner.calls
+        finally:
+            fs.state_at = orig
+    assert run_grid(41) == 0                                          # 17:00 is not a grid point
+    assert run_grid(46) == 1                                          # 22:00: a new flip since 16:00 and since 16:00 (6 h ago)
+    assert run_grid(52) == 0                                          # 04:00: already down 6 h earlier, not new

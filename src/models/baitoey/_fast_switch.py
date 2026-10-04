@@ -5,6 +5,10 @@ Checked every hour. At 16:00 UTC the model decides as usual (params under "vt").
 (a new flip), the model decides at once; otherwise the book is held. `fast: up_and_down` acts on both flips, `down`
 only on flips to down, `never` holds (the control). The band is 5%, so the hourly checks do not rebalance small
 drifts. States are cached by bar time (they depend only on BTC up to that bar and the switch parameters).
+`grid: decision` (v2) checks only at the 6-hour points of the 16:00 UTC decision (22:00, 04:00, 10:00 UTC), where
+btc_state samples the same points as the daily decision, and compares with the point 6 hours earlier: it acts only on
+real flips. The default `grid: hourly` (v1) checks every hour, where the 6-hour sampling shifts with the hour and the
+state flickers (932 triggers against 112 real flips, 2020-2026).
 Pre-registration: research/baitoey/prereg/20261004-fast-switch.md.
 """
 from __future__ import annotations
@@ -42,10 +46,15 @@ class FastSwitch:
             return decide() if (view.t.hour == GRID_HOUR or prev.empty) else prev[prev.index.isin(list(view.universe))]
         idx = view.close.index
         grid = idx[idx.hour == GRID_HOUR]
-        if len(grid) == 0 or len(idx) < 2:
+        if len(grid) == 0 or len(idx) < 7:
             return prev[prev.index.isin(list(view.universe))]
         sw = p["vt"]["switch"]
-        then, now, before = state_at(view, grid[-1], sw), state_at(view, idx[-1], sw), state_at(view, idx[-2], sw)
+        if p.get("grid", "hourly") == "decision":
+            if (view.t.hour - GRID_HOUR) % 6 != 0:
+                return prev[prev.index.isin(list(view.universe))]
+            then, now, before = state_at(view, grid[-1], sw), state_at(view, idx[-1], sw), state_at(view, idx[-7], sw)
+        else:
+            then, now, before = state_at(view, grid[-1], sw), state_at(view, idx[-1], sw), state_at(view, idx[-2], sw)
         new_flip = now != then and before == then
         if new_flip and (p.get("fast", "up_and_down") == "up_and_down" or now == "down"):
             return decide()
