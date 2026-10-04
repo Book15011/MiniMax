@@ -18,7 +18,9 @@ weight adjustment, shock, short sleeve, partial moves) are recorded at 183827f.
 - E: at base decisions a new coin enters in full if its trend score is 1 and its volatility is below the median of
   the base's coins, else at half; the half is completed at 00:00 UTC if the coin is still in B' and not broken down
   (vt_mom's early-exit signal), else at the next decision. A coin staged at another hour (a window's first hour) is
-  completed at the next 16:00 UTC decision.
+  completed at the next 16:00 UTC decision. Optional gate (H1 / H2, reports/review/20261004-prereg-hybrids.md), read
+  at the decision only: stage only while breadth < 0.60 (`gate: breadth`) or while Pol's e20 BTC switch reads down
+  (`gate: btc_down`); otherwise every new coin enters in full.
 - F: a confident FALL exits a held coin or holds back a new one; a size multiplier clip(1 + q, 0.5, 1.5) applies at
   base decisions only where the expected 8-hour return clears 2 round trips; between decisions a coin of B' that
   is not held enters when q >= 0 and there is no confident FALL.
@@ -334,24 +336,51 @@ def stop_wait(view: MarketView, p: dict) -> list[str]:
     return [c for c in B.index if c in s.columns and bool(s[c].any())]
 
 
-def bh_signals(view: MarketView, p: dict) -> tuple[str, float | None]:
-    """BH's two conditions at view.t: Pol's switch state of BTC, and (only when it is 'down') the breadth. Memoized."""
-    h, tp = p["btc_hedge"], p["trend"]
-    c, st = h["coin"], h["state"]
-    from src.models.pol._combo import btc_state      # Pol's switch state (team_trend_2's rule), imported, not copied
+def btc_state_at(view: MarketView, st: dict, coin: str = "BTCUSDT") -> str:
+    """Pol's switch state of `coin` at view.t (team_trend_2's rule with the parameters `st`). Memoized."""
+    from src.models.pol._combo import btc_state      # Pol's switch state, imported, not copied
+    call = (lambda: btc_state(view, st)) if coin == "BTCUSDT" else (lambda: btc_state(view, st, coin))   # its default coin
+    if coin not in view.close.columns:
+        return call()
     need = (int(st["state_days"]) + 3 * int(st["ema_days"])) * 24 + 1
-    state = _memo(("btc_state", view.t.value, c, json.dumps(st, sort_keys=True, default=str)),
-                  [view.close[[c]].iloc[-need:]], lambda: btc_state(view, st))
-    if state != "down":
-        return state, None
+    return _memo(("btc_state", view.t.value, coin, json.dumps(st, sort_keys=True, default=str)),
+                 [view.close[[coin]].iloc[-need:]], call)
+
+
+def breadth_at(view: MarketView, tp: dict) -> float:
+    """_trend.breadth at view.t (the share of the liquid universe in an up-trend). Memoized."""
     lb = max(int(L) for L in tp["lookback_days"]) * DAY + pd.Timedelta(hours=float(tp["max_stale_hours"]))
     cols = [x for x in view.universe if x in view.close.columns]
     qcols = [x for x in view.universe if x in view.quote_volume.columns]
-    b = _memo(("breadth", view.t.value, tuple(view.universe), json.dumps(tp, sort_keys=True, default=str)),
-              [view.close.loc[view.t - lb: view.t, cols],
-               view.quote_volume.loc[view.t - float(tp["volume_days"]) * DAY: view.t, qcols]],
-              lambda: breadth(view, tp))
-    return state, b
+    return _memo(("breadth", view.t.value, tuple(view.universe), json.dumps(tp, sort_keys=True, default=str)),
+                 [view.close.loc[view.t - lb: view.t, cols],
+                  view.quote_volume.loc[view.t - float(tp["volume_days"]) * DAY: view.t, qcols]],
+                 lambda: breadth(view, tp))
+
+
+def bh_signals(view: MarketView, p: dict) -> tuple[str, float | None]:
+    """BH's two conditions at view.t: Pol's switch state of BTC, and (only when it is 'down') the breadth. Memoized."""
+    h = p["btc_hedge"]
+    state = btc_state_at(view, h["state"], h["coin"])
+    if state != "down":
+        return state, None
+    return state, breadth_at(view, p["trend"])
+
+
+def stage_gate(view: MarketView, p: dict) -> tuple[bool, str]:
+    """H1 / H2: whether E stages at this base decision, read from the decision's view only. `stage.gate`: none (plain
+    E), breadth (stage only while breadth < gate_breadth_max) or btc_down (only while Pol's e20 switch reads down)."""
+    e = p["stage"]
+    g = e.get("gate", "none")
+    if g == "none":
+        return True, ""
+    if g == "breadth":
+        b, lim = breadth_at(view, p["trend"]), float(e["gate_breadth_max"])
+        return b < lim, f"breadth {b:.2f} {'<' if b < lim else '>='} {lim:.2f}"
+    if g == "btc_down":
+        st = btc_state_at(view, e["gate_state"])
+        return st == "down", f"BTC switch {st}"
+    raise ValueError(f"unknown stage gate {g!r}")
 
 
 def bh_layer(view: MarketView, longs: pd.Series, shorts: pd.Series, prev_shorts: pd.Series, p: dict,
@@ -461,7 +490,8 @@ class BookOrch:
             full, out, m = f_full(L, fc, p, spread)
         else:
             full, out, m = L.copy(), set(), pd.Series(1.0, index=L.index)
-        fac = stage_factor(view, L, held, p) if p["stage"]["enabled"] else pd.Series(1.0, index=L.index)
+        on, gate_why = stage_gate(view, p) if p["stage"]["enabled"] else (False, "")
+        fac = stage_factor(view, L, held, p) if on else pd.Series(1.0, index=L.index)
         w = full * fac.reindex(full.index)
         for c in held.index.difference(B.index):
             tr.set(c, "exit", "the base dropped it")
@@ -473,6 +503,8 @@ class BookOrch:
                 tr.set(c, "stage", stage_reason(view.t.hour, p))
             else:
                 why = "base decision" + (f", multiplier {m[c]:.2f}" if m.get(c, 1.0) != 1.0 else "")
+                if new and p["stage"]["enabled"] and not on:
+                    why += f" (staging off: {gate_why})"
                 tr.set(c, "enter" if new else "hold", why)
         return w
 

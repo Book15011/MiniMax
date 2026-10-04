@@ -426,6 +426,56 @@ def test_TS_and_BH_keep_the_contract_have_no_look_ahead_and_cache_exactly(market
     assert all(a[2].equals(b[2]) for a, b in zip(out, chain(MODEL, market, p, T0 - 4 * H, 40)))
 
 
+# ------------------------------------------------------------- H1, H2: gated staging ----------------------------------
+
+def test_H1_H2_gate_staging_from_the_decisions_view(market, monkeypatch):
+    from src.models.pol import _combo
+    monkeypatch.setattr(book_orch, "_memo", lambda key, frames, fn: fn())     # the signals change by hand here
+    seen, val = [], {"b": 0.5, "s": "down"}
+    monkeypatch.setattr(book_orch, "breadth", lambda v, q: seen.append(v.t) or val["b"])
+    monkeypatch.setattr(_combo, "btc_state", lambda v, q, coin="BTCUSDT": seen.append(v.t) or val["s"])
+    plain_e = MODEL.targets(view(market, T0, params(stage={"enabled": True})))
+    base = MODEL.targets(view(market, T0, params()))
+    assert not plain_e.equals(base)                                          # E stages a coin at this decision
+    for gate, key, on, off in (("breadth", "b", 0.59, 0.60), ("btc_down", "s", "down", "up")):
+        p = params(stage={"enabled": True, "gate": gate})
+        val[key] = on
+        seen.clear()
+        assert MODEL.targets(view(market, T0, p)).equals(plain_e) and seen and set(seen) == {T0}
+        val[key] = off
+        w, rec = MODEL.explain(view(market, T0, p))
+        assert w.equals(base) and any("staging off" in r["reason"] for r in rec.values())
+
+
+def test_H2_staged_half_completes_at_midnight_whatever_the_switch_reads_then(market, monkeypatch):
+    from src.models.pol import _combo
+    monkeypatch.setattr(book_orch, "_memo", lambda key, frames, fn: fn())
+    calls = []
+    monkeypatch.setattr(_combo, "btc_state",
+                        lambda v, q, coin="BTCUSDT": calls.append(v.t.hour) or ("down" if v.t.hour == 16 else "up"))
+    gated = chain(MODEL, market, params(stage={"enabled": True, "gate": "btc_down"}), T0, 9)   # 16:00 ... 00:00
+    plain = chain(MODEL, market, params(stage={"enabled": True}), T0, 9)
+    assert all(a[2].equals(b[2]) for a, b in zip(gated, plain))              # staged at 16:00, completed at 00:00
+    assert gated[-1][0].hour == 0 and not gated[-1][2].equals(gated[-2][2])  # the top-up happened
+    assert set(calls) == {16}                                                # the switch is read at the decision only
+
+
+def test_H1_H2_have_no_look_ahead(market):
+    for gate in ("breadth", "btc_down"):
+        p = params(stage={"enabled": True, "gate": gate})
+        book_orch._M_CACHE.clear()
+        out = chain(MODEL, market, p, T0 - 4 * H, 30)                      # from a window's first hour (12:00 UTC)
+        for t, prev, w in (out[0], out[4], out[12]):
+            cut = replace(market, close=market.close.loc[:t], quote_volume=market.quote_volume.loc[:t])
+            noisy = market.close.copy()
+            later = noisy.index > t
+            noisy.loc[later] *= np.exp(np.random.default_rng(2).normal(0, 0.05, noisy.loc[later].shape))
+            for mk in (cut, replace(market, close=noisy)):
+                book_orch._B_CACHE.clear()
+                book_orch._M_CACHE.clear()
+                assert MODEL.targets(view(mk, t, p, prev)).equals(w)
+
+
 # ------------------------------------------------------------- no look-ahead ------------------------------------------
 
 def test_no_look_ahead_when_later_bars_change_or_vanish(market):

@@ -633,6 +633,11 @@ models:
       fraction: 0.5
       topup_hours: 8              # the rest at 16:00 + 8 h = 00:00 UTC, if still in the base and not broken down
       vol_days: 30
+      gate: none                  # H1 / H2 (reports/review/20261004-prereg-hybrids.md), read at the decision only:
+                                  # none = plain E; breadth = stage only while breadth < gate_breadth_max;
+                                  # btc_down = stage only while Pol's e20 BTC switch reads down
+      gate_breadth_max: 0.60
+      gate_state: {<<: *team_trend_2, ema_days: 20}   # as pol_switch_vt_tl_e20v45's switch and btc_hedge.state
     forecast_longs:               # F, only if the long gate passed: exits / waits on a confident FALL, size multiplier
       enabled: false
       m_min: 0.5                  # multiplier clip(1 + q, m_min, m_max), cost-filtered
