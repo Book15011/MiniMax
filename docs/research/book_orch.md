@@ -1,6 +1,6 @@
 # Research: layers on top of a momentum strategy (book_orch)
 
-This page summarizes one line of research for the README and the finals presentation: what we tried on top of our momentum strategy, how we tested it, and what we found. It describes the tests and their results. **It does not choose the launch model.** That decision waits for the results of a separate batch of models and a combined test.
+This page summarizes one line of research for the README and the finals presentation: what we tried on top of our momentum strategy, how we tested it, and what we found. [Section 8](#8-conclusion) gives the conclusion of this line of research: **no layer was added to vt_mom**. Which model trades in the live round is a team decision outside this page.
 
 Every number below comes from the reports linked in [Sources](#sources).
 
@@ -49,6 +49,7 @@ It scores **HEADLINE_RET 0.609**. The question for book_orch was whether extra l
 | **Checks** | `f2ee1d4` (plan) | Read-only checks:<br>does the forecast rank pay once volatility is controlled?<br>do stretched entries do worse?<br>does shorting a confirmed breakdown pay?<br>does the strategy trade as written?<br>fees<br>data | Both decision rules said no: the ML line stops, and no short rule | [Checks](../../reports/review/20261003-orch-checks.md) |
 | **Final steps** | `b49ecb0` | A macro risk brake (VIX, S&P 500, dollar, BTC funding)<br>"Hold longer": keep a coin while in the top 15 (or 18) instead of 12 | Both decision rules said no; nothing registered | [Final steps](../../reports/review/20261003-final-steps.md) |
 | **v3** | `c0c0730` | **TS:** a per-coin trailing stop (exit below the 7-day high minus 3 daily volatilities; 48-hour cool-down), with **TS-k2** (2 volatilities) report-only<br>**BH:** a 20% BTC short with spare cash when BTC is in a down-trend and few coins are trending up<br>Also a read-only check of how much the score depends on recent windows | TS, BH and TS+BH all **failed** the keep rule<br>Nothing registered | [v3](../../reports/review/20261004-orch-v3.md) |
+| **E decision** | `04ce882` | **E5:** v2's staged entries at the real band (0.05), compared with vt_mom and the live model in five score views<br>Quick-exit breakdown shorts (read-only)<br>Shadow mode: paper bots logging every decision | E5 is tied in four views but **behind in rising (UP) windows**, so it is not a tied alternative and vt_mom stands<br>Quick-exit shorts lose<br>Nothing registered | [E decision](../../reports/review/20261004-e-decision.md) |
 
 ## 4. Results
 
@@ -74,6 +75,7 @@ All runs use the same scoring tool (version `3036a0d8bfdaa6a0`) and the same 2,2
 | v3 TS-k2: tighter stop | 0.520 | 0.402 | 0.503 | 0.695 / 0.312 | −20.6% | 5.36 | report-only |
 | v3 BH: BTC hedge | 0.601 | 0.429 | 0.580 | 0.785 / 0.382 | −30.8% | 4.40 | no |
 | v3 TS+BH | 0.521 | 0.397 | 0.479 | 0.748 / 0.251 | −23.8% | 5.62 | no |
+| E5: staged entries at band 0.05 | 0.583 | 0.453 | 0.597 | 0.774 / 0.357 | −29.7% | 3.38 | no (behind in UP windows) |
 
 **Not scored, because their gate failed:** v1's ML tilt (T), and v2's forecast longs and shorts (F, FS).
 
@@ -182,6 +184,60 @@ PUMP's worst entry lost 18.8% at its lowest point.
   - The daily activity guard makes many small trades (about 77 per window, median $237), but they are only 7% of fees.
 - **About 1.6 positions per window are opened and closed within 24 hours.** Almost all of these are the strategy dropping a coin at the next daily decision.
 
+## 8. Conclusion
+
+### No layer was added
+Every layer was tested against vt_mom alone, under rules fixed in advance. None earned its place:
+
+| Layer | Round | Why it was not added |
+|---|---|---|
+| Daily ML tilt (T) | v1 | The forecast failed its gate. Most of its apparent skill was market timing, not coin picking |
+| Shock rule: halve or cash after a BTC crash (S, S-cash) | v1 | A slightly better worst window, but a slightly lower score |
+| Short sleeve in weak markets (X) | v1 | Its shorts won less than half the time and gave back rebounds |
+| Partial moves (P) | v1 | The highest overall score, but lower in one period and in rebounds |
+| Equal-risk sizing (R) | v2 | Moved money from strong winners to calm coins: less upside |
+| Hourly forecaster, forecast longs and shorts (F, FS) | v2 | Failed its gate: its confident calls mostly picked volatile coins, and its probabilities were overconfident |
+| Staged entries (E at band 0.015; E5 at band 0.05) | v2, E decision | Closest of all, but behind in rising windows (below) |
+| Shorting breakdowns, slow or quick exit | checks, E decision | They lose: the coins bounce |
+| A filter against stretched entries | checks | Stretched entries did best on average |
+| A macro risk brake | final steps | Stress did not predict worse windows |
+| Holding longer (top 15 or 18) | final steps | Less trading, but a lower score |
+| Per-coin trailing stop (TS) | v3 | Sold before bounces |
+| BTC-only hedge (BH) | v3 | Cost about its trading costs |
+
+### How much the score depends on recent windows
+- The score weights each past window by how much it resembles the coming market, and recent windows weigh more.
+- So **48% of the weight sits on 2026 windows**, and 22% on the 52 most recent ones. The weight spreads over about
+  **44 effectively independent fortnights**, not the 165 non-overlapping ones in the data.
+- vt_mom ranks first under the current weights. But its margin over the closest variants comes mostly from 2026. With
+  each year weighted equally, it is statistically tied with three of them.
+
+### vt_mom vs E5
+E5 was tested as a possible tied alternative: same returns statistically, a different risk profile. The rule required
+E5 to be tied or ahead in all five views.
+
+| View | vt_mom | E5 (vs vt_mom, 90% interval) | Live model, pol_switch_vt_tl_e20v45 (vs vt_mom) |
+|---|---|---|---|
+| (a) as now | **0.609** | 0.583: tied [−0.053, +0.006] | 0.568: behind |
+| (b) without the most recent windows | 0.556 | **0.564**: tied [−0.000, +0.016] | 0.501: behind |
+| (c) each year 2021–2026 weighted equally | **0.510** | 0.504: tied [−0.018, +0.008] | 0.461: behind |
+| (d) rising (UP) windows only | **0.805** | 0.774: **behind** [−0.056, −0.001] | 0.699: behind |
+| (e) falling (DOWN) windows only | 0.376 | 0.357: tied [−0.056, +0.017] | **0.412**: tied |
+
+**E5 is behind in rising windows, so it is not a tied alternative, and vt_mom stands.**
+
+E5's profile is still worth knowing:
+- it does better in falling markets (+0.37 points per falling window) and worse in rising ones (−0.48);
+- its worst fortnight is slightly better (−29.7% vs −30.8%), with slightly smaller drawdowns and lower fees.
+
+### What remains outside this research
+- **Limit-order (maker) execution.** Paying the 0.05% maker fee instead of the 0.10% taker fee would save at most
+  about 0.17% of starting equity per window. That figure is an upper bound and UNVERIFIED: it assumes every order fills
+  as a maker. It cannot be tested until the test wallet is funded.
+- **Shadow mode.** Two paper bots (vt_mom, and E5) log every hourly decision with its reasons. A check that the backtest
+  reproduces their decisions waits until the research data covers those hours. Their paper results are never used to
+  decide anything.
+
 ## Sources
 
 | Report | Pre-registration or plan | Content |
@@ -192,3 +248,4 @@ PUMP's worst entry lost 18.8% at its lowest point.
 | [`20261003-orch-checks.md`](../../reports/review/20261003-orch-checks.md) | [`20261003-orch-checks-plan.md`](../../reports/review/20261003-orch-checks-plan.md) (`f2ee1d4`) | volatility-controlled ranking, stretched entries, breakdown shorts, behaviour, fees, data |
 | [`20261003-final-steps.md`](../../reports/review/20261003-final-steps.md) | [`20261003-prereg-final-steps.md`](../../reports/review/20261003-prereg-final-steps.md) (`b49ecb0`) | macro risk check, hold longer, logging fixes, the batch 4 table |
 | [`20261004-orch-v3.md`](../../reports/review/20261004-orch-v3.md) | [`20261003-prereg-orch-v3.md`](../../reports/review/20261003-prereg-orch-v3.md) (`c0c0730`) | score robustness, trailing stop, BTC hedge, per-coin stops |
+| [`20261004-e-decision.md`](../../reports/review/20261004-e-decision.md) | [`20261004-prereg-e-decision.md`](../../reports/review/20261004-prereg-e-decision.md) (`04ce882`) | E5 decision table, E5 vs vt_mom analysis, quick-exit shorts, shadow mode |
