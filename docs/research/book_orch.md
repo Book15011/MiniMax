@@ -1,6 +1,6 @@
 # Research: layers on top of a momentum strategy (book_orch)
 
-This page summarizes one line of research for the README and the finals presentation: what we tried on top of our momentum strategy, how we tested it, and what we found. [Section 8](#8-conclusion) gives the conclusion of this line of research: **no layer was added to vt_mom**. Which model trades in the live round is a team decision outside this page.
+This page summarizes one line of research for the README and the finals presentation: what we tried on top of our momentum strategy, how we tested it, and what we found. [Section 8](#8-conclusion) gives the conclusion of this line of research. Of everything tested, **one variant passed: staged entries switched on only when market breadth is weak (H1, "E-breadth")**. It is now registered as book_orch's default and is a candidate alongside vt_mom. Which model trades in the live round is a team decision outside this page.
 
 Every number below comes from the reports linked in [Sources](#sources).
 
@@ -50,6 +50,7 @@ It scores **HEADLINE_RET 0.609**. The question for book_orch was whether extra l
 | **Final steps** | `b49ecb0` | A macro risk brake (VIX, S&P 500, dollar, BTC funding)<br>"Hold longer": keep a coin while in the top 15 (or 18) instead of 12 | Both decision rules said no; nothing registered | [Final steps](../../reports/review/20261003-final-steps.md) |
 | **v3** | `c0c0730` | **TS:** a per-coin trailing stop (exit below the 7-day high minus 3 daily volatilities; 48-hour cool-down), with **TS-k2** (2 volatilities) report-only<br>**BH:** a 20% BTC short with spare cash when BTC is in a down-trend and few coins are trending up<br>Also a read-only check of how much the score depends on recent windows | TS, BH and TS+BH all **failed** the keep rule<br>Nothing registered | [v3](../../reports/review/20261004-orch-v3.md) |
 | **E decision** | `04ce882` | **E5:** v2's staged entries at the real band (0.05), compared with vt_mom and the live model in five score views<br>Quick-exit breakdown shorts (read-only)<br>Shadow mode: paper bots logging every decision | E5 is tied in four views but **behind in rising (UP) windows**, so it is not a tied alternative and vt_mom stands<br>Quick-exit shorts lose<br>Nothing registered | [E decision](../../reports/review/20261004-e-decision.md) |
+| **Hybrids** | `53d08ef` | **H1:** E5's staging only while breadth (the share of the 20 most liquid coins in an up-trend) is below 0.60, otherwise full entries<br>**H2:** staging only while the 20-day BTC trend switch reads down | **Both passed** (CANDIDATE)<br>**H1 registered** | [Hybrids](../../reports/review/20261004-hybrids.md) |
 
 ## 4. Results
 
@@ -76,6 +77,8 @@ All runs use the same scoring tool (version `3036a0d8bfdaa6a0`) and the same 2,2
 | v3 BH: BTC hedge | 0.601 | 0.429 | 0.580 | 0.785 / 0.382 | −30.8% | 4.40 | no |
 | v3 TS+BH | 0.521 | 0.397 | 0.479 | 0.748 / 0.251 | −23.8% | 5.62 | no |
 | E5: staged entries at band 0.05 | 0.583 | 0.453 | 0.597 | 0.774 / 0.357 | −29.7% | 3.38 | no (behind in UP windows) |
+| **H1: staging only while breadth < 0.60** | **0.617** | 0.448 | 0.593 | 0.803 / 0.396 | −30.0% | 3.46 | **yes: CANDIDATE, registered** |
+| H2: staging only while BTC's trend is down | 0.611 | 0.454 | 0.586 | 0.799 / 0.388 | −29.9% | 3.48 | CANDIDATE (not registered: one run only) |
 
 **Not scored, because their gate failed:** v1's ML tilt (T), and v2's forecast longs and shorts (F, FS).
 
@@ -186,8 +189,8 @@ PUMP's worst entry lost 18.8% at its lowest point.
 
 ## 8. Conclusion
 
-### No layer was added
-Every layer was tested against vt_mom alone, under rules fixed in advance. None earned its place:
+### What was added, and what was not
+Every layer was tested against vt_mom alone, under rules fixed in advance. Only one variant earned its place: staged entries gated by market breadth (H1, last row). The rest did not:
 
 | Layer | Round | Why it was not added |
 |---|---|---|
@@ -204,6 +207,7 @@ Every layer was tested against vt_mom alone, under rules fixed in advance. None 
 | Holding longer (top 15 or 18) | final steps | Less trading, but a lower score |
 | Per-coin trailing stop (TS) | v3 | Sold before bounces |
 | BTC-only hedge (BH) | v3 | Cost about its trading costs |
+| **Staged entries only in a weak market (H1 breadth; H2 BTC trend)** | hybrids | **Passed** (CANDIDATE): higher score than vt_mom, not behind in any view, and no worse on the four risk measures. H1 is registered |
 
 ### How much the score depends on recent windows
 - The score weights each past window by how much it resembles the coming market, and recent windows weigh more.
@@ -224,11 +228,28 @@ E5 to be tied or ahead in all five views.
 | (d) rising (UP) windows only | **0.805** | 0.774: **behind** [−0.056, −0.001] | 0.699: behind |
 | (e) falling (DOWN) windows only | 0.376 | 0.357: tied [−0.056, +0.017] | **0.412**: tied |
 
-**E5 is behind in rising windows, so it is not a tied alternative, and vt_mom stands.**
+**E5 is behind in rising windows, so it is not a tied alternative: against E5, vt_mom stands.** (The gated variant H1, below, did pass.)
 
 E5's profile is still worth knowing:
 - it does better in falling markets (+0.37 points per falling window) and worse in rising ones (−0.48);
 - its worst fortnight is slightly better (−29.7% vs −30.8%), with slightly smaller drawdowns and lower fees.
+
+### H1, the variant that passed
+E5's analysis showed that staging pays when markets fall and costs when they rise. H1 therefore stages new coins only
+while breadth (the share of the 20 most liquid coins in an up-trend) is below 0.60, which happened at 57% of daily
+decisions. Otherwise it enters in full.
+
+| | H1 | vt_mom |
+|---|---|---|
+| HEADLINE_RET (current weights) | **0.617** (ahead, [+0.001, +0.015]) | 0.609 |
+| Falling (DOWN) windows only | **0.396** (ahead) | 0.376 |
+| Rising (UP) windows only | 0.803 (tied) | 0.805 |
+| Worst fortnight; 90th-percentile drawdown | −30.0%; 18.0% | −30.8%; 18.7% |
+
+- Against vt_mom, H1 gains +0.38 points of return per falling window and gives up −0.21 per rising one, less than half
+  of E5's cost there.
+- **Caveat:** the idea came from analysing these same windows, and the margin is small. The live round is its first
+  out-of-sample test (UNVERIFIED).
 
 ### What remains outside this research
 - **Limit-order (maker) execution.** Paying the 0.05% maker fee instead of the 0.10% taker fee would save at most
@@ -249,3 +270,4 @@ E5's profile is still worth knowing:
 | [`20261003-final-steps.md`](../../reports/review/20261003-final-steps.md) | [`20261003-prereg-final-steps.md`](../../reports/review/20261003-prereg-final-steps.md) (`b49ecb0`) | macro risk check, hold longer, logging fixes, the batch 4 table |
 | [`20261004-orch-v3.md`](../../reports/review/20261004-orch-v3.md) | [`20261003-prereg-orch-v3.md`](../../reports/review/20261003-prereg-orch-v3.md) (`c0c0730`) | score robustness, trailing stop, BTC hedge, per-coin stops |
 | [`20261004-e-decision.md`](../../reports/review/20261004-e-decision.md) | [`20261004-prereg-e-decision.md`](../../reports/review/20261004-prereg-e-decision.md) (`04ce882`) | E5 decision table, E5 vs vt_mom analysis, quick-exit shorts, shadow mode |
+| [`20261004-hybrids.md`](../../reports/review/20261004-hybrids.md) | [`20261004-prereg-hybrids.md`](../../reports/review/20261004-prereg-hybrids.md) (`53d08ef`) | hybrids H1 and H2, the decision table, H1's registration |
