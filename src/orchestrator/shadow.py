@@ -3,7 +3,8 @@
     python -m src.orchestrator.shadow seed   --state-dir results/book/shadow/a          once, as `src.live.runner seed`
     python -m src.orchestrator.shadow run    --bot a  --state-dir results/book/shadow/a  every layer off (= vt_mom)
     python -m src.orchestrator.shadow run    --bot e5 --state-dir results/book/shadow/e5 E (staged entries) at band 0.05
-    python -m src.orchestrator.shadow export --root results/book/shadow --out reports/shadow [--date D] [--loop]
+    python -m src.orchestrator.shadow run    --bot h1 --state-dir results/book/shadow/h1 H1: E only while breadth < 0.60
+    python -m src.orchestrator.shadow export --root results/book/shadow --out reports/shadow [--date D] [--loop] [--bots ...]
     python -m src.orchestrator.shadow parity --bot a --state-dir results/book/shadow/a
 
 - run: builds the paper runner exactly as `python -m src.live.runner run --mode paper --model book_orch
@@ -44,8 +45,10 @@ MODEL_NAME = "book_orch"
 LAYERS = ("size", "stage", "forecast_longs", "forecast_shorts", "trailing_stop", "btc_hedge")
 _OFF = {k: {"enabled": False} for k in LAYERS}
 # every layer switch pinned explicitly, so a change of config.yaml's book_orch defaults cannot change a bot
-BOTS = {"a": _OFF, "e5": {**_OFF, "stage": {"enabled": True, "gate": "none"}}}
-LABELS = {"a": "every layer off (= vt_mom)", "e5": "E (staged entries, no gate) at band 0.05"}
+BOTS = {"a": _OFF, "e5": {**_OFF, "stage": {"enabled": True, "gate": "none"}},
+        "h1": {**_OFF, "stage": {"enabled": True, "gate": "breadth", "gate_breadth_max": 0.60}}}
+LABELS = {"a": "every layer off (= vt_mom)", "e5": "E (staged entries, no gate) at band 0.05",
+          "h1": "H1 E-breadth: staged entries only while breadth < 0.60, band 0.05"}
 TRADE_STEPS = ("rebalance", "guard", "keep_alive", "endgame")
 HOUR = pd.Timedelta(hours=1)
 
@@ -250,9 +253,9 @@ def day_summary(bot: str, day: pd.Timestamp, lines: list[dict]) -> str:
     return "\n".join(md) + "\n"
 
 
-def export(root: Path, out: Path, day: pd.Timestamp, log: logging.Logger) -> list[Path]:
+def export(root: Path, out: Path, day: pd.Timestamp, log: logging.Logger, bots=None) -> list[Path]:
     written = []
-    for bot in BOTS:
+    for bot in bots or BOTS:
         lines = read_lines(root / bot / "shadow", [day - pd.Timedelta(days=1), day])
         if not any(x["type"] == "hour" and day <= pd.Timestamp(x["bar"]) < day + pd.Timedelta(days=1) for x in lines):
             log.info("export: no %s lines for %s", bot, day.date())
@@ -265,14 +268,14 @@ def export(root: Path, out: Path, day: pd.Timestamp, log: logging.Logger) -> lis
     return written
 
 
-def export_loop(root: Path, out: Path, log: logging.Logger) -> None:
+def export_loop(root: Path, out: Path, log: logging.Logger, bots=None) -> None:
     while True:
         now = pd.Timestamp.now(tz="UTC")
         nxt = now.floor("D") + pd.Timedelta(minutes=30)
         nxt = nxt if nxt > now else nxt + pd.Timedelta(days=1)
         time.sleep(max(1.0, (nxt - pd.Timestamp.now(tz="UTC")).total_seconds()))
         try:
-            export(root, out, nxt.floor("D") - pd.Timedelta(days=1), log)
+            export(root, out, nxt.floor("D") - pd.Timedelta(days=1), log, bots)
         except Exception:                                  # noqa: BLE001 - keep the loop alive
             log.exception("export failed")
 
@@ -339,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--out", default="reports/shadow")
     e.add_argument("--date", default=None, help="the UTC day to summarize (default: yesterday)")
     e.add_argument("--loop", action="store_true", help="every day at 00:30 UTC, the previous day")
+    e.add_argument("--bots", nargs="+", choices=sorted(BOTS), default=None, help="only these bots (default: all)")
     q = sub.add_parser("parity")
     q.add_argument("--bot", choices=sorted(BOTS), required=True)
     q.add_argument("--state-dir", required=True)
@@ -353,9 +357,9 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "export":
         root, out = resolve(a.root), resolve(a.out)
         if a.loop:
-            export_loop(root, out, log)
+            export_loop(root, out, log, a.bots)
         day = pd.Timestamp(a.date, tz="UTC") if a.date else pd.Timestamp.now(tz="UTC").floor("D") - pd.Timedelta(days=1)
-        export(root, out, day, log)
+        export(root, out, day, log, a.bots)
     else:
         parity(a.bot, a.state_dir, log)
     return 0

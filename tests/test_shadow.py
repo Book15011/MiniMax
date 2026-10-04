@@ -24,6 +24,9 @@ def test_bot_switches_are_pinned_whatever_the_config_defaults():
         assert not any(a[k]["enabled"] for k in LAYERS)
         assert e5["stage"]["enabled"] and e5["stage"]["gate"] == "none"
         assert not any(e5[k]["enabled"] for k in LAYERS if k != "stage")
+        h1 = shadow.bot_params(c, "h1")
+        assert h1["stage"]["enabled"] and h1["stage"]["gate"] == "breadth" and h1["stage"]["gate_breadth_max"] == 0.60
+        assert not any(h1[k]["enabled"] for k in LAYERS if k != "stage")
     assert MODEL.spec.band == 0.05
 
 
