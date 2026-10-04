@@ -638,6 +638,12 @@ models:
                                   # btc_down = stage only while Pol's e20 BTC switch reads down
       gate_breadth_max: 0.60
       gate_state: {<<: *team_trend_2, ema_days: 20}   # as pol_switch_vt_tl_e20v45's switch and btc_hedge.state
+      # breadth ideas on top of H1 (reports/review/20261004-prereg-breadth-ideas.md); defaults leave H1 unchanged
+      gate_on_below: 0.55         # B (gate: breadth_hyst): on below this, off at gate_off_at or more, else the last state
+      gate_off_at: 0.65
+      gate_memory_days: 30        # how many past daily decisions B looks back for its last state
+      gate_drop_min: 0.10         # C (gate: breadth_drop): staging only if breadth also fell this much since the last decision
+      emergency: {enabled: false, breadth_below: 0.40, drop_min: 0.25}   # A: one early E5 decision on a breadth collapse
     forecast_longs:               # F, only if the long gate passed: exits / waits on a confident FALL, size multiplier
       enabled: false
       m_min: 0.5                  # multiplier clip(1 + q, m_min, m_max), cost-filtered

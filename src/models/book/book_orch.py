@@ -380,7 +380,49 @@ def stage_gate(view: MarketView, p: dict) -> tuple[bool, str]:
     if g == "btc_down":
         st = btc_state_at(view, e["gate_state"])
         return st == "down", f"BTC switch {st}"
+    if g == "breadth_hyst":                          # B: on below gate_on_below, off at gate_off_at, else the last state
+        on_below, off_at = float(e["gate_on_below"]), float(e["gate_off_at"])
+        t_prev = last_decision(view.t - HOUR, int(p["decision_hour_utc"]))
+        for t in [view.t] + [t_prev - k * DAY for k in range(int(e["gate_memory_days"]))]:
+            b = breadth_back(view, t, p)
+            if b < on_below:
+                return True, f"breadth {b:.2f} < {on_below:.2f} at {t:%m-%d %H:%M} (hysteresis)"
+            if b >= off_at:
+                return False, f"breadth {b:.2f} >= {off_at:.2f} at {t:%m-%d %H:%M} (hysteresis)"
+        b, lim = breadth_at(view, p["trend"]), float(e["gate_breadth_max"])
+        return b < lim, f"breadth {b:.2f}, no reading outside the band in {int(e['gate_memory_days'])} days: H1's rule"
+    if g == "breadth_drop":                          # C: low and falling since the previous decision
+        b, lim = breadth_at(view, p["trend"]), float(e["gate_breadth_max"])
+        t_prev = last_decision(view.t - HOUR, int(p["decision_hour_utc"]))
+        drop = breadth_back(view, t_prev, p) - b
+        on = b < lim and drop >= float(e["gate_drop_min"])
+        return on, f"breadth {b:.2f} ({'<' if b < lim else '>='} {lim:.2f}), {drop:+.2f} below the previous decision"
     raise ValueError(f"unknown stage gate {g!r}")
+
+
+def breadth_back(view: MarketView, t: pd.Timestamp, p: dict) -> float:
+    """Breadth as of an earlier hour t: the current view cut at t (current point-in-time universe). Memoized."""
+    return breadth_at(view if t >= view.t else view_at(view, t), p["trend"])
+
+
+def emergency_trigger(view: MarketView, p: dict) -> tuple[bool, str]:
+    """A (H1-emergency): at a non-decision hour, fire once between scheduled decisions when breadth < breadth_below and
+    at least drop_min below its value at the latest 16:00 decision (and that was not already true at an earlier hour
+    since that decision)."""
+    e = p["stage"]["emergency"]
+    lo, dmin = float(e["breadth_below"]), float(e["drop_min"])
+    b = breadth_at(view, p["trend"])
+    if b >= lo:
+        return False, ""
+    t_d = last_decision(view.t, int(p["decision_hour_utc"]))
+    b_d = breadth_back(view, t_d, p)
+    if b_d - b < dmin:
+        return False, ""
+    for h in range(1, int((view.t - t_d) / HOUR)):                       # the hours strictly between t_d and now
+        bh = breadth_back(view, t_d + h * HOUR, p)
+        if bh < lo and b_d - bh >= dmin:
+            return False, ""                                               # it already fired since the decision
+    return True, f"early decision: breadth {b:.2f}, down from {b_d:.2f} at {t_d:%m-%d %H:%M}"
 
 
 def bh_layer(view: MarketView, longs: pd.Series, shorts: pd.Series, prev_shorts: pd.Series, p: dict,
@@ -465,7 +507,9 @@ class BookOrch:
                 tr.set(c, "wait", "trailing stop since the last decision: cash until the next decision")
             longs = pd.Series(dtype=float) if wait else self._decide(view, held, p, fcF, spread, tr)
         else:
-            longs = self._between(view, held, p, fcF, spread, st, tr)
+            em = p["stage"]["enabled"] and bool((p["stage"].get("emergency") or {}).get("enabled"))
+            fire, why = emergency_trigger(view, p) if em else (False, "")
+            longs = self._early(view, held, p, tr, why) if fire else self._between(view, held, p, fcF, spread, st, tr)
         shorts = pd.Series(dtype=float)
         if p["forecast_shorts"]["enabled"]:
             shorts = fs_layer(view, longs, prev_shorts, fc, p, spread, self.spec.band, tr)
@@ -507,6 +551,22 @@ class BookOrch:
                     why += f" (staging off: {gate_why})"
                 tr.set(c, "enter" if new else "hold", why)
         return w
+
+    def _early(self, view, held, p, tr: Trace, why: str) -> pd.Series:
+        """A: an early E5 decision after a breadth collapse. vt_mom re-ranks now; a held coin it drops exits; a new coin
+        enters by E's rule (staging on); held coins keep their current targets (no resize, no early second half)."""
+        B = run_base(view, held, p)
+        fac = stage_factor(view, B, held, p)
+        L = held[held.index.isin(B.index)].copy()
+        for c in held.index.difference(B.index):
+            tr.set(c, "exit", f"the base dropped it ({why})")
+        for c in L.index:
+            tr.set(c, "hold", f"held unchanged ({why})")
+        for c in B.index.difference(held.index):
+            L[c] = float(B[c]) * float(fac[c])
+            tr.set(c, "stage" if fac[c] < 1.0 else "enter",
+                   (stage_reason(view.t.hour, p) if fac[c] < 1.0 else "base decision") + f" ({why})")
+        return L
 
     def _between(self, view, held, p, fc, spread, st, tr: Trace) -> pd.Series:
         L = held.copy()

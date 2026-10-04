@@ -435,6 +435,7 @@ def test_config_default_is_the_registered_hybrid_H1():
     d = CFG["models"]["book_orch"]
     assert d["stage"]["enabled"] and d["stage"]["gate"] == "breadth" and d["stage"]["gate_breadth_max"] == 0.60
     assert not any(d[k]["enabled"] for k in ("size", "forecast_longs", "forecast_shorts", "trailing_stop", "btc_hedge"))
+    assert not d["stage"]["emergency"]["enabled"]                     # the breadth ideas stay off
     assert MODEL.spec.band == 0.05
 
 
@@ -468,6 +469,71 @@ def test_H2_staged_half_completes_at_midnight_whatever_the_switch_reads_then(mar
     assert all(a[2].equals(b[2]) for a, b in zip(gated, plain))              # staged at 16:00, completed at 00:00
     assert gated[-1][0].hour == 0 and not gated[-1][2].equals(gated[-2][2])  # the top-up happened
     assert set(calls) == {16}                                                # the switch is read at the decision only
+
+
+def test_breadth_hysteresis_and_drop_gates_by_hand(market, monkeypatch):
+    monkeypatch.setattr(book_orch, "_memo", lambda key, frames, fn: fn())     # breadth set by hand per hour
+    table = {}
+    monkeypatch.setattr(book_orch, "breadth", lambda v, q: table.get(v.t, 0.60))
+    D = pd.Timedelta(days=1)
+    hy = params(stage={"enabled": True, "gate": "breadth_hyst"})
+    for readings, on in (({T0: 0.50}, True), ({T0: 0.70}, False),
+                         ({T0: 0.60, T0 - D: 0.50}, True), ({T0: 0.60, T0 - D: 0.70}, False),
+                         ({T0: 0.55, T0 - D: 0.60, T0 - 2 * D: 0.40}, True),   # the newest reading outside the band
+                         ({}, False)):                                          # none in 30 days: H1's rule (0.60: off)
+        table.clear()
+        table.update(readings)
+        assert book_orch.stage_gate(view(market, T0, hy), hy)[0] is on, readings
+    dr = params(stage={"enabled": True, "gate": "breadth_drop"})
+    for readings, t, on in (({T0: 0.50, T0 - D: 0.65}, T0, True), ({T0: 0.50, T0 - D: 0.55}, T0, False),
+                            ({T0: 0.60, T0 - D: 0.90}, T0, False),
+                            ({T0 - 4 * H: 0.50, T0 - D: 0.65}, T0 - 4 * H, True)):   # a window's first hour (12:00)
+        table.clear()
+        table.update(readings)
+        assert book_orch.stage_gate(view(market, t, dr), dr)[0] is on, readings
+
+
+def test_emergency_fires_once_with_an_early_E5_decision(market, monkeypatch):
+    monkeypatch.setattr(book_orch, "_memo", lambda key, frames, fn: fn())
+    table = {T0: 0.80, T0 + H: 0.70, T0 + 2 * H: 0.35, T0 + 3 * H: 0.30}
+    monkeypatch.setattr(book_orch, "breadth", lambda v, q: table.get(v.t, 0.80))
+    em = {"enabled": True, "breadth_below": 0.40, "drop_min": 0.25}
+    p = params(stage={"enabled": True, "gate": "breadth", "emergency": em})
+    out = chain(MODEL, market, p, T0, 5)                                     # 16:00 ... 20:00 UTC
+    assert out[1][2].equals(out[0][2])                                       # 17:00: breadth 0.70, no trigger
+    t, held, x = out[2]                                                      # 18:00: 0.35, down 0.45 since 16:00: fire
+    v = view(market, t, p, held)
+    B = run_base(v, held, p)
+    fac = book_orch.stage_factor(v, B, held, p)
+    exp = held[held.index.isin(B.index)].copy()
+    for c in B.index.difference(held.index):
+        exp[c] = float(B[c]) * float(fac[c])
+    assert np.allclose(x.reindex(exp.index).to_numpy(), exp.to_numpy(), atol=1e-15) and set(x.index) == set(exp.index)
+    _, rec = MODEL.explain(v)
+    assert rec and all("early decision" in r["reason"] for r in rec.values())
+    assert out[3][2].equals(x) and out[4][2].equals(x)                       # 19:00 (0.30) and 20:00: no second trigger
+    _, rec19 = MODEL.explain(view(market, out[3][0], p, out[3][1]))
+    assert not any("early decision" in r["reason"] for r in rec19.values())
+    table[T0] = 0.55                                                         # a fall of only 0.20: no trigger at all
+    plain = chain(MODEL, market, params(stage={"enabled": True, "gate": "breadth"}), T0, 5)
+    assert all(a[2].equals(b[2]) for a, b in zip(chain(MODEL, market, p, T0, 5), plain))
+
+
+def test_breadth_ideas_have_no_look_ahead(market):
+    em = {"enabled": True, "breadth_below": 0.95, "drop_min": 0.0}            # lenient, so that the trigger can fire
+    for st in ({"gate": "breadth_hyst"}, {"gate": "breadth_drop"}, {"gate": "breadth", "emergency": em}):
+        p = params(stage={"enabled": True, **st})
+        book_orch._M_CACHE.clear()
+        out = chain(MODEL, market, p, T0 - 4 * H, 30)
+        for t, prev, w in (out[0], out[4], out[7], out[13]):
+            cut = replace(market, close=market.close.loc[:t], quote_volume=market.quote_volume.loc[:t])
+            noisy = market.close.copy()
+            later = noisy.index > t
+            noisy.loc[later] *= np.exp(np.random.default_rng(3).normal(0, 0.05, noisy.loc[later].shape))
+            for mk in (cut, replace(market, close=noisy)):
+                book_orch._B_CACHE.clear()
+                book_orch._M_CACHE.clear()
+                assert MODEL.targets(view(mk, t, p, prev)).equals(w), (st, t)
 
 
 def test_H1_H2_have_no_look_ahead(market):
