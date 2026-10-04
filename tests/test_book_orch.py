@@ -26,7 +26,10 @@ from src.models.book.book_orch import MODEL, f_full, fs_layer, run_base
 from tests.synth import make_market
 
 CFG = load_config()
-P = CFG["models"]["book_orch"]
+P = copy.deepcopy(CFG["models"]["book_orch"])
+for _k in ("size", "stage", "forecast_longs", "forecast_shorts", "trailing_stop", "btc_hedge"):
+    P[_k]["enabled"] = False             # each test switches on only the layers it tests (config defaults may differ)
+P["stage"]["gate"] = "none"
 H = pd.Timedelta(hours=1)
 T0 = pd.Timestamp("2021-03-01 16:00", tz="UTC")          # a 16:00 UTC base decision
 

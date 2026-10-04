@@ -2,6 +2,7 @@
 book_orch, one hour's records, and the daily summary's per-coin paper P&L by hand."""
 from __future__ import annotations
 
+import copy
 import json
 
 import pandas as pd
@@ -14,12 +15,15 @@ from tests.test_book_orch import H, T0, market, view  # noqa: F401 - the synthet
 LAYERS = ("size", "stage", "forecast_longs", "forecast_shorts", "trailing_stop", "btc_hedge")
 
 
-def test_bot_switches_are_set_in_memory_only():
+def test_bot_switches_are_pinned_whatever_the_config_defaults():
     cfg = load_config()
-    a, e5 = shadow.bot_params(cfg, "a"), shadow.bot_params(cfg, "e5")
-    assert not any(a[k]["enabled"] for k in LAYERS)
-    assert e5["stage"]["enabled"] and not any(e5[k]["enabled"] for k in LAYERS if k != "stage")
-    assert not cfg["models"]["book_orch"]["stage"]["enabled"]                # config.yaml's block is unchanged
+    other = copy.deepcopy(cfg)
+    other["models"]["book_orch"]["stage"].update(enabled=True, gate="breadth")   # e.g. a hybrid as the default
+    for c in (cfg, other):
+        a, e5 = shadow.bot_params(c, "a"), shadow.bot_params(c, "e5")
+        assert not any(a[k]["enabled"] for k in LAYERS)
+        assert e5["stage"]["enabled"] and e5["stage"]["gate"] == "none"
+        assert not any(e5[k]["enabled"] for k in LAYERS if k != "stage")
     assert MODEL.spec.band == 0.05
 
 

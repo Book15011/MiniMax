@@ -41,7 +41,11 @@ import pandas as pd
 from src.config import binance_symbol, load_config, resolve
 
 MODEL_NAME = "book_orch"
-BOTS = {"a": {}, "e5": {"stage": {"enabled": True}}}         # layer switches on top of config.yaml's book_orch block
+LAYERS = ("size", "stage", "forecast_longs", "forecast_shorts", "trailing_stop", "btc_hedge")
+_OFF = {k: {"enabled": False} for k in LAYERS}
+# every layer switch pinned explicitly, so a change of config.yaml's book_orch defaults cannot change a bot
+BOTS = {"a": _OFF, "e5": {**_OFF, "stage": {"enabled": True, "gate": "none"}}}
+LABELS = {"a": "every layer off (= vt_mom)", "e5": "E (staged entries, no gate) at band 0.05"}
 TRADE_STEPS = ("rebalance", "guard", "keep_alive", "endgame")
 HOUR = pd.Timedelta(hours=1)
 
@@ -218,7 +222,7 @@ def day_summary(bot: str, day: pd.Timestamp, lines: list[dict]) -> str:
             s["orders"] += 1
             s["buy_usd" if o["kind"] in ("BUY", "SHORT_CLOSE") else "sell_usd"] += o.get("usd") or 0.0
         s["filled"] += sum(f.get("status") == "FILLED" for f in x.get("fills") or [])
-    layers = json.dumps(BOTS[bot]) if BOTS[bot] else "every layer off (= vt_mom)"
+    layers = LABELS[bot]
     md = [f"# Shadow bot `{bot}`: {day:%Y-%m-%d} (UTC)", "",
           f"book_orch in paper mode (public prices, no orders, no keys). Layers: {layers}.",
           "Shadow P&L is never used to decide anything. Paper amounts only.", "",
