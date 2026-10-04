@@ -54,6 +54,7 @@ def main() -> None:
                 g[f"cost_{W}_{price}"] = np.where(filled, fill_cost, miss_cost)
                 g[f"fill_{W}_{price}"] = filled
         g["cost_base"] = h + TAKER
+        g["h"] = h
         g["ok"] = np.isfinite(mid0) & np.isfinite(g[[c for c in g.columns if c.startswith("cost_")]].to_numpy()).all(axis=1)
         rows.append(g[g.ok])
     t = pd.concat(rows)
@@ -74,7 +75,7 @@ def main() -> None:
             t["sav"] = t["cost_base"] - t[c]
             fr = float((t[f"fill_{W}_{price}"] * n).sum() / n.sum())
             by = {k: wavg("sav", t.kind == k) for k in ("decision", "entry", "guard")}
-            qs = t.groupby("q").apply(lambda x: float((x.sav * x.notional_usd).sum() / x.notional_usd.sum()))
+            qs = (t.sav * n).groupby(t.q).sum() / n.groupby(t.q).sum()
             per_round = float((t.sav * n).groupby(t.window_start).sum().mean() / 100000)
             lines.append("| Limit at the %s, wait %d min | %.0f%% | %s | **%s** | %s / %s | %s / %s / %s | %d of %d | %s |" % (
                 "bid/ask" if price == "passive" else "mid", W, 100 * fr, P(wavg(c)), P(wavg("sav")), P(wavg("sav", t.buy)), P(wavg("sav", ~t.buy)),
@@ -84,7 +85,7 @@ def main() -> None:
     ok = all(verdict.values())
     lines += ["", "- Passive limit: " + ", ".join(f"W={W} {'passes' if v else 'fails'}" for W, v in verdict.items())
               + f" -> **{'WORTH PROPOSING TO THE TEAM' if ok else 'KEEP MARKET ORDERS'}**.",
-              "- Median half-spread of the coins traded: %s." % P(float(t.drop_duplicates('coin').h.median()))]
+              "- Median half-spread of the coins traded: %s." % P(float(t.drop_duplicates('series').h.median()))]
     (OUT / "report.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
 
