@@ -1,11 +1,13 @@
 """A daily take-profit on e20v45 (research/baitoey/prereg/20261005-daily-tp.md).
 
-    python -m research.baitoey.daily_tp
+    python -m research.baitoey.daily_tp                     the pre-registered levels (+0.5%, +1%, +2%)
+    python -m research.baitoey.daily_tp 0.03 0.04 0.05      other levels (addendum 20261005-daily-tp-wide.md)
 """
 from __future__ import annotations
 
 import glob
 import json
+import sys
 
 import numpy as np
 import pandas as pd
@@ -67,7 +69,7 @@ def take_profit(Em: np.ndarray, Gm: np.ndarray, x: float | None):
     return E, G, exits
 
 
-def main() -> None:
+def main(levels: list[float] | None = None) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     cfg = load_config(); sc = cfg["scoring"]; market = load_market(cfg); starts = pool_starts(market, cfg)
     liq = float(sc["liquidation_cost"]); points = np.array([0] + list(range(4, H, 24)) + [H])
@@ -94,12 +96,12 @@ def main() -> None:
 
     R_raw = Em[:, -1] * (1 - liq * Gm[:, -1]) - 1
     raw_hr = float((w[:, None] * (R_raw[:, None] >= bars)).sum(0).mean())
-    runs = {"L0": None, "TP05": 0.005, "TP10": 0.01, "TP20": 0.02}
+    runs = {"L0": None, "TP05": 0.005, "TP10": 0.01, "TP20": 0.02} if not levels else {"L0": None, **{f"TP{round(1000 * x):02d}": x for x in levels}}
     res, ex = {}, {}
     for key, x in runs.items():
         E, G, exits = take_profit(Em, Gm, x)
         res[key] = score(E, G); ex[key] = float((w * exits).sum())
-    labels = {"L0": "e20v45 + lock-in (as launched)", "TP05": "daily take-profit +0.5%, plus lock-in", "TP10": "daily take-profit +1%, plus lock-in", "TP20": "daily take-profit +2%, plus lock-in"}
+    labels = {"L0": "e20v45 + lock-in (as launched)", **{k: f"daily take-profit +{100 * x:g}%, plus lock-in" for k, x in runs.items() if x is not None}}
     P = lambda v: f"{100 * v:+.2f}%"
     lines = ["# A daily take-profit on e20v45 (scoring v2)", "",
              "Pre-registration: `research/baitoey/prereg/20261005-daily-tp.md`. e20v45's cached paths, method of Pol's endgame2.py.",
@@ -111,11 +113,13 @@ def main() -> None:
                      f"{'—' if key == 'L0' else f'{ex[key]:.1f}'} |")
     l0 = res["L0"]
     good = lambda s: (s["HR"] >= l0["HR"] + MARGIN or (s["HR"] >= l0["HR"] - NOISE and (s["CS"] - l0["CS"] >= CS_GAIN or s["worst"] - l0["worst"] >= WORST_GAIN))) and s["cut"] >= l0["cut"]
-    ok = good(res["TP05"]) and good(res["TP10"])
-    lines += ["", f"- TP05 {'better' if good(res['TP05']) else 'not better'}, TP10 {'better' if good(res['TP10']) else 'not better'} -> **{'PROPOSE' if ok else 'KEEP THE STRATEGY AS LAUNCHED'}**.", "", f"Tool version: {TOOL}."]
-    (OUT / "report.md").write_text("\n".join(lines) + "\n")
+    judged = ["TP05", "TP10"] if not levels else [k for k in runs if k != "L0"]
+    ok = all(good(res[k]) for k in judged)
+    lines += ["", "- " + ", ".join(f"{k} {'better' if good(res[k]) else 'not better'}" for k in judged)
+              + f" -> **{'PROPOSE' if ok else 'KEEP THE STRATEGY AS LAUNCHED'}**.", "", f"Tool version: {TOOL}."]
+    (OUT / ("report.md" if not levels else "report-wide.md")).write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
 
 
 if __name__ == "__main__":
-    main()
+    main([float(a) for a in sys.argv[1:]] or None)
