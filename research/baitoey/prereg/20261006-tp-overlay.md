@@ -56,3 +56,13 @@ take-profit**.
   coin still held is bought back). Guard trades are taken from the log as they were.
 - Hourly highs from Binance; Roostoo's limit-order matching is UNVERIFIED (a live limit may fill less often).
 - The post-holdout windows are not in either period. The round is live; nothing here changes the live bot.
+
+## Addendum before any run (2026-10-06)
+
+vt_mom's log has guard trades every day at 04:00 UTC that resize each holding (by -20% to +22% at the 1st/99th
+percentile; none sells a coin to zero). Taken "as they were" after a fill, they would sell units the overlay has
+already sold (a short remnant) or buy back early. So, for the coin whose order filled only: the overlay skips that
+coin's trades between the fill and the next decision fill bar (it holds the cash, as the spec says, and keeps the
+unsold part fixed). At that bar it trades from its own holding to the model's holding, at the taker fee plus the coin's
+half-spread, and the model's own cost for that trade is credited back. Other coins' guard trades are taken as they
+were. Written before any overlay number exists; nothing else changes.
