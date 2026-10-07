@@ -1,0 +1,21 @@
+# systemd unit for the EXPERIMENTAL tick-scalping sleeve on EC2 (src/live/sleeve.py; deploy/SLEEVE.md).
+# Not installed by setup_ec2.sh: only after the team's go and the AGENTS.md 2.6 amendment.
+# Restart only on a crash: when the sleeve stops itself (loss limit, KILL file, round end, lock-in) it stays stopped.
+[Unit]
+Description=MiniMax tick-scalping sleeve (python -m src.live.sleeve run --mode live)
+After=network-online.target time-sync.target minimax-bot.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/minimax
+Environment=MM_HOST=ec2
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/minimax/.venv/bin/python -m src.live.sleeve run --mode live
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

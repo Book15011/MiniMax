@@ -110,6 +110,14 @@ def confirm_fills(fills: list[dict], before: dict, after: dict) -> list[dict]:
     return fills
 
 
+def sleeve_split(h: Holdings, pairs: set[str], reserve_usd: float) -> Holdings:
+    """The hourly model's share of the account (live.sleeve): without the sleeve's pairs, and without the sleeve's
+    free cash. The USD may go negative (the sleeve's cash is still in the model's coins): the planner then sells
+    down to the model's targets on its smaller equity, which frees the sleeve's cash."""
+    return Holdings(h.usd_free - reserve_usd, {p: q for p, q in h.spot.items() if p not in pairs},
+                    {p: x for p, x in h.shorts.items() if p not in pairs})
+
+
 def holdings_to_json(h: Holdings) -> dict:
     return {"usd_free": h.usd_free, "spot": h.spot, "shorts": {p: asdict(s) for p, s in h.shorts.items()}}
 
@@ -175,6 +183,25 @@ class Runner:
         tmp.write_text(json.dumps(self.state, indent=1, default=str))
         tmp.replace(self.state_path)
 
+    # -- the sleeve (live.sleeve, off unless enabled)
+    def sleeve_reserve(self) -> tuple[set[str], float]:
+        """(the sleeve's pairs, its free cash). Without a readable sleeve state its whole capital is kept aside."""
+        sl = self.lv.get("sleeve") or {}
+        if not sl.get("enabled"):
+            return set(), 0.0
+        pairs = set(sl["lots_usd"])
+        try:
+            st = json.loads((self.dir / (sl.get("state_file") or "sleeve.json")).read_text())
+            return pairs, float(st["cash_free"])
+        except (OSError, ValueError, KeyError):
+            return pairs, float(sl["capital_usd"])
+
+    def holdings_split(self) -> tuple[Holdings, Holdings]:
+        """(the whole account, the model's share). They are the same object when no sleeve is enabled."""
+        h_all = self.broker.holdings(with_shorts=not self.long_only)
+        pairs, reserve = self.sleeve_reserve()
+        return h_all, (sleeve_split(h_all, pairs, reserve) if pairs else h_all)
+
     # -- one hour
     def due_decision(self, H: pd.Timestamp) -> bool:
         rb = self.model.spec.rebalance_hours
@@ -235,26 +262,33 @@ class Runner:
         self.store.save(self.dir)
         self.emit("feed", bar=H, added=added, complete_through=self.store.complete_through)
         try:
-            h = self.broker.holdings(with_shorts=not self.long_only)
+            h_all, h = self.holdings_split()
         except ShortsUnreadable as e:
             self.long_only = True
             self.emit("error", bar=H, error=f"{e}; trading long-only from now on (UNVERIFIED short format)")
-            h = self.broker.holdings(with_shorts=False)
-        eq = equity(h, quotes)
+            h_all, h = self.holdings_split()
+        eq_all = equity(h_all, quotes)                       # the whole account: the round's return and the lock-in
+        eq = equity(h, quotes)                               # the model's share: what its targets are sized on
+        sl = self.lv.get("sleeve") or {}
+        cap = float(sl["capital_usd"]) if sl.get("enabled") else 0.0
+        if float(self.state.get("sleeve_capital", 0.0)) != cap:     # the sleeve's share changed: decide again now on
+            self.state["sleeve_capital"] = cap                       # the model's new equity, trading every difference
+            self.state["last_decision"] = None
+            self.emit("sleeve", bar=H, capital=cap, model_equity=eq, account_equity=eq_all)
         grid = self.h["grid_hour_utc"]
         if self.start_at is not None and H < self.start_at:  # before the round: record data, never trade
-            self.emit("snapshot", bar=H, equity=eq, waiting_until=self.start_at)
+            self.emit("snapshot", bar=H, equity=eq_all, waiting_until=self.start_at)
             self.state["last_bar"] = str(H)
             self.save()
             return
         if self.end_at is not None and H >= self.end_at:     # the round is over (the exchange liquidates): no trades
-            self.emit("snapshot", bar=H, equity=eq, round_over=self.end_at)
+            self.emit("snapshot", bar=H, equity=eq_all, round_over=self.end_at)
             self.state["last_bar"] = str(H)
             self.save()
             return
-        if self.state.get("round_start") is None and eq > 0:  # the round's first funded hour: its equity is the baseline
-            self.state.update(round_start=str(H), round_start_equity=float(eq))
-        if self.endgame_locked(H, eq):                        # end-of-round lock-in: hold cash to the end
+        if self.state.get("round_start") is None and eq_all > 0:  # the round's first funded hour: its equity is the baseline
+            self.state.update(round_start=str(H), round_start_equity=float(eq_all))
+        if self.endgame_locked(H, eq_all):                        # end-of-round lock-in: hold cash to the end
             self.state["standing"] = {}
             w_now = current_weights(h, quotes, eq)
             if sum(abs(x) for x in w_now.values()) > 2 * float(self.h["keep_alive_weight"]):   # sell until out
@@ -270,8 +304,10 @@ class Runner:
                 w = w.clip(lower=0.0)
             w = w[w != 0.0]
             first = self.state["last_decision"] is None
+            sleeve_pairs = self.sleeve_reserve()[0]
             self.state.update(prev_targets={k: float(x) for k, x in w.items()}, last_decision=str(H),
-                              standing={self.pairs[s]: float(x) for s, x in w.items() if s in self.pairs})
+                              standing={self.pairs[s]: float(x) for s, x in w.items()
+                                        if s in self.pairs and self.pairs[s] not in sleeve_pairs})
             self.emit("decision", bar=H, universe=uni, universe_as_of=g, equity=eq, first=first,
                       targets=self.state["standing"])
             self.trade("rebalance", H, self.state["standing"], h, quotes, self.model.spec.band, exact=first)
@@ -284,17 +320,18 @@ class Runner:
         if (no_trade                                                             # every later hour of the day retries
                 and into_day >= self.h["activity_guard_offset_hours"] + 1):        # until a fill is confirmed; also right
             # after a decision that filled nothing, as the engine does (an hourly model decides every hour)
-            h = self.broker.holdings(with_shorts=not self.long_only)
+            h = self.holdings_split()[1]
             fills = self.trade("guard", H, self.state["standing"], h, quotes, 0.0, exact=True)
             if not any(f["status"] == "FILLED" for f in fills):
                 t = keep_alive_targets(h, quotes, equity(h, quotes), float(self.h["keep_alive_weight"]),
                                        1.0 - float(self.ex["cash_buffer"]))
                 self.trade("keep_alive", H, t, h, quotes, 0.0, exact=True)
-        h = self.broker.holdings(with_shorts=not self.long_only)
+        h_all, h = self.holdings_split()
         eq = equity(h, quotes)
         w = current_weights(h, quotes, eq)
-        self.emit("snapshot", bar=H, equity=eq, usd_free=h.usd_free, gross=sum(abs(x) for x in w.values()),
-                  weights=w, active_days=len(self.state["active_days"]))
+        extra = {} if h is h_all else {"model_equity": eq, "sleeve_value": equity(h_all, quotes) - eq}
+        self.emit("snapshot", bar=H, equity=equity(h_all, quotes), usd_free=h.usd_free, gross=sum(abs(x) for x in w.values()),
+                  weights=w, active_days=len(self.state["active_days"]), **extra)
         self.state["last_bar"] = str(H)
         self.save()
 
