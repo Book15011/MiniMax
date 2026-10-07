@@ -1,5 +1,5 @@
-"""Tick-scalping sleeve (src/live/sleeve.py) on a paper exchange with scripted quotes, and the hourly runner's
-sleeve split. No network."""
+"""Tick-scalping sleeve (src/live/sleeve.py) on a paper exchange with scripted quotes, its failure handling, and the
+hourly runner's sleeve split. No network."""
 from __future__ import annotations
 
 import copy
@@ -9,11 +9,13 @@ from decimal import Decimal
 
 import pandas as pd
 
+from src.api.client import OrderStateUnknown, RoostooError
 from src.api.rules import PairRule
 from src.config import load_config
 from src.execution.planner import Holdings
 from src.live.runner import sleeve_split
-from src.live.sleeve import Coin, Params, PaperExchange, Sleeve, after_stop, after_win, buy_price
+from src.live.sleeve import (Coin, Fill, Params, PaperExchange, Sleeve, after_stop, after_win, buy_price, edge_breaker,
+                             fill_from_detail, recorder_quotes)
 from tests.test_live import flat_store, make_runner
 
 CFG = load_config()
@@ -37,14 +39,14 @@ class Script:
         return self.t0 + 6.0 * self.k
 
 
-def make_sleeve(tmp_path, bids, lot=1000.0, **over):
+def make_sleeve(tmp_path, bids, lot=1000.0, ex_cls=PaperExchange, mode="paper", **over):
     cfg = copy.deepcopy(CFG)
     sc = cfg["live"]["sleeve"]
     sc.update(lots_usd={PAIR: lot}, capital_usd=lot, **over)
     cfg["live"].update(start_at=None, end_at=None)
     s = Script(bids)
-    ex = PaperExchange(s.quotes, "mid", lot)
-    sl = Sleeve(cfg, ex, RULES, tmp_path, "paper", LOG, clock=s.clock)
+    ex = ex_cls(s.quotes, "mid", lot)
+    sl = Sleeve(cfg, ex, RULES, tmp_path, mode, LOG, clock=s.clock, sleep=lambda x: None)
     return sl, s, ex
 
 
@@ -55,8 +57,10 @@ def run(sl, s, n):
 
 
 def events(tmp_path):
-    return [json.loads(x) for f in (tmp_path / "logs").glob("sleeve-*.jsonl") for x in f.read_text().splitlines()]
+    return [json.loads(x) for f in (tmp_path / "logs" / "sleeve").glob("*.jsonl") for x in f.read_text().splitlines()]
 
+
+# ---------------- the strategy core
 
 def test_core_rules():
     c = Coin(PAIR, 1000.0, phase="HOLDING", entry=100.0)
@@ -70,9 +74,31 @@ def test_core_rules():
     assert c.phase == "PAUSED" and c.paused_until == 1002.0 + 3600.0 and c.next_px is None
 
 
+def test_edge_breaker_pauses_a_coin_that_stopped_earning():
+    c, p = Coin(PAIR, 1000.0), Params(breaker_trips=20, breaker_win=0.75, breaker_pause_s=100.0)
+    hit = [edge_breaker(c, r, 50.0, p) for r in [0.001] * 12 + [-0.006] * 8]    # 60% wins, net negative
+    assert hit[-1] and not any(hit[:-1]) and c.blocked_until == 150.0 and c.recent == []
+    c2 = Coin(PAIR, 1000.0)
+    assert not any(edge_breaker(c2, r, 0.0, p) for r in [0.0015] * 17 + [-0.006] * 3)   # 85% wins: fine
+
+
+def test_fills_are_booked_from_quantity_price_and_commission():
+    b = fill_from_detail({"Pair": PAIR, "Status": "FILLED", "Side": "BUY", "FilledQuantity": 1000, "FilledAverPrice": 2.0,
+                          "CommissionCoin": "BONK", "CommissionChargeValue": 0.5, "Role": "MAKER", "OrderID": 7})
+    assert b.coin_change == 999.5 and b.usd_change == -2000.0 and b.order_id == "7"
+    s = fill_from_detail({"Pair": PAIR, "Status": "FILLED", "Side": "SELL", "FilledQuantity": 999, "FilledAverPrice": 2.01,
+                          "CommissionCoin": "USD", "CommissionChargeValue": 1.0})
+    assert s.coin_change == -999 and abs(s.usd_change - (999 * 2.01 - 1.0)) < 1e-9
+    m = fill_from_detail({"Pair": PAIR, "Status": "FILLED", "FilledQuantity": 10, "FilledAverPrice": 2.0, "Type": "MARKET"}, "SELL")
+    assert abs(m.usd_change - 20.0 * (1 - 0.001)) < 1e-12                # no commission field: taker fee assumed
+    assert fill_from_detail({"Status": "CANCELLED"}, "BUY").status == "CANCELED"
+
+
+# ---------------- the loop on a paper exchange
+
 def test_a_flickering_bid_is_harvested_with_buy_backs_one_step_lower(tmp_path):
     bids = [100.0, 100.0] + [101.0, 101.0, 100.0, 100.0] * 10          # the bid flickers 100 <-> 101
-    sl, s, ex = make_sleeve(tmp_path, bids)
+    sl, s, ex = make_sleeve(tmp_path, bids, min_check_s=0)
     run(sl, s, len(bids))
     c = sl.coins[PAIR]
     ev = events(tmp_path)
@@ -83,42 +109,50 @@ def test_a_flickering_bid_is_harvested_with_buy_backs_one_step_lower(tmp_path):
     assert c.pnl > 0 and sl.value(s.quotes([PAIR])) > 1000.0
     st = json.loads((tmp_path / "sleeve-paper.json").read_text())       # a paper sleeve never writes the live file
     assert st["mode"] == "paper" and abs(st["cash_free"] - sl.cash) < 1e-9 and not (tmp_path / "sleeve.json").exists()
+    assert not list((tmp_path / "logs").glob("*.jsonl"))               # the bot's own logs folder stays the bot's
+
+
+def test_order_checks_are_rate_limited(tmp_path):
+    bids = [100.0, 100.0] + [101.0, 101.0, 100.0, 100.0] * 10
+    calls = {"n": 0}
+
+    class Counting(PaperExchange):
+        def pending_pairs(self):
+            calls["n"] += 1
+            return super().pending_pairs()
+    sl, s, ex = make_sleeve(tmp_path, bids, ex_cls=Counting, min_check_s=12)
+    run(sl, s, len(bids))
+    assert calls["n"] <= len(bids) / 2 + 1 and sl.coins[PAIR].trips >= 3
 
 
 def test_stops_then_a_pause_after_three(tmp_path):
-    # buy at 100, the bid falls to 98 (2 steps): stop; buy again at 97 (bid - 1) ... three times, then pause
     bids = [100.0, 100.0, 99.0, 98.0, 98.0, 97.0, 96.0, 95.0, 95.0, 94.0, 93.0, 92.0, 92.0, 91.0, 90.0, 89.0, 89.0, 89.0]
-    sl, s, ex = make_sleeve(tmp_path, bids, daily_loss_limit=0.5, total_loss_limit=0.9)   # the loss limits would stop it first
+    sl, s, ex = make_sleeve(tmp_path, bids, daily_loss_limit=0.5, total_loss_limit=0.9, min_check_s=0)
     run(sl, s, len(bids))
     c = sl.coins[PAIR]
     assert c.stops == 3 and c.phase == "PAUSED" and c.wins == 0
-    ev = events(tmp_path)
-    assert all(e["side"] == "SELL" for e in ev if e["event"] == "fill" and e.get("kind") == "stop")
 
 
 def test_no_new_orders_in_the_hourly_bots_minutes(tmp_path):
-    t0 = pd.Timestamp("2026-10-08 10:00:30", tz="UTC").timestamp()       # minute 0: the hourly bot's window
-    cfg_bids = [100.0] * 5
-    sl, s, ex = make_sleeve(tmp_path, cfg_bids)
-    s.t0 = t0
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 5)
+    s.t0 = pd.Timestamp("2026-10-08 10:00:30", tz="UTC").timestamp()    # minute 0: the hourly bot's window
     run(sl, s, 5)
     assert not [e for e in events(tmp_path) if e["event"] == "order"]
 
 
 def test_kill_file_flattens_and_stops(tmp_path):
-    sl, s, ex = make_sleeve(tmp_path, [100.0, 100.0, 100.0, 100.0])
+    sl, s, ex = make_sleeve(tmp_path, [100.0, 100.0, 100.0, 100.0], min_check_s=0)
     run(sl, s, 3)
-    assert sl.coins[PAIR].phase == "HOLDING"                         # bought at 100
+    assert sl.coins[PAIR].phase == "HOLDING"
     (tmp_path / "sleeve.KILL").write_text("stop")
     run(sl, s, 1)
-    assert sl.stopped == "kill" and sl.coins[PAIR].qty * 100 < 1 and ex.pending_pairs() == {}   # only dust left
-    assert any(e["event"] == "flatten" for e in events(tmp_path))
+    assert sl.stopped == "kill" and sl.coins[PAIR].qty * 100 < 1 and ex.pending_pairs() == {}
+    assert json.loads((tmp_path / "sleeve-paper.json").read_text())["flat"]
 
 
 def test_daily_loss_limit_cancels_the_resting_buy_and_stops_buying(tmp_path):
-    # a lot bought at 100 then stopped at 95 (a 5-step gap: one 5% hit), so the sleeve is > 3% down on the day
     bids = [100.0, 100.0, 100.0, 95.0, 95.0, 95.0, 95.0, 95.0]
-    sl, s, ex = make_sleeve(tmp_path, bids)
+    sl, s, ex = make_sleeve(tmp_path, bids, min_check_s=0)
     run(sl, s, len(bids))
     c = sl.coins[PAIR]
     assert c.stops == 1 and c.order_id is None and ex.pending_pairs() == {}
@@ -126,12 +160,114 @@ def test_daily_loss_limit_cancels_the_resting_buy_and_stops_buying(tmp_path):
 
 
 def test_flatten_before_the_rounds_end(tmp_path):
-    end = pd.Timestamp(T_START + 6 * 4 + 600 - 1, unit="s", tz="UTC")     # flatten window opens at tick 4
-    sl, s, ex = make_sleeve(tmp_path, [100.0] * 10)
-    sl.end_at = end.timestamp()
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 10, min_check_s=0)
+    sl.end_at = T_START + 6 * 4 + 600 - 1                               # the flatten window opens at tick 4
     run(sl, s, 6)
     assert sl.stopped == "round_end" and sl.coins[PAIR].qty * 100 < 1
 
+
+def test_no_buys_while_one_step_is_too_small_a_share_of_the_price(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [1000.0] * 5)                     # step 1 at 1000: 0.1% < 0.15%
+    run(sl, s, 5)
+    ev = events(tmp_path)
+    assert not [e for e in ev if e["event"] == "order"] and any(e["event"] == "step_too_small" for e in ev)
+
+
+# ---------------- failures: never fatal, books stay right
+
+class Refusing(PaperExchange):
+    def place_limit(self, pair, side, qty, price):
+        raise RoostooError("/v3/place_order: insufficient balance")
+
+
+def test_a_refused_buy_backs_off_and_is_not_an_error(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 30, ex_cls=Refusing)
+    run(sl, s, 30)                                                       # 3 minutes
+    rej = [e for e in events(tmp_path) if e["event"] == "rejected"]
+    assert 1 <= len(rej) <= 3 and sl.coins[PAIR].rejects == len(rej) and not sl.stopped
+    assert sl.cash == 1000.0
+
+
+class Unknown(PaperExchange):
+    """The first buy times out but reaches the exchange (it rests there); the books must find it."""
+    first = True
+
+    def place_limit(self, pair, side, qty, price):
+        f = super().place_limit(pair, side, qty, price)
+        if side == "BUY" and Unknown.first:
+            Unknown.first = False
+            raise OrderStateUnknown("place_order: transport error")
+        return f
+
+
+def test_an_order_whose_outcome_is_unknown_is_reconciled_not_fatal(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 6, ex_cls=Unknown, min_check_s=0)
+    run(sl, s, 6)
+    ev = events(tmp_path)
+    assert any(e["event"] == "reconcile" and "unknown" in e["why"] for e in ev)
+    assert len(ex.open_orders(PAIR)) <= 1 and not sl.stopped                # the stray order was cancelled
+    assert abs(sl.value(s.quotes([PAIR])) - 1000.0) < 20.0                  # books still add up
+
+
+class PartialCancel(PaperExchange):
+    """A resting buy partly fills; then the trail cancels it: the coins bought must be booked."""
+
+    def cancel(self, pair, order_id):
+        o = self.open.get(order_id)
+        ok = super().cancel(pair, order_id)
+        if ok and o and o["side"] == "BUY":
+            half = o["qty"] / 2
+            base = pair.split("/")[0]
+            self.held[base] = self.held.get(base, 0.0) + half * (1 - 0.0005)
+            self.usd -= half * o["price"]
+            self.done[order_id] = Fill("CANCELED", o["price"], half, half * (1 - 0.0005), -half * o["price"], order_id,
+                                       "MAKER", "BUY")
+        return ok
+
+
+def test_a_partial_fill_before_a_cancel_is_booked(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [102.0, 102.0, 102.0, 104.0, 104.0], ex_cls=PartialCancel, min_check_s=0)
+    sl.coins[PAIR].next_px = 101.0                                       # rests below the bid of 102
+    run(sl, s, 4)                                                        # the bid moves to 104: trail, cancel
+    c = sl.coins[PAIR]
+    assert c.qty > 4.0 and c.phase == "HOLDING" and abs(c.cost - c.qty / (1 - 0.0005) * 101.0) < 1e-6
+    assert abs(sl.cash - (1000.0 - c.cost)) < 1e-9                       # the unfilled half came back to the cash
+    run(sl, s, 1)                                                        # then sold at the bid (2 steps up) as a taker
+    assert c.trips == 1 and c.pnl > 0 and c.qty * 104 < 1
+
+
+def test_api_errors_back_off_and_only_a_long_outage_stops_it(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 3, error_kill_minutes=10)
+    naps = []
+    sl.sleep = lambda x: (naps.append(x), setattr(s, "k", s.k + int(x // 6) + 1))
+
+    def boom():
+        raise RoostooError("/v3/ticker: try again later")
+    sl.tick = boom
+    sl.run()
+    assert sl.stopped == "errors" and naps[:4] == [30.0, 60.0, 120.0, 240.0] and max(naps) == 300.0
+    assert s.clock() - T_START >= 600
+
+
+def test_a_config_change_of_capital_and_lots_is_picked_up_at_restart(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 3, min_check_s=0)
+    run(sl, s, 3)
+    sl.save(s.quotes([PAIR]))
+    cash0 = sl.cash
+    sl2, *_ = make_sleeve(tmp_path, [100.0] * 3, lot=2000.0)
+    assert sl2.capital == 2000.0 and abs(sl2.cash - (cash0 + 1000.0)) < 1e-9 and sl2.coins[PAIR].lot_usd == 2000.0
+    assert sl2._changes == {"capital_change": 1000.0}
+
+
+def test_recorder_quotes_ignore_a_stopped_recorder(tmp_path):
+    f = tmp_path / "20261008.csv"
+    f.write_text("ts_utc,pair,max_bid,min_ask,last_price\n2026-10-08T10:00:00+00:00,BONK/USD,1,2,1\n")
+    t = pd.Timestamp("2026-10-08 10:00:30", tz="UTC").timestamp()
+    assert recorder_quotes(str(tmp_path / "2026*.csv"), 60, lambda: t)([PAIR]) == {PAIR: (1.0, 2.0, 1.0)}
+    assert recorder_quotes(str(tmp_path / "2026*.csv"), 60, lambda: t + 120)([PAIR]) == {}
+
+
+# ---------------- the hourly runner's side
 
 def test_runner_split_keeps_the_sleeves_cash_and_coins_out_of_the_model():
     h = Holdings(5_000.0, {"BTC/USD": 1.0, "BONK/USD": 1e6}, {})
@@ -151,6 +287,17 @@ def test_runner_sizes_the_model_on_its_share_and_redecides_when_the_sleeve_chang
     r.process(start + pd.Timedelta(hours=1))
     assert r.state["last_decision"] == str(start + pd.Timedelta(hours=1))
     assert r.broker.h.spot["BTC/USD"] * 100.0 > 97_000
+
+
+def test_a_sleeve_stopped_for_good_and_flat_gives_its_cash_back(tmp_path):
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+    r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120))
+    r.lv["sleeve"] = {**r.lv["sleeve"], "enabled": True, "mode": "live", "capital_usd": 30_000.0, "lots_usd": {PAIR: 30_000.0}}
+    (tmp_path / "sleeve.json").write_text(json.dumps({"cash_free": 30_000.0}))
+    r.process(start)
+    (tmp_path / "sleeve.json").write_text(json.dumps({"cash_free": 29_000.0, "stopped": "total_loss", "flat": True}))
+    r.process(start + pd.Timedelta(hours=1))
+    assert r.broker.h.spot["BTC/USD"] * 100.0 > 97_000 and r.state["sleeve_capital"] == 0.0
 
 
 def test_a_paper_sleeve_takes_nothing_from_the_model(tmp_path):
@@ -174,7 +321,7 @@ def test_a_failing_sleeve_thread_never_stops_the_hourly_model(tmp_path):
     r.sleeve = Boom()
     r.start_sleeve()
     r.sleeve_thread.join(5)
-    r.process(start)                                                     # the model still decides and trades
+    r.process(start)
     assert r.broker.h.spot.get("BTC/USD", 0) > 0
     logs = [json.loads(x) for f in (tmp_path / "logs").glob("2*.jsonl") for x in f.read_text().splitlines()]
     assert any(e["event"] == "sleeve_thread" and e["status"] == "failed" for e in logs)

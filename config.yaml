@@ -225,12 +225,20 @@ live:
     pause_s: 3600
     loop_s: 6                   # quote poll; 30 s inside runner_window
     calls_per_minute: 12        # research-server paper runs only; inside the bot the process shares execution.calls_per_minute
-    runner_window: [0, 6]       # minutes of every hour left to the hourly bot: no new sleeve orders (stops still run)
+    runner_window: [0, 5]       # minutes of every hour left to the hourly bot (it starts at :00:45, trades by ~:03:30): no new sleeve orders, stops still run
     daily_loss_limit: 0.03      # sleeve value 3% under the HKT day's start -> no new buys until the next day
     total_loss_limit: 0.08      # 8% under its capital -> flatten and stop
-    kill_after_errors: 5        # API errors in a row -> flatten and stop
+    error_kill_minutes: 60      # API errors back off (30 s doubling to 5 min); only this long a continuous failure stops it
+    min_check_s: 6              # an order is checked at most this often per pair (every tick; plus a 60 s sweep). Replay:
+                                # +15.6% vs +12.1% at 12 s over 46 h; the bot's limiter caps the process at 20 calls/min
+    reconcile_s: 300            # live: the wallet's coins of the sleeve's pairs against its books
+    breaker_trips: 30           # edge breaker: when the last 30 trips lost money in total with a win rate under
+    breaker_win: 0.60           # 60% (normal trading never went under 67% over 30 trips; a broken fill rule gives 40-55%),
+    breaker_pause_s: 7200       # the coin pauses 2 h (a false alarm costs little)
+    min_step_frac: 0.0015       # no new buys while one price step is under 0.15% of the price (a win must beat the fees)
     flatten_before_end_s: 600   # flatten 10 minutes before live.end_at
-    respect_lock: true          # the hourly bot's end-of-round lock-in also flattens and stops the sleeve
+    respect_lock: false         # true: the end-of-round lock-in also stops the sleeve (its steady gains count toward the
+                                # top-20 return gate and its risk ratios, so it keeps going by default)
     state_file: sleeve.json     # in live.state_dir; the hourly bot reads cash_free from it (paper: sleeve-paper.json)
     paper_sell_rule: mid        # paper fills: buy when bid <= P, sell when mid >= S (Roostoo's measured rule)
     recorder_glob: results/book/scalp/quotes/2026*.csv   # research server: paper quotes without extra API calls

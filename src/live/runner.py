@@ -55,6 +55,7 @@ from src.contracts import MarketView, check_targets
 from src.execution.planner import Holdings, ShortPos, current_weights, equity, plan_orders
 from src.live import feed
 from src.live.broker import LiveBroker, PaperAccount, ShortsUnreadable, quotes_from_ticker
+from src.live.sleeve import PERMANENT as SLEEVE_PERMANENT
 from src.models import get
 from src.validation.features import daily_bars, is_allowed
 
@@ -188,16 +189,23 @@ class Runner:
 
     # -- the sleeve (live.sleeve, off unless enabled)
     def sleeve_reserve(self) -> tuple[set[str], float]:
-        """(the sleeve's pairs, its free cash). Without a readable sleeve state its whole capital is kept aside."""
+        """(the sleeve's pairs, its free cash). Without a readable sleeve state its whole capital is kept aside; a sleeve
+        that stopped for good (loss limit, KILL, errors) and holds nothing gives its cash back to the model."""
         sl = self.lv.get("sleeve") or {}
         if not sl.get("enabled") or sl.get("mode") != "live":       # a paper sleeve takes nothing from the model
             return set(), 0.0
         pairs = set(sl["lots_usd"])
         try:
             st = json.loads((self.dir / (sl.get("state_file") or "sleeve.json")).read_text())
-            return pairs, float(st["cash_free"])
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError):
             return pairs, float(sl["capital_usd"])
+        if st.get("stopped") in SLEEVE_PERMANENT and st.get("flat"):
+            return set(), 0.0
+        return pairs, max(0.0, float(st.get("cash_free", sl["capital_usd"])))
+
+    def sleeve_capital(self) -> float:
+        """The capital the model leaves to the sleeve now (0 when off, paper, or stopped for good and flat)."""
+        return float((self.lv.get("sleeve") or {}).get("capital_usd", 0.0)) if self.sleeve_reserve()[0] else 0.0
 
     def holdings_split(self) -> tuple[Holdings, Holdings]:
         """(the whole account, the model's share). They are the same object when no sleeve is enabled."""
@@ -272,8 +280,7 @@ class Runner:
             h_all, h = self.holdings_split()
         eq_all = equity(h_all, quotes)                       # the whole account: the round's return and the lock-in
         eq = equity(h, quotes)                               # the model's share: what its targets are sized on
-        sl = self.lv.get("sleeve") or {}
-        cap = float(sl["capital_usd"]) if (sl.get("enabled") and sl.get("mode") == "live") else 0.0
+        cap = self.sleeve_capital()
         if float(self.state.get("sleeve_capital", 0.0)) != cap:     # the sleeve's share changed: decide again now on
             self.state["sleeve_capital"] = cap                       # the model's new equity, trading every difference
             self.state["last_decision"] = None
