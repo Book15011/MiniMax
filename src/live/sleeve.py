@@ -4,8 +4,13 @@ NOT DEPLOYABLE until AGENTS.md section 2.6 ("directional strategies only: no mar
 reviewed merge. The organisers' public statement (2026-10-05) says tick scalping is not prohibited and won't be
 disqualified; the team rule is stricter until changed. 
 
-    python -m src.live.sleeve run [--mode paper|live] [--quotes recorder|ticker] [--once]
-    python -m src.live.sleeve status
+Runs INSIDE the hourly bot's process (one instance, one process, one API ceiling): src.live.runner starts it as a
+thread when `live.sleeve.enabled` (build_in_process). `live.sleeve.mode: paper` trades nothing (fills simulated on
+the live quotes); `live` trades the account. Going from paper to live, or changing its capital, is a committed config
+change: the usual update (pull, restart).
+
+    python -m src.live.sleeve run --mode paper [--quotes recorder|ticker] [--once]    research server paper runs
+    python -m src.live.sleeve status [--mode paper|live]
 
 The loop, per coin (one lot at a time, fixed USD lot):
   BUYING  a resting limit buy. At the start and after a pause it sits at the bid; after a win one step below the
@@ -305,6 +310,12 @@ def after_stop(c: Coin, bid: float, step: float, t: float, p: Params) -> None:
 
 
 # ---------------------------------------------------------------- the driver
+def state_path(cfg: dict, state_dir: Path, mode: str) -> Path:
+    """The live sleeve's state is `state_file` (the hourly bot reads its cash from it); a paper sleeve keeps its own."""
+    name = cfg["live"]["sleeve"].get("state_file") or "sleeve.json"
+    return state_dir / (name if mode == "live" else name.replace(".json", "-paper.json"))
+
+
 class Sleeve:
     def __init__(self, cfg: dict, ex: Exchange, rules: dict[str, PairRule], state_dir: Path, mode: str,
                  log: logging.Logger, clock: Callable[[], float] = time.time):
@@ -312,8 +323,8 @@ class Sleeve:
         self.sc = cfg["live"]["sleeve"]
         self.p = Params(int(self.sc["stop_steps"]), int(self.sc["trail_steps"]), int(self.sc["pause_after_stops"]),
                         float(self.sc["pause_s"]))
-        self.state_path = state_dir / (self.sc.get("state_file") or "sleeve.json")
-        self.kill_path = self.state_path.with_suffix(".KILL")
+        self.state_path = state_path(cfg, state_dir, mode)
+        self.kill_path = state_dir / "sleeve.KILL"                # one name in both modes
         self.errors = 0
         self.last_check: dict[str, float] = {}
         self.cash_wait_until = 0.0
@@ -627,9 +638,25 @@ class Sleeve:
             time.sleep(max(0.5, loop - (self.clock() - t0)))
 
 
-def status(cfg: dict) -> str:
+def build_in_process(cfg: dict, client: RoostooClient, runner_mode: str, state_dir: Path,
+                     log: logging.Logger) -> Sleeve:
+    """The sleeve for the hourly bot's process. Its client shares the bot's rate limiter, so the whole process stays
+    under `execution.calls_per_minute`. A paper bot never runs a live sleeve."""
     sc = cfg["live"]["sleeve"]
-    p = resolve(cfg["live"]["state_dir"]) / (sc.get("state_file") or "sleeve.json")
+    mode = "live" if (sc.get("mode") == "live" and runner_mode == "live") else "paper"
+    c2 = RoostooClient(cfg["exchange"]["base_url"], client.creds, int(cfg["execution"]["calls_per_minute"]),
+                       cfg["execution"]["timeout_s"], log=log)
+    c2.limiter = client.limiter                          # one ceiling for the process
+    c2.offset_ms = client.offset_ms
+    rules = parse_exchange_info(c2.exchange_info())
+    rx = RoostooExchange(c2)
+    ex: Exchange = rx if mode == "live" else PaperExchange(rx.quotes, str(sc.get("paper_sell_rule", "mid")),
+                                                           float(sc["capital_usd"]))
+    return Sleeve(cfg, ex, rules, state_dir, mode, log)
+
+
+def status(cfg: dict, mode: str = "live") -> str:
+    p = state_path(cfg, resolve(cfg["live"]["state_dir"]), mode)
     if not p.exists():
         return f"no sleeve state at {p}"
     st = json.loads(p.read_text())
@@ -651,12 +678,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="paper only: quotes from the research server's recorder files, or the public ticker")
     r.add_argument("--state-dir", default=None)
     r.add_argument("--once", action="store_true")
-    sub.add_parser("status")
+    stp = sub.add_parser("status")
+    stp.add_argument("--mode", choices=("paper", "live"), default="live")
     a = ap.parse_args(argv)
     cfg = load_config()
     sc = (cfg["live"].get("sleeve") or {})
     if a.cmd == "status":
-        print(status(cfg))
+        print(status(cfg, a.mode))
         return 0
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     log = logging.getLogger("sleeve")
@@ -664,13 +692,7 @@ def main(argv: list[str] | None = None) -> int:
     state_dir.mkdir(parents=True, exist_ok=True)
     ex_cfg = cfg["execution"]
     if a.mode == "live":
-        if not sc.get("enabled"):
-            raise SystemExit("live.sleeve.enabled is false: refused (needs the team's go and the AGENTS.md amendment)")
-        creds = load_credentials(REPO_ROOT / ex_cfg["env_file"])
-        if creds.env == "competition" and os.environ.get("MM_HOST") != "ec2":
-            raise SystemExit("ROOSTOO_ENV=competition outside EC2: refused (AGENTS.md rule 3)")
-        client = RoostooClient(cfg["exchange"]["base_url"], creds, int(sc["calls_per_minute"]), ex_cfg["timeout_s"], log=log)
-        ex: Exchange = RoostooExchange(client)
+        raise SystemExit("a live sleeve runs only inside the hourly bot (live.sleeve.mode: live); one process per instance")
     else:
         client = RoostooClient(cfg["exchange"]["base_url"], None, int(sc["calls_per_minute"]), ex_cfg["timeout_s"], log=log)
         if a.quotes == "recorder":

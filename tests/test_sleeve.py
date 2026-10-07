@@ -81,8 +81,8 @@ def test_a_flickering_bid_is_harvested_with_buy_backs_one_step_lower(tmp_path):
     assert c.trips >= 5 and c.wins == c.trips and c.stops == 0
     assert set(buys) == {100.0} and set(sells) == {101.0}
     assert c.pnl > 0 and sl.value(s.quotes([PAIR])) > 1000.0
-    st = json.loads((tmp_path / "sleeve.json").read_text())
-    assert st["mode"] == "paper" and abs(st["cash_free"] - sl.cash) < 1e-9
+    st = json.loads((tmp_path / "sleeve-paper.json").read_text())       # a paper sleeve never writes the live file
+    assert st["mode"] == "paper" and abs(st["cash_free"] - sl.cash) < 1e-9 and not (tmp_path / "sleeve.json").exists()
 
 
 def test_stops_then_a_pause_after_three(tmp_path):
@@ -142,7 +142,7 @@ def test_runner_split_keeps_the_sleeves_cash_and_coins_out_of_the_model():
 def test_runner_sizes_the_model_on_its_share_and_redecides_when_the_sleeve_changes(tmp_path):
     start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
     r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120))
-    r.lv["sleeve"] = {**r.lv["sleeve"], "enabled": True, "capital_usd": 30_000.0, "lots_usd": {PAIR: 30_000.0}}
+    r.lv["sleeve"] = {**r.lv["sleeve"], "enabled": True, "mode": "live", "capital_usd": 30_000.0, "lots_usd": {PAIR: 30_000.0}}
     (tmp_path / "sleeve.json").write_text(json.dumps({"cash_free": 30_000.0}))
     r.process(start)
     btc = r.broker.h.spot["BTC/USD"] * 100.0
@@ -151,3 +151,45 @@ def test_runner_sizes_the_model_on_its_share_and_redecides_when_the_sleeve_chang
     r.process(start + pd.Timedelta(hours=1))
     assert r.state["last_decision"] == str(start + pd.Timedelta(hours=1))
     assert r.broker.h.spot["BTC/USD"] * 100.0 > 97_000
+
+
+def test_a_paper_sleeve_takes_nothing_from_the_model(tmp_path):
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+    r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120))
+    r.lv["sleeve"] = {**r.lv["sleeve"], "enabled": True, "mode": "paper", "capital_usd": 30_000.0}
+    r.process(start)
+    assert r.broker.h.spot["BTC/USD"] * 100.0 > 97_000
+
+
+class Boom:
+    mode, capital, stopped = "paper", 1.0, None
+
+    def run(self):
+        raise RuntimeError("sleeve bug")
+
+
+def test_a_failing_sleeve_thread_never_stops_the_hourly_model(tmp_path):
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+    r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120))
+    r.sleeve = Boom()
+    r.start_sleeve()
+    r.sleeve_thread.join(5)
+    r.process(start)                                                     # the model still decides and trades
+    assert r.broker.h.spot.get("BTC/USD", 0) > 0
+    logs = [json.loads(x) for f in (tmp_path / "logs").glob("2*.jsonl") for x in f.read_text().splitlines()]
+    assert any(e["event"] == "sleeve_thread" and e["status"] == "failed" for e in logs)
+
+
+def test_in_process_sleeve_shares_the_bots_rate_limiter_and_a_paper_bot_never_runs_it_live(tmp_path, monkeypatch):
+    import src.live.sleeve as sv
+    from src.api.client import RoostooClient
+    monkeypatch.setattr(sv.RoostooClient, "exchange_info",
+                        lambda self: {"TradePairs": {PAIR: {"PricePrecision": 8, "AmountPrecision": 0, "MiniOrder": 1}}})
+    cfg = copy.deepcopy(CFG)
+    cfg["live"]["sleeve"].update(enabled=True, mode="live", lots_usd={PAIR: 1000.0}, capital_usd=1000.0)
+    bot = RoostooClient(cfg["exchange"]["base_url"], None, 20, 5)
+    sl = sv.build_in_process(cfg, bot, "paper", tmp_path, LOG)
+    assert sl.mode == "paper" and isinstance(sl.ex, sv.PaperExchange)
+    assert sl.ex.quote_fn.__self__.c.limiter is bot.limiter
+    sl2 = sv.build_in_process(cfg, bot, "live", tmp_path, LOG)
+    assert sl2.mode == "live" and isinstance(sl2.ex, sv.RoostooExchange) and sl2.ex.c.limiter is bot.limiter

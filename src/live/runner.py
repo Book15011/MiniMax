@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 import time
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -131,7 +132,8 @@ def holdings_from_json(d: dict) -> Holdings:
 
 class Runner:
     def __init__(self, cfg: dict, model_name: str, mode: str, broker, client: RoostooClient, state_dir: Path,
-                 log: logging.Logger, long_only: bool = False, rest=None, archive=None, account: str | None = None):
+                 log: logging.Logger, long_only: bool = False, rest=None, archive=None, account: str | None = None,
+                 sleeve=None):
         self.cfg, self.mode, self.broker, self.client, self.dir, self.log = cfg, mode, broker, client, state_dir, log
         self.account = account or mode                    # "paper", or the key's ROOSTOO_ENV: "test" | "competition"
         self.lv, self.h, self.ex, self.v = cfg["live"], cfg["harness"], cfg["execution"], cfg["validation"]
@@ -140,6 +142,7 @@ class Runner:
         self.long_only = long_only or not self.model.spec.uses_shorts
         self.pairs = {binance_symbol(p): p for p in universe(cfg)}
         self.rest, self.archive = rest, archive
+        self.sleeve, self.sleeve_thread = sleeve, None              # live.sleeve: runs as a thread of this process
         self.state_path = state_dir / "state.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {
             "model": model_name, "mode": mode, "account": self.account, "last_bar": None, "last_decision": None,
@@ -187,7 +190,7 @@ class Runner:
     def sleeve_reserve(self) -> tuple[set[str], float]:
         """(the sleeve's pairs, its free cash). Without a readable sleeve state its whole capital is kept aside."""
         sl = self.lv.get("sleeve") or {}
-        if not sl.get("enabled"):
+        if not sl.get("enabled") or sl.get("mode") != "live":       # a paper sleeve takes nothing from the model
             return set(), 0.0
         pairs = set(sl["lots_usd"])
         try:
@@ -270,7 +273,7 @@ class Runner:
         eq_all = equity(h_all, quotes)                       # the whole account: the round's return and the lock-in
         eq = equity(h, quotes)                               # the model's share: what its targets are sized on
         sl = self.lv.get("sleeve") or {}
-        cap = float(sl["capital_usd"]) if sl.get("enabled") else 0.0
+        cap = float(sl["capital_usd"]) if (sl.get("enabled") and sl.get("mode") == "live") else 0.0
         if float(self.state.get("sleeve_capital", 0.0)) != cap:     # the sleeve's share changed: decide again now on
             self.state["sleeve_capital"] = cap                       # the model's new equity, trading every difference
             self.state["last_decision"] = None
@@ -358,9 +361,26 @@ class Runner:
             self.log.warning("machine clock is %+.1f s off Roostoo's; the bot runs on Roostoo's time (%s)", off / 1000, level)
         return off
 
+    def _sleeve_main(self) -> None:
+        """The sleeve's thread. Whatever happens to it, the hourly model keeps running."""
+        try:
+            self.sleeve.run()
+            self.emit("sleeve_thread", status="ended", stopped=self.sleeve.stopped)
+        except Exception as e:                             # noqa: BLE001 - the model must never stop for the sleeve
+            self.log.exception("sleeve thread failed")
+            self.emit("sleeve_thread", status="failed", error=f"{type(e).__name__}: {e}")
+
+    def start_sleeve(self) -> None:
+        if self.sleeve is not None and (self.sleeve_thread is None or not self.sleeve_thread.is_alive()):
+            self.sleeve_thread = threading.Thread(target=self._sleeve_main, name="sleeve", daemon=True)
+            self.sleeve_thread.start()
+            self.emit("sleeve_thread", status="started", mode=self.sleeve.mode, capital=self.sleeve.capital)
+
     def run(self, once: bool = False) -> None:
         self.emit("start", long_only=self.long_only, state=self.state_path, clock_offset_ms=self.check_clock(),
                   switched_from=self.switched_from, start_at=self.start_at)
+        if not once:
+            self.start_sleeve()
         while True:
             H = self.latest_bar(self.now())
             if self.state["last_bar"] is None or H > pd.Timestamp(self.state["last_bar"]):
@@ -424,8 +444,12 @@ def build(cfg: dict, args, log: logging.Logger) -> Runner:
                               float(ex["fee"]))
     rest = feed.rest_fetcher(lv["binance_rest"]) if lv.get("binance_rest") else None
     archive = feed.archive_fetcher(cfg["data"]["base_url"]) if lv.get("use_archive", True) else None
+    sleeve = None
+    if (lv.get("sleeve") or {}).get("enabled"):
+        from src.live.sleeve import build_in_process
+        sleeve = build_in_process(cfg, client, args.mode, state_dir, log)
     return Runner(cfg, args.model or lv["model"], args.mode, broker, client, state_dir, log, args.long_only, rest, archive,
-                  account=creds.env if creds else None)
+                  account=creds.env if creds else None, sleeve=sleeve)
 
 
 def main(argv: list[str] | None = None) -> int:

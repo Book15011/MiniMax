@@ -27,46 +27,50 @@
 - **The organisers** say this is allowed and won't be disqualified, but judges won't value it as a strategy. It would
   not survive a real order book.
 
-## How it shares the account with the hourly bot
+## How it runs: one process, one instance
 
-- **The hourly bot** (`src.live.runner`, `live.sleeve` in `config.yaml`) sizes its model on the account minus the
-  sleeve:
+- **A thread of the hourly bot.** The sleeve is not a separate service: `src.live.runner` starts it as a thread when
+  `live.sleeve.enabled`. One instance, one process.
+- **One shared ceiling.** The sleeve's client shares the bot's rate limiter, so the whole process stays under
+  `execution.calls_per_minute` (20).
+  - The sleeve places no new orders in minutes 0–6 of each hour, which belong to the hourly model. In those minutes
+    it polls every 30 s; its stops still run.
+- **Isolation.** If the sleeve thread fails or stops itself, the hourly model keeps running (tested).
+- **`mode: paper`:** no orders. Fills are simulated on the live quotes with Roostoo's measured rule, in
+  `data/live/sleeve-paper.json`. It takes nothing from the model.
+- **`mode: live`:** it trades. The hourly model then sizes itself on the account minus the sleeve:
   - it never trades the sleeve's pairs;
-  - it never spends the sleeve's free cash (read from `data/live/sleeve.json`);
-  - without that file it keeps the sleeve's whole capital aside.
-- **When the sleeve's capital changes** (including switching it on or off), the model re-decides at the next hour and
-  trades every difference. That frees the sleeve's cash, or puts it back to work.
-- **The round's return and the end-of-round lock-in** use the whole account. When the lock fires, the sleeve
-  flattens and stops (`respect_lock`).
-- **API calls:** the sleeve keeps its own ceiling (`calls_per_minute: 12`). It places no new orders in minutes 0–6 of
-  each hour, which belong to the hourly bot, so together they stay under the exchange's 30 a minute.
+  - it never spends the sleeve's free cash (read from `data/live/sleeve.json`; without it, the whole capital is kept
+    aside);
+  - when the sleeve's capital changes, the model re-decides at the next hour and frees or reclaims the cash.
+- **The whole account** sets the round's return and the end-of-round lock-in. When the lock fires, the sleeve
+  flattens and stops.
 
-## Switching it on (team runs these; Claude doesn't touch EC2 or keys)
+## Switching it on: only through code updates (commit → pull on EC2 → restart, the allowed update path)
 
-1. **Canary on the TEST account first,** from the research server with the test key, through a repo script:
-   `python -m src.live.fillcheck --limit --pair STO/USD --sizes 1000`.
-   - **Pass if:** a buy at the bid fills within seconds as MAKER at 0.05%, and a sell one step up fills when the bid
-     reaches it.
-2. **Commit** `live.sleeve.enabled: true` with the agreed `capital_usd` and `lots_usd` on the launch branch, and pull
-   it on EC2.
-3. **Restart the hourly bot once**, so it reads the sleeve split: `sudo systemctl restart minimax-bot`.
-   - It resumes from its state.
-   - At the next hour it re-decides on its smaller share and sells down to free the sleeve's cash.
-4. **Install and start the sleeve:**
-   `sudo cp deploy/minimax-sleeve.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now minimax-sleeve`.
-   - Until the hourly bot has freed the cash, its buys are refused and it waits (`waiting_for_cash` in its log).
-5. **Watch:** `python -m src.live.sleeve status`, plus its log `data/live/logs/sleeve-YYYYMMDD.jsonl`.
+There is no test-account canary (team decision, 2026-10-08). The paper steps replace it.
+
+1. **Update A: paper inside the live bot.** Commit `live.sleeve: {enabled: true, mode: paper}` on the launch branch
+   and update EC2 as usual.
+   - The live model is untouched. The sleeve paper-trades on EC2's own quotes and latency.
+   - Check `python -m src.live.sleeve status --mode paper` and `data/live/logs/sleeve-*.jsonl` for a day.
+2. **Update B: live with a small capital** (the canary in practice): `mode: live`, `capital_usd` about 10–20k, lots
+   in the same proportions.
+   - At the next hour the model re-decides on its share and frees the cash. The sleeve waits for it
+     (`waiting_for_cash`).
+   - **Check the fills:** buys at the bid fill within seconds, the role is MAKER at 0.05%, and sells fill when the bid
+     reaches them.
+3. **Update C: the agreed size,** if B behaves like the paper runs.
 
 ## Stopping it
 
 | What | How |
 |---|---|
-| **Flatten and stop** | Create `data/live/sleeve.KILL`, or commit `enabled: false`, then restart the hourly bot so it takes the cash back |
-| **Automatic stops** | Daily loss 3% (no new buys until the next HKT day); total loss 8% of its capital (flatten and stop); 5 API errors in a row; 10 minutes before `live.end_at`; the end-of-round lock-in |
-| **An order whose outcome is unknown** | The sleeve stops at once, to be reconciled before restarting |
+| **Flatten and stop** | Create `data/live/sleeve.KILL` (a file the bot reads), or commit `enabled: false` / `mode: paper` and update. The model takes the cash back at the next hour |
+| **Automatic stops** | Daily loss 3% (no new buys until the next HKT day); total loss 8% of its capital (flatten and stop); 5 API errors in a row; 10 minutes before `live.end_at`; the end-of-round lock-in; an order whose outcome is unknown (stop; reconcile before the next update) |
 
 ## Still unverified
 
 - **Our order latency from EC2.** The research server takes 1.5–6 s to reach Roostoo.
-- **Whether Roostoo fills our orders the way the measured rule says.** That is the canary.
+- **Whether Roostoo fills our own orders the way the measured rule says.** Update B is the check.
 - **`CoinChange` / `UnitChange` in order replies:** the exact sign and fee convention. The sleeve uses absolute values.
