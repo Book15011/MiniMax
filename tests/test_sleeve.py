@@ -340,3 +340,45 @@ def test_in_process_sleeve_shares_the_bots_rate_limiter_and_a_paper_bot_never_ru
     assert sl.ex.quote_fn.__self__.c.limiter is bot.limiter
     sl2 = sv.build_in_process(cfg, bot, "live", tmp_path, LOG)
     assert sl2.mode == "live" and isinstance(sl2.ex, sv.RoostooExchange) and sl2.ex.c.limiter is bot.limiter
+
+
+# ---------------- the live probe (Book, 2026-10-08)
+
+def probe_cfg(**over):
+    return {"probe": {"enabled": True, "pair": PAIR, "lot_usd": 500.0, "buys": 5, "max_failed": 2, "wait_s": 20}, **over}
+
+
+def test_probe_passes_when_buys_at_the_bid_fill_then_full_lots(tmp_path):
+    bids = [100.0, 100.0] + [101.0, 101.0, 100.0, 100.0] * 12
+    sl, s, ex = make_sleeve(tmp_path, bids, mode="live", min_check_s=0, **probe_cfg())
+    first = []
+    orig = ex.place_limit
+    ex.place_limit = lambda pair, side, qty, price: (first.append(float(qty) * float(price)) if side == "BUY" else None) or orig(pair, side, qty, price)
+    run(sl, s, len(bids))
+    assert sl.probe["status"] == "passed" and all(r["pass"] for r in sl.probe["results"])
+    assert max(first[:5]) <= 500.0 and max(first) > 900.0              # small lots while probing, full lots after
+    assert not sl.stopped
+
+
+class Queued(PaperExchange):
+    """A real order book: a resting buy fills only when the bid goes BELOW it."""
+
+    def _match(self):
+        for oid, o in list(self.open.items()):
+            q = self.last.get(o["pair"])
+            if q and o["side"] == "BUY" and q[0] < o["price"] - 1e-12:
+                super()._match()
+                return
+
+
+def test_probe_fails_and_stops_for_good_when_buys_at_the_bid_do_not_fill(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 40, ex_cls=Queued, mode="live", min_check_s=0, **probe_cfg())
+    run(sl, s, 40)                                                       # 4 minutes, the bid never moves
+    assert sl.probe["status"] == "failed" and sl.stopped == "fill_rule"
+    assert sum(1 for r in sl.probe["results"] if not r["pass"]) == 3 and ex.pending_pairs() == {}
+    assert sl.value(s.quotes([PAIR])) > 999.0                           # it never bought: nothing lost
+
+
+def test_no_probe_in_paper_mode(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 3, **probe_cfg())
+    assert sl.probe["status"] == "off"

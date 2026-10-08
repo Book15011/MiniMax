@@ -39,7 +39,13 @@ Safety and robustness:
   `min_step_frac` of the price (the +1-step win must beat the fees);
 - nothing trades before `live.start_at`; it flattens and stops `flatten_before_end_s` before `live.end_at`; with
   `respect_lock` it also flattens when the hourly model's end-of-round lock-in fires;
-- the state (cash, coins, open orders) is written atomically every loop; the hourly bot reads `cash_free` from it.
+- the state (cash, coins, open orders) is written atomically every loop; the hourly bot reads `cash_free` from it;
+- PROBE (Book's proposal, 2026-10-08): the whole edge rests on one measured fact, that a resting buy fills once the
+  bid EQUALS its price (no queue). Before full size, a live sleeve trades only `probe.pair` with a small lot. Each of
+  its buys counts: a pass if it filled while the bid never went below its price (a queue could not have filled it); a
+  fail if the bid sat at its price for `probe.wait_s` with no fill (it is then re-posted); neither if the bid went
+  below first. More than `probe.max_failed` fails among the first `probe.buys` counted -> flatten and stop for good
+  ("fill_rule"); otherwise full lots on every pair.
 """
 from __future__ import annotations
 
@@ -62,7 +68,7 @@ from src.api.rules import PairRule, fmt, parse_exchange_info, truncate
 from src.config import REPO_ROOT, load_config, resolve
 
 MAKER, TAKER = 0.0005, 0.001
-PERMANENT = ("kill", "total_loss", "errors", "round_end", "lock")
+PERMANENT = ("kill", "total_loss", "errors", "round_end", "lock", "fill_rule")
 
 
 # ---------------------------------------------------------------- exchange interface
@@ -385,8 +391,9 @@ class Sleeve:
         self.errors, self.error_since = 0, None
         self.last_check: dict[str, float] = {}
         self.last_reconcile = 0.0
-        self.usd_checked_at, self.usd_free_seen = -1e18, 0.0
+        self.usd_checked_at, self.usd_seen, self.cash_at_check = -1e18, 0.0, 0.0   # the wallet's free USD, estimated
         self.notes_at: dict[str, float] = {}
+        self._last_bid: dict[str, float] = {}
         self.commit = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], cwd=REPO_ROOT, capture_output=True,
                                      text=True).stdout.strip()
         lv = cfg["live"]
@@ -402,7 +409,9 @@ class Sleeve:
             self.coins = {k: Coin(**{f: x for f, x in v.items() if f in known}) for k, v in st["coins"].items()}
             self.cash, self.capital = float(st["cash"]), float(st["capital"])
             self.day, self.day_start_value, self.stopped = st["day"], float(st["day_start_value"]), st.get("stopped")
+            self.probe = st.get("probe") or self._new_probe()
         else:
+            self.probe = self._new_probe()
             self.coins, self.cash = {}, cap
             self.capital, self.day, self.day_start_value, self.stopped = cap, None, cap, None
         # the committed config wins: lots and capital may change with an update (paper -> live, or a new size)
@@ -425,6 +434,58 @@ class Sleeve:
                 raise SystemExit(f"{p}: no trading rule from exchangeInfo")
         if isinstance(ex, PaperExchange):
             ex.restore(self.coins)
+
+    # ---- the probe
+    def _new_probe(self) -> dict:
+        pc = self.sc.get("probe") or {}
+        on = bool(pc.get("enabled")) and self.mode == "live"
+        return {"status": "pending" if on else "off", "results": [], "open": {}}
+
+    def probing(self) -> bool:
+        return self.probe.get("status") == "pending"
+
+    def _probe_track(self, c: Coin, px: float, bid: float, t: float, oid: str | None) -> None:
+        if self.probing() and oid and c.pair == self.sc["probe"]["pair"]:
+            self.probe["open"][oid] = {"t": t, "px": px, "min_bid": bid, "touched_at": t if bid <= px + 1e-15 else None}
+
+    def _probe_result(self, oid: str, ok: bool, t: float) -> None:
+        info = self.probe["open"].pop(oid, None)
+        if info is None:
+            return
+        pc = self.sc["probe"]
+        self.probe["results"].append({"order": oid, "pass": ok, "wait_s": round(t - info["t"], 1)})
+        self.emit("probe", order=oid, passed=ok, wait_s=round(t - info["t"], 1), results=len(self.probe["results"]))
+        res = self.probe["results"]
+        fails = sum(1 for r in res if not r["pass"])
+        if fails > int(pc["max_failed"]):
+            self.probe["status"] = "failed"
+        elif len(res) >= int(pc["buys"]):
+            self.probe["status"] = "passed"
+        if self.probe["status"] != "pending":
+            self.emit("probe_done", status=self.probe["status"], results=res)
+
+    def _probe_tick(self, q: dict, t: float) -> None:
+        """Open probe buys: the lowest bid seen while resting, and how long the bid has sat at (or under) the price.
+        A buy still open after the bid sat at its price for wait_s is a fail (a queue); it is cancelled and re-posted."""
+        pc = self.sc["probe"]
+        pair = pc["pair"]
+        c = self.coins.get(pair)
+        eps = self.step(pair) * 1e-6
+        for oid, info in list(self.probe["open"].items()):
+            if c is None or c.order_id != oid or c.phase != "BUYING":
+                self.probe["open"].pop(oid, None)               # filled (counted in _bought) or cancelled
+                continue
+            if pair not in q:
+                continue
+            b = q[pair][0]
+            info["min_bid"] = min(info["min_bid"], b)
+            if b <= info["px"] + eps:
+                info["touched_at"] = info["touched_at"] or t
+                if b >= info["px"] - eps and t - info["touched_at"] >= float(pc["wait_s"]):
+                    self._probe_result(oid, False, t)
+                    self._cancel(c, t)
+            else:
+                info["touched_at"] = None
 
     # ---- helpers
     def step(self, pair: str) -> float:
@@ -465,7 +526,7 @@ class Sleeve:
     def save(self, quotes: dict | None = None) -> None:
         st = {"mode": self.mode, "ts": self.clock(), "capital": self.capital, "cash": self.cash, "cash_free": self.cash_free(),
               "value": self.value(quotes or {}), "day": self.day, "day_start_value": self.day_start_value,
-              "stopped": self.stopped, "flat": self.flat(), "pairs": sorted(self.coins),
+              "stopped": self.stopped, "flat": self.flat(), "pairs": sorted(self.coins), "probe": self.probe,
               "coins": {k: asdict(v) for k, v in self.coins.items()}}
         tmp = self.state_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(st, indent=1, default=str))
@@ -474,6 +535,12 @@ class Sleeve:
     # ---- books
     def _bought(self, c: Coin, f: Fill, t: float) -> None:
         """A buy filled (fully, or partly before a cancel): the coins and their cost join the lot."""
+        if c.order_id in self.probe.get("open", {}):
+            info = self.probe["open"][c.order_id]
+            if info["min_bid"] >= info["px"] - self.step(c.pair) * 1e-6:
+                self._probe_result(c.order_id, True, t)          # filled with the bid never under its price
+            else:
+                self.probe["open"].pop(c.order_id, None)          # the bid went under it first: says nothing
         got = f.coin_change if f.coin_change > 0 else f.qty * (1 - MAKER)
         paid = -f.usd_change if f.usd_change < 0 else f.qty * (f.price or c.order_px or 0.0)
         locked = c.order_qty * (c.order_px or 0.0)
@@ -581,14 +648,19 @@ class Sleeve:
     def _place_buy(self, c: Coin, px: float, t: float) -> None:
         rule = self.rules[c.pair]
         lot = min(c.lot_usd, self.cash)
+        if self.probing():
+            lot = min(lot, float(self.sc["probe"]["lot_usd"]))
         qty = truncate(Decimal(str(lot)) / Decimal(str(px)), rule.amount_precision)
         if qty <= 0 or float(qty) * px < max(float(rule.min_order), 10.0):
             return
         if self.mode == "live":                                   # the wallet must hold the cash (the hourly model
-            if t - self.usd_checked_at >= 60.0:                   # frees it at its next hour after a change)
-                self.usd_free_seen, self.usd_checked_at = self.ex.balances().get("USD", 0.0), t
-            if self.usd_free_seen < float(qty) * px * 1.001:
-                self.note("wait-cash", 600, "waiting_for_cash", pair=c.pair, lot=float(qty) * px, usd_free=self.usd_free_seen)
+            need = float(qty) * px * 1.001                        # frees it at its next hour after a change)
+            est = self.usd_seen + (self.cash - self.cash_at_check)   # the last reading plus the sleeve's own changes
+            if est < need and t - self.usd_checked_at >= 15.0:
+                self.usd_seen, self.cash_at_check, self.usd_checked_at = self.ex.balances().get("USD", 0.0), self.cash, t
+                est = self.usd_seen
+            if est < need:
+                self.note("wait-cash", 600, "waiting_for_cash", pair=c.pair, lot=float(qty) * px, usd_free=est)
                 return
         try:
             f = self.ex.place_limit(c.pair, "BUY", qty, self.price(c.pair, px))
@@ -600,10 +672,10 @@ class Sleeve:
             c.blocked_until = t + min(60.0 * 2 ** (c.rejects - 1), 1800.0)
             self.emit("rejected", pair=c.pair, side="BUY", error=str(e)[:200], retry_in_s=c.blocked_until - t)
             return
-        self.usd_free_seen -= float(qty) * px
         self.cash -= float(qty) * px
         c.order_id, c.order_px, c.order_qty, c.next_px = f.order_id, float(self.price(c.pair, px)), float(qty), None
         self.emit("order", pair=c.pair, side="BUY", px=c.order_px, qty=float(qty), status=f.status, id=f.order_id)
+        self._probe_track(c, c.order_px, self._last_bid.get(c.pair, c.order_px), t, f.order_id)
         if f.status == "FILLED":
             self._bought(c, f, t)
 
@@ -701,6 +773,13 @@ class Sleeve:
             self.stopped = "total_loss"
             self.save(q)
             return
+        if self.probing():
+            self._probe_tick(q, t)
+        if self.probe.get("status") == "failed":
+            self.flatten(q, "probe: buys at the bid did not fill as measured (a queue?)")
+            self.stopped = "fill_rule"
+            self.save(q)
+            return
         no_new = v <= self.day_start_value * (1 - float(self.sc["daily_loss_limit"]))
         if no_new:
             self.note("daily", 3600, "daily_loss_limit", value=v, day_start=self.day_start_value)
@@ -749,7 +828,9 @@ class Sleeve:
             small = step / b < min_step
             if small:
                 self.note(f"step-{p}", 3600, "step_too_small", pair=p, step_frac=step / b)
-            stop_buying = no_new or c.lot_usd <= 0 or t < c.blocked_until or small
+            self._last_bid[p] = b
+            probe_wait = self.probing() and p != self.sc["probe"]["pair"]   # other pairs wait for the probe
+            stop_buying = no_new or c.lot_usd <= 0 or t < c.blocked_until or small or probe_wait
             if c.order_id is not None and (stop_buying or should_trail(c, b, step, self.p)):
                 trail = not stop_buying
                 self._cancel(c, t)

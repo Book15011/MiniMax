@@ -236,6 +236,13 @@ live:
     breaker_win: 0.60           # 60% (normal trading never went under 67% over 30 trips; a broken fill rule gives 40-55%),
     breaker_pause_s: 7200       # the coin pauses 2 h (a false alarm costs little)
     min_step_frac: 0.0015       # no new buys while one price step is under 0.15% of the price (a win must beat the fees)
+    probe:                      # live only: before full size, trade probe.pair alone with a small lot. A buy that fills with
+      enabled: true             # the bid never under its price passes; one still open after the bid sat at its price for
+      pair: STO/USD             # wait_s fails. More than max_failed fails in the first `buys` counted -> flatten and stop for
+      lot_usd: 5000             # good (the edge rests on those buys filling: Roostoo's measured rule, no queue)
+      buys: 5
+      max_failed: 2
+      wait_s: 20
     flatten_before_end_s: 600   # flatten 10 minutes before live.end_at
     respect_lock: false         # true: the end-of-round lock-in also stops the sleeve (its steady gains count toward the
                                 # top-20 return gate and its risk ratios, so it keeps going by default)
