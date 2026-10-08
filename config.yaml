@@ -593,3 +593,55 @@ models:
 selection:
   rule: margin                    # amended 2026-10-02 (reports/review/20261002-amend-pick-rule.md); legacy = the pre-registered tie test
   tie_margin: 0.03                # margin rule: tied only if also within this of the top's HEADLINE_RET
+
+# Book research evaluator: separate from scoring v2 and live strategy settings.
+book_regime_eval:
+  schema_version: 1
+  asof: "2026-10-08 12:00:00+00:00"
+  competition_start: "2026-10-04 12:00:00+00:00"
+  competition_end: "2026-10-18 12:00:00+00:00"
+  historical_end: "2026-09-30 00:00:00+00:00"
+  incumbent: pol_switch_vt_tl_e20v45
+  tool_version: 3036a0d8bfdaa6a0
+  horizon_hours: 336
+  prefix_hours: 96
+  embargo_hours: 24
+  state_grid_hour_utc: 12
+  features:
+    FAST: [btc_ret24, btc_ret48, btc_ret168]
+    TREND: [btc_ret720, btc_ma200, btc_high720]
+    BREADTH: [breadth48, alt_minus_btc48]
+    VOL: [btc_vol168, btc_volratio]
+  fast_hours: [24, 48, 168, 720]
+  breadth_hours: 48
+  min_breadth_coins: 20
+  prefix_similarity_tolerance: 0.02
+  volatility_hours: [168, 720]
+  annual_hours: 8760
+  minimum_hour_coverage: 0.98
+  lookalikes: {k: 25, min_separation_days: 14, span_days: 90, max_per_span: 3}
+  sensitivity_k: [15, 40]
+  alpha_candidates: [0.0, 0.25, 0.5]
+  walkforward:
+    start: "2022-07-01 12:00:00+00:00"
+    screen_end: "2024-06-30 23:59:59+00:00"
+    confirm_start: "2024-07-01 00:00:00+00:00"
+    end: "2026-07-25 12:00:00+00:00"
+    step_days: 28
+    min_queries: 20
+    min_pool: 500
+    bootstrap_block_queries: 4
+  bootstrap: {reps: 2000, seed: 20261008, level: 0.90}
+  gates:
+    min_confirm_skill_lower: 0.0
+    max_brier_degradation: 0.0
+    max_return_mean_sensitivity: 0.03
+    max_up_probability_sensitivity: 0.15
+  close_fee: 0.001
+  short: {fee_each_side: 0.001, minimum_episodes: 30}
+  registry: results/scoring/registry.jsonl
+  cache_dir: results/scoring/cache
+  historical_panel: data/validation
+  live_panel: results/book/shadow/h1
+  paper_equity: results/book/paper-live/equity.csv
+  out_dir: results/book/20261008-regime-eval
