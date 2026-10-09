@@ -20,6 +20,12 @@ scripts/lock harness-<member> -- nice -n 10 .venv/bin/python -m backtest.run --m
 
 `--score` adds `reports/<name>/<YYYYMMDD-HHMM>-score.md` and its charts next to the harness's report. The first run of a tool version also scores the six benchmarks (a few minutes); after that they come from the cache.
 
+## Separate checkpoint score (--score2)
+
+Book's feature/book-score2 adds --score2 to the model command and publishes results/scoring/leaderboard_2.md plus a CSV and separate append-only registry. Use --score --score2 to publish both boards with one scoring computation. --score alone retains the existing behavior.
+
+The new board includes instructions and failed-gate status at the top. At the preserved October 8 checkpoint, adaptive weights and production ranking remain disabled; the published values are historical own-state continuation diagnostics. Full usage, interpretation, integrity checks and the path to stronger evidence: [SCORE2.md](SCORE2.md).
+
 ## Scoring v2: return first (2026-10-02)
 
 Every constant is under `scoring:` in `config.yaml`; the code is `backtest/scoring/returnfirst.py` on top of the modules below. The rules were committed before any run (`reports/review/20261002-prereg-return-first.md`, commit `0e9280b`).
