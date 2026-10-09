@@ -848,3 +848,11 @@ book_intraday_short:
 
 book_intraday_persistent:
   exit_rebound_buffer: 0.005
+
+book_intraday_slow:
+  range_minutes: 1440
+  max_hold_minutes: 1440
+  cooldown_minutes: 120
+  risk_horizon_minutes: 1440
+  stop_floor: 0.012
+  exit_rebound_buffer: 0.005

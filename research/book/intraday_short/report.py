@@ -32,13 +32,20 @@ def main(additional=None):
  if sha(OUT/"window_results.csv")!=m["window_results_sha256"]:raise ValueError("Result changed")
  if json.loads((OUT/"evaluation_before.json").read_text())!=json.loads((OUT/"evaluation_after.json").read_text()):raise ValueError("Frozen inputs changed")
  data=pd.read_csv(OUT/"window_results.csv")
- if additional is not None:
-  additional=Path(additional)
+ extra_inputs={}
+ roots=[] if additional is None else (list(additional) if isinstance(additional,(list,tuple)) else [additional])
+ for extra in roots:
+  extra=Path(extra)
   for name in ["evaluation_manifest.json","independent_data_audit.json","independent_execution_audit.json"]:
-   if json.loads((additional/name).read_text())["status"]!="PASS":raise ValueError("Earlier evidence failed")
-  old=json.loads((additional/"evaluation_manifest.json").read_text())
-  if sha(additional/"window_results.csv")!=old["window_results_sha256"]:raise ValueError("Earlier result changed")
-  data=pd.concat([pd.read_csv(additional/"window_results.csv"),data],ignore_index=True)
+   if json.loads((extra/name).read_text())["status"]!="PASS":raise ValueError("Earlier evidence failed")
+  old=json.loads((extra/"evaluation_manifest.json").read_text())
+  digest=sha(extra/"window_results.csv")
+  if digest!=old["window_results_sha256"]:raise ValueError("Earlier result changed")
+  if sha(extra/"cases.parquet")!=sha(OUT/"cases.parquet"):raise ValueError("Earlier cases differ")
+  if json.loads((extra/"evaluation_before.json").read_text())!=json.loads((extra/"evaluation_after.json").read_text()):raise ValueError("Earlier frozen inputs changed")
+  extra_inputs[str(extra)]=digest
+  data=pd.concat([pd.read_csv(extra/"window_results.csv"),data],ignore_index=True)
+ if data.duplicated(["model","start","scenario","hours"]).any():raise ValueError("Duplicate model case")
  cases=pd.read_parquet(OUT/"cases.parquet");models=sorted(data.model.unique());summary=[];bounds=[];ranking=[]
  for name in models:
   primary={};lower=[];passes=[];accuracy_lows=[];stressmeans=[]
@@ -66,7 +73,7 @@ def main(additional=None):
   rows.append([r.rank,r.model,pct(r.selection_lower_family90),int(r.accuracy_rank) if pd.notna(r.accuracy_rank) else "-",int(r.return_rank),f"{r.wins}/{r.completed}",pct(r.accuracy),f"{r.firing}/25",r.censored,pct(r.mean),pct(r.median),pct(r.p10),pct(r.worst),pct(r.MDD),f"{r.CS:.3f}",pct(r.doubled_worst_profile_mean),"YES" if r.stronger_evidence else "NO"])
  text="# Ranked minute short-only research\n\n"
  text+=("No model passed the declared stronger-evidence rules. Rank1 is a research priority, not a validated replacement.\n\n" if not rank.stronger_evidence.any() else "At least one model passed the retrospective evidence rules; prospective performance and current-account switching remain unverified.\n\n")
- text+=f"Read rank as a conservative experiment order. {len(models)} retained hypotheses; five initial mechanisms and two targeted persistent-exit follow-ups when present. Follow-ups were chosen after observing initial regime-clear churn; all observations remain spent. Selection bound = worst of six weak-profile/horizon lower mean-return bounds; quarter bootstrap20,000 draws with Bonferroni adjustment across{len(models)}models x6contexts. A negative bound does not establish reliable positive return.\n\n"
+ text+=f"Read rank as a conservative experiment order. {len(models)} retained hypotheses; five initial mechanisms, two persistent-exit follow-ups and one slower breakdown when present. Follow-ups were chosen after observing initial regime-clear churn; all observations remain spent. Selection bound = worst of six weak-profile/horizon lower mean-return bounds; quarter bootstrap20,000 draws with Bonferroni adjustment across {len(models)} models x 6 contexts. A negative bound does not establish reliable positive return.\n\n"
  text+="Accuracy rank separately sorts worst-profile lower90% completed-cycle accuracy; return rank sorts worst-profile mean228h native-exposure return. These two ranks are descriptive, not independent selection evidence. Main displayed counts/returns/risk use archive-full25windows at228h. Full second-profile/horizon details are in profile_summary.csv.\n\n"
  text+="A signal counts only when a SHORT_OPEN filled. Accuracy = profitable fully closed cycles after both fees/spreads divided by completed cycles. Endpoint-forced closures are censored and excluded from accuracy, but included in return. All25windows, including no-trade windows, count in return. More signals in one window do not create independent market evidence.\n\n"
  text+="Return is the entire short-only cash-start portfolio, with25%maximum intended entry gross and10%percoin, not a100%invested short return or additive live-account contribution. Minute closes trigger exits, followed by one-minute market execution; a rebound gap can exceed the stop. Fees0.10% and halfspread0.05%each side. CS uses unchanged daily FLOORED.V1 HKT moments and weights, with sampled minute MDD in Calmar. CS UTC is in theCSV. This is a separate minute protocol, not hourly --score2 production registration.\n\n"
@@ -79,9 +86,47 @@ def main(additional=None):
   refs=pd.read_csv(OUT/"common_prefix_baselines.csv")
   text+="\n\n### Same dates: frozen full-portfolio references\n\nThese references use the sameOct4 20HKT-Oct9 08HKT dates and100kcapital, but five/broader assets and accepted recorded quotes/archive1bp proxy; prototypes use four assets and5bp stress. The clone was calibrated on this period and retains19/33literalagreement. Observed ledger keeps its literal deficit and fee assumptions. This table is conditional comparison, not identical-execution or prospective evidence.\n\n"
   text+=table(["Model/reference","Full portfolio return","MDD"],[[r["model"],pct(r["return"]),pct(r.MDD)] for _,r in refs.iterrows()])
+ text+="\n\n## Down and rebound scenarios, labeled after the fact\n\nThis answers how shorts behaved when the historical market subsequently fell or rebounded. It does not estimate that such a move will happen now. These future labels never admit the main lookalikes or change the main rank. BTC following240h <=-2% is down, >=+2% is rebound; displayed strategy outcomes are228h. Counts are small and this horizon difference is intentional.\n\n"
+ scenario_rows=[]
+ for profile in PROFILES:
+  for label,mask in [("future_down",cases.future_return<=-.02),("future_rebound",cases.future_return>=.02)]:
+   selected=set(map(str,cases.index[cases[profile]&mask]))
+   subset=data[(data.scenario=="original")&(data.hours==228)&data.start.isin(selected)]
+   values=[]
+   for model in models:
+    f=subset[subset.model==model]
+    if len(f):values.append({"model":model,**summary_row(f)})
+   values=sorted(values,key=lambda r:(-r["mean"],r["model"]))
+   for place,r in enumerate(values,1):scenario_rows.append({"profile":profile,"scenario":label,"scenario_rank":place,**r})
+ pd.DataFrame(scenario_rows).to_csv(OUT/"scenario_summary.csv",index=False)
+ text+=table(["Profile","Scenario","Scenario return rank","Model","N","Mean short-only return","Wins/closed","Censored","Mean MDD"],[[r["profile"],r["scenario"],r["scenario_rank"],r["model"],r["n"],pct(r["mean"]),f'{r["wins"]}/{r["completed"]}',r["censored"],pct(r["MDD"])] for r in scenario_rows])
+ text+="\n\nThe family adjustment covers the declared minute hypotheses only; it does not undo adaptive choices informed by earlier hourly/clone research or create an untouched holdout. No scenario result upgrades the stronger-evidence flag.\n"
  text+="\n\n## Reproduce/read evidence\n\nRemote Book worktree: /home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short. Source/research: research/book/intraday_short/{PROTOCOL.md,RESEARCH.md,engine.py,run.py,audit.py,report.py}. Evaluate this frozen initial batch with .venv/bin/python -B -m research.book.intraday_short.run --score; persistent follow-ups use run_persistent --score; audited publication uses research.book.intraday_short.score --score --phase persistent (existing artifacts intentionally prevent overwrite). New experiments require a new output/version and frozen plan before outcomes. Hourly registered models continue to use --score2 and automatically regenerate the ranked hourly short section.\n\n"
  text+="Data:184checksummedarchives, four fixed coinsBTC/ETH/BNB/XRP; all historical weak/control dates retained. Initial five-coin plan failed a pre-listingSOLJuly2020 control and is preserved under v1; four-coin amendment preceded any minute outcome. Fresh BCH29/30query remains unrepaired. Some publisher zero-volume halt bars close early; nominal minute-end timestamp delays their use conservatively. Original overstrict interval-audit failure is retained. No recorded order-book execution, funding, borrow or API-latency reconstruction is claimed. Three-minute latency stress is in window_results.csv.\n"
+ # Improve prose spacing only; model identifiers, numeric tables and paths stay literal.
+ prose_replacements={
+ "Rank1":"Rank 1","bootstrap20,000":"bootstrap with 20,000",
+ "across7models x6contexts":"across 7 models x 6 contexts",
+ "across5models x6contexts":"across 5 models x 6 contexts",
+ "lower90%":"lower 90%","mean228h":"mean 228h","archive-full25windows at228h":"archive-full 25 windows at 228h",
+ "All25windows":"All 25 windows","with25%maximum":"with 25% maximum","and10%percoin":"and 10% per coin",
+ "a100%invested":"a 100% invested","Fees0.10%":"Fees 0.10%","halfspread0.05%each":"halfspread 0.05% each",
+ "theCSV":"the CSV","bounds>0;30completed cycles,12quarters and12firing":"bounds > 0; 30 completed cycles, 12 quarters and 12 firing",
+ "mean>0; median>=0; positive-control mean>=-1%":"mean > 0; median >= 0; positive-control mean >= -1%",
+ "Oct4 20HKT toOct9 08HKT,100000cash":"October 4 at 20:00 HKT to October 9 at 08:00 HKT, starting with $100,000 cash",
+ "ends75minutes":"ends 75 minutes","sameOct4 20HKT-Oct9 08HKT dates and100kcapital":"same dates and $100,000 starting capital",
+ "quotes/archive1bp":"quotes/archive 1bp","and5bp":"and 5bp","retains19/33literalagreement":"retains 19/33 literal agreement",
+ "following240h":"following 240h","outcomes are228h":"outcomes are 228h",
+ "Data:184checksummedarchives, four fixed coinsBTC/ETH/BNB/XRP":"Data: 184 checksummed archives, four fixed coins: BTC, ETH, BNB and XRP",
+ "pre-listingSOLJuly2020":"pre-listing SOL July 2020","Fresh BCH29/30query":"Fresh BCH 29/30 query"
+ }
+ lines=[]
+ for line in text.splitlines():
+  if not line.startswith("|"):
+   for before,after in prose_replacements.items():line=line.replace(before,after)
+  lines.append(line)
+ text="\n".join(lines)+"\n"
  (OUT/"leaderboard_short.md").write_text(text);Path("research/book/intraday_short/RESULTS.md").write_text(text)
- (OUT/"report_manifest.json").write_text(json.dumps({"status":"PASS","source_sha256":sha(__file__),"input_sha256":sha(OUT/"window_results.csv"),"earlier_input_sha256":sha(Path(additional)/"window_results.csv") if additional else None,"board_sha256":sha(OUT/"leaderboard_short.csv"),"ranking_family_models":len(models),"all_history_spent":True},indent=2))
+ (OUT/"report_manifest.json").write_text(json.dumps({"status":"PASS","source_sha256":sha(__file__),"input_sha256":sha(OUT/"window_results.csv"),"earlier_input_sha256":extra_inputs,"board_sha256":sha(OUT/"leaderboard_short.csv"),"ranking_family_models":len(models),"all_history_spent":True},indent=2))
  print(rank[["rank","model","selection_lower_family90","mean","accuracy","stronger_evidence"]].to_string(index=False),flush=True)
 if __name__=="__main__":main()
