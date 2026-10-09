@@ -1,0 +1,14 @@
+source_worktree: /home/ubuntu/test/MiniMax/.worktrees/book-book-short-study
+frozen_model_commit: 317a600c53598fd21830a3884b549dacb913f79a
+models: [book_short_trend, book_short_rebound, book_short_breakdown]
+output: results/book/20261009-short-cost-stress
+window_first: '2020-06-01T12:00:00Z'
+window_spacing_days: 14
+window_count: 160
+horizon_hours: 228
+fee_multiplier: 2.0
+half_spread_multiplier: 2.0
+quantile: 0.1
+relative_tolerance: 0.000000000001
+identity: short_cost_stress_v1_fixed_160_228h
+wrapper_identity_commit: 02b06ff
