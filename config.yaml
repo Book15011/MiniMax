@@ -898,7 +898,7 @@ models:
     cooldown_hours: 24
   book_cashshort_confirm:
     long_base: &id014
-      vt:
+      vt: &baitoey_vt_dual_params
         lookback_days:
         - 7
         - 14
@@ -1389,6 +1389,17 @@ models:
     rebound_sigma_hours: 6
     rebound_sigma: 0.75
     rebound_floor: 0.003
+  # --- baitoey: three overlays on e20v45 and vt_dual (research/baitoey/prereg/20261009-overlays.md; cherry-picked 37ed051) ---
+  baitoey_ovl_altbtc_a_e20: {vt: *id013, lookback_days: 10}
+  baitoey_ovl_altbtc_b_e20: {vt: *id013, lookback_days: 10}
+  baitoey_ovl_brk_e20: {vt: *id013, channel_days: 20, scan_days: 120}
+  baitoey_ovl_evt_e20: {vt: *id013, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 0.5}
+  baitoey_ovl_evtctl_e20: {vt: *id013, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 1.0}
+  baitoey_ovl_altbtc_a_dual: {vt: *baitoey_vt_dual_params, lookback_days: 10}
+  baitoey_ovl_altbtc_b_dual: {vt: *baitoey_vt_dual_params, lookback_days: 10}
+  baitoey_ovl_brk_dual: {vt: *baitoey_vt_dual_params, channel_days: 20, scan_days: 120}
+  baitoey_ovl_evt_dual: {vt: *baitoey_vt_dual_params, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 0.5}
+  baitoey_ovl_evtctl_dual: {vt: *baitoey_vt_dual_params, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 1.0}
   # --- book: e20v45 unchanged + the cash-short study's conditional short leg (feature/e20-shortguard; research only) ---
   book_e20guard_pullback: &e20guard
     e20: *id013
