@@ -90,3 +90,15 @@ def test_bad_volatility_excluded_and_universe_respected():
     v=MarketView(v.t,v.close,v.quote_volume,tuple(COINS[:-1]),v.params,pd.Series(dtype=float))
     w=m.targets(v)
     assert "BTCUSDT" not in w and "XRPUSDT" not in w
+
+
+def test_cache_fingerprint_captures_mechanism_wrappers():
+    from backtest.evaluate import model_modules
+    from backtest.scoring.evaluate import model_sources
+    sources=[]
+    for name in NAMES:
+        model=get(name)
+        assert "src.models.book."+name in model_modules(model)
+        assert "src.models.book._short_study" in model_modules(model)
+        sources.append(model_sources(model))
+    assert len(set(sources))==len(NAMES)

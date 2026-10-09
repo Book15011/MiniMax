@@ -20,3 +20,5 @@ Same observed competition period comparison must use shared planner/paper broker
 Original frozen clone and refined inverse-volatility-cap clone are distinct revisions. Retrospective Oct8–9 is already seen and cannot become a fresh test.
 Observed fees partly uncertain: onlyT001 market0.1% confirmed. Do not claim exact observed net return without this caveat.
 No deployment, main merge, live process, signed API or secret access.
+
+Cache identity repair before first publication: wrapper subclasses now fingerprint the mechanism constructor. Trading rules and parameters unchanged;72 synthetic causal cases match exactly. The partial first run is preserved/excluded at results/book/20261009-short-study. Final run artifacts use results/book/20261009-short-study-v2.

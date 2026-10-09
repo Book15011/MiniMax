@@ -6,7 +6,7 @@ from src.config import REPO_ROOT, load_config, resolve
 from backtest.scoring.score2 import load_checkpoint
 
 MODELS=("book_short_trend","book_short_rebound","book_short_breakdown")
-OUT=resolve("results/book/20261009-short-study")
+OUT=resolve("results/book/20261009-short-study-v2")
 def sha(p):
     h=hashlib.sha256()
     with p.open("rb") as f:
