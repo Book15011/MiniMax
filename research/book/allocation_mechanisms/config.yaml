@@ -1,0 +1,37 @@
+source_worktree: /home/ubuntu/test/MiniMax/.worktrees/book-book-observed-baseline
+market_output: results/book/20261009-observed-baseline
+corrected_config: results/book/20261009-observed-baseline/revisions/t001-confirmed/replica_config.yaml
+output: results/book/20261009-allocation-mechanisms
+assets: [BNB, BTC, ETH, SOL, XRP]
+dates: [2026-10-05, 2026-10-06, 2026-10-07, 2026-10-08, 2026-10-09]
+fit_sessions: 3
+decision_hour_utc: 1
+gross_limit: 1.0
+k_factor_grid: [0.02, 10, 64]
+lags: [0, 1, 2]
+position_caps: [0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 1.0]
+momentum_lookbacks: [6, 12, 24, 48, 72, 168]
+ema_pairs: [[5, 23], [6, 24], [12, 26], [12, 48], [24, 72], [24, 168]]
+risk_windows: [24, 72, 168]
+covariance_shrinkages: [0.25, 0.5, 0.9]
+covariance_floor_fraction: 0.000001
+covariance_floor_minimum: 0.000000000001
+same_dollar_minimum_weight: 0.1
+same_dollar_relative_tolerance: 0.002
+shortlist_per_transform: 3
+twostage:
+  ema_pairs: [[5, 23], [6, 24], [12, 26]]
+  risk_windows: [24, 72]
+  forecast_clips: [0.0005, 0.001, 0.0025, 0.005, 0.01]
+  risk_powers: [1, 2]
+  position_caps: [0.25, 0.3, 0.35, 0.4, 0.5]
+  shortlist: 12
+execution:
+  delays_minutes: [3, 4, 5, 6, 7]
+  rebalance_bands: [0.0, 0.01, 0.02, 0.05]
+  train_last_timestamp: '2026-10-07T01:15:00Z'
+  quote_hour_utc: 1
+  quote_minute_minimum: 0
+  quote_minute_maximum: 15
+  tie_break: [strict_f1, direction_f1, smaller_train_mae, smaller_delay, smaller_band, smaller_candidate]
+  target_agreement: 0.85
