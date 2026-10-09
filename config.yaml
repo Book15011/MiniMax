@@ -571,6 +571,15 @@ models:
     sleeves:
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
+  baitoey_vt_dual: &baitoey_vt_dual   # Baitoey: research/baitoey/prereg/20261002-dual-momentum.md (feature/mom-ss 4ae9f1c)
+    <<: *baitoey_vt_mom
+    min_score: 0.0                # a coin holds a slot only while its own momentum score is above this
+  pol_switch_vtd_tl_e20v45:       # e20v45 with the dual-momentum filter (reports/review/20261009-prereg-e20v45-dual.md)
+    prev: own
+    switch: {<<: *team_trend_2, ema_days: 20}
+    sleeves:
+      baitoey_vt_dual: {when: up, params: *baitoey_vt_dual, override: {target_daily_vol: 0.045}}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
   # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
   pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
     vt: *baitoey_vt_mom
