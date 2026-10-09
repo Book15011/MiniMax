@@ -276,7 +276,7 @@ def build_windows(name,role,eq,gross,trades,cases,cp,cfg):
     return frame.reset_index()
 
 
-def run(candidates,out_dir):
+def run(candidates,out_dir,benchmarks=()):
     cfg = load_config()
     cp = load_checkpoint(cfg)
     cp["registry"] = str(resolve(cfg["book_score2"]["registry"]).resolve())
@@ -291,6 +291,9 @@ def run(candidates,out_dir):
     for name,role in [("team_btc_hold","btc_hold"),("team_ew_daily","long_negative_control")]:
         entry = next(r for r in cp["snapshots"] if r["model"] == name)
         refs.append((name,entry["run_key"],role))
+    refs.extend((name,key,"pinned_additional_comparator") for name,key in benchmarks)
+    if len({name for name,_,_ in refs}) != len(refs):
+        raise ValueError("duplicate benchmark name")
     if len({name for name,_ in candidates}) != len(candidates):
         raise ValueError("duplicate candidate name")
     if not candidates:
@@ -299,7 +302,7 @@ def run(candidates,out_dir):
         raise ValueError("candidate cannot replace fixed comparator")
     frames,cache_manifest = [],{}
     for name,key,role in [*( (n,k,"candidate") for n,k in candidates),*refs]:
-        eq,gross,trades,manifest = load_cache(name,key,cp,fixed=role!="candidate")
+        eq,gross,trades,manifest = load_cache(name,key,cp,fixed=role in {"fixed_e20","btc_hold","long_negative_control"})
         cache_manifest[name] = {"run_key":key,**manifest}
         frames.append(build_windows(name,role,eq,gross,trades,cases,cp,cfg))
     windows = pd.concat(frames,ignore_index=True)
@@ -314,7 +317,7 @@ def run(candidates,out_dir):
             group = part if fold == "ALL" else part.loc[part.fold==fold]
             summaries.append({"model":name,"role":role,"fold":fold,**summarize(group)})
     paired = paired_summaries(windows,[n for n,_ in candidates],
-                              ["cash",E20,"team_btc_hold","team_ew_daily"])
+                              ["cash",*[name for name,_,_ in refs]])
     after = input_hashes(cfg,cp)
     if before != after:
         raise ValueError("historical inputs changed during analysis")
@@ -327,6 +330,8 @@ def run(candidates,out_dir):
     book_results = (project/"results"/"book").resolve()
     if book_results not in out.parents or out == book_results:
         raise ValueError("output must be a dedicated directory under project results/book")
+    if (out/"manifest.json").exists():
+        raise ValueError("analysis directory already contains evidence; use a new directory")
     out.mkdir(parents=True,exist_ok=True)
     cases.to_csv(out/"fixed_cases.csv",index_label="window_start")
     windows.to_csv(out/"window_metrics.csv",index=False)
@@ -339,7 +344,7 @@ def run(candidates,out_dir):
         "horizon_hours":HOURS,"anchor":str(ANCHOR),"stride_days":14,
         "folds":list(cases.fold.unique()),"fold_counts":cases.fold.value_counts().sort_index().to_dict(),
         "fold_selection":False,"parameter_selection":False,"all_history_spent":True,
-        "prospective_validation":False,"cost_stress":"NOT_RUN; requires separate executable replay",
+        "prospective_validation":False,"additional_benchmarks":dict(benchmarks),"cost_stress":"NOT_RUN; requires separate executable replay",
         "source_inputs":before,"cache_inputs":cache_manifest,
         "analysis_source":{"path":str(Path(__file__).resolve()),"sha256":sha(__file__)},
         "metric_sources":{name:sha(REPO_ROOT/name) for name in [
@@ -368,7 +373,7 @@ def run(candidates,out_dir):
         "Returns pay terminal liquidation once. Activity and turnover use only the truncated trade ledger.",
         "CS uses unchanged FLOORED.V1 daily raw HKT formula; UTC sensitivity is separate.","",
         "Read fold_summary.csv for each half-year and pooled ALL distribution.",
-        "Read paired_summary.csv for same-window return advantage against cash, fixed e20, BTC and equal-weight long.",
+        "Read paired_summary.csv for same-window return advantage against cash, fixed e20, BTC, equal-weight long and any explicitly pinned additional benchmark.",
         "These chronological diagnostics do not replace the frozen weak-market score or create a new rank.","",
         "## Pooled descriptive results","",
         "| Model | Mean | Median | P10 | Tail10 mean | Worst | Mean MDD | Mean CS |",
@@ -390,10 +395,12 @@ def run(candidates,out_dir):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--candidate",action="append",required=True,metavar="MODEL=RUN_KEY")
+    ap.add_argument("--benchmark",action="append",default=[],metavar="MODEL=RUN_KEY",
+                    help="additional explicit comparator; published cache required")
     ap.add_argument("--out",required=True,help="dedicated project results/book output directory")
     args = ap.parse_args(argv)
     try:
-        run([parse_model(x) for x in args.candidate],args.out)
+        run([parse_model(x) for x in args.candidate],args.out,[parse_model(x) for x in args.benchmark])
     except (ValueError,FileNotFoundError,KeyError) as exc:
         ap.error(str(exc))
     return 0

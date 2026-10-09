@@ -1,0 +1,32 @@
+{
+  "status": "READ_ONLY_REVIEW_NO_DEFECT_FOUND",
+  "model_source_commit": "66e78fb7aa04665b9fda09c8800a8d045191385f",
+  "source_hashes": {
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-short-next/src/models/book/_cashshort.py": "0e3d518c28255d9c8d027042ac41e7ee306d6aa1830b8282f957e194dc4aaaa2",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-short-next/src/models/book/book_cashshort_confirm.py": "0a54ffb9f228bf7c1e2e2f0b751ffa0eb0b6635edc3c0bbb6d3d25de887d6051",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-short-next/src/models/book/book_cashshort_pullback.py": "6c73ec20fbc3fba7fdd4955f75962ce90e4c87ab3187a59d37eec55778f57982",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-short-next/config.yaml": "c1bf9cceb823cba737fcf9f1e76bb5f63403e37b95c9740eba2da3a85add5303"
+  },
+  "reviewed_properties": [
+    "explicit wrapper constructor/helper/BASE dependencies",
+    "view.t slicing before all features",
+    "point-in-time universe and volume-selected breadth before chosen-price validation",
+    "exact positive-only base params/previous targets",
+    "short cap uses only unused target cash; coin cap/risk scale only down",
+    "daily24h regular decisions plus unchanged12UTC scorer bootstrap",
+    "failed gate emits zero short targets; actual fill remains band/lag constrained",
+    "future return labels inaccessible to strategy"
+  ],
+  "important_limits": [
+    "This is independent source review, not prospective trading validation.",
+    "Equal long target weights do not guarantee equal dollar long exposure after short cost/equity changes.",
+    "Closed-bar pullback ordering does not prove intrabar entry timing.",
+    "No instantaneous stop or current-account-switch evaluation."
+  ],
+  "validation_sources": {
+    "baseline_full_shared_targets": 2311,
+    "baseline_bootstraps": 120,
+    "baseline_source_hashes_before_after_equal": true,
+    "own_full_tests": "473 passed in199.77s; results/book/20261009-short-diagnostics/full-tests.log"
+  }
+}
