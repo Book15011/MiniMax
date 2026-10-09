@@ -360,7 +360,7 @@ def run(candidates,out_dir,benchmarks=()):
             "No inference interval treats individual trade rows as independent samples.",
             "Cash has no activity; equal-weight long is a negative control for bearish dependence.",
             "Historical spreads are static proxies; minimum-order execution is approximate.",
-            "09HKT decisions still execute with the unchanged hourly scorer's one-hour lag.",
+            "Each model uses its declared cadence and the unchanged hourly scorer's one-hour execution lag.",
             "No current-account switch, minute execution, deployment or competition guarantee.",
         ],
     }
