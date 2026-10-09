@@ -845,3 +845,6 @@ book_intraday_short:
   halfspread: 0.0005
   lag_minutes: 1
   seed: 100000.0
+
+book_intraday_persistent:
+  exit_rebound_buffer: 0.005
