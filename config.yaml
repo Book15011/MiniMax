@@ -649,9 +649,51 @@ book_regime_eval:
 
 # Separate automatic checkpoint board. Never modifies the original leaderboard.
 book_score2:
-  schema_version: 1
-  checkpoint: results/book/20261008-regime-eval
+  schema_version: 2
+  checkpoint: results/book/20261009-weak-eval-v2
   registry: results/scoring/registry_2.jsonl
   leaderboard: results/scoring/leaderboard_2.md
   csv: results/scoring/leaderboard_2.csv
   artifacts: results/scoring/score2
+
+# Book conditional weak-market ranking; protocol frozen before model comparison.
+book_weak_eval:
+  schema_version: 2
+  asof: "2026-10-09 00:00:00+00:00"
+  reference_asof: "2026-10-08 00:00:00+00:00"
+  competition_end: "2026-10-18 12:00:00+00:00"
+  horizons_hours: [216, 228, 240]
+  primary_hours: 228
+  historical_panel: data/validation
+  live_panel: results/book/shadow/h1
+  out_dir: results/book/20261009-weak-eval-v2
+  reference_archive_dir: results/book/20261009-weak-eval/provenance
+  source_checkpoint: results/book/20261008-regime-eval
+  archive_base_url: "https://data.binance.vision"
+  archive_workers: 4
+  features:
+    FAST: [btc_ret24, btc_ret48, btc_ret168]
+    TREND: [btc_ret720, btc_ma200, btc_high720]
+    BREADTH: [breadth48, alt_minus_btc48]
+    VOL: [btc_vol168, btc_volratio]
+  fresh_features:
+    FAST: [btc_ret24, btc_ret48, btc_ret168]
+    TREND: [btc_ret720, btc_ma200, btc_high720]
+    VOL: [btc_vol168, btc_volratio]
+  weak: {ret48_min: -0.10, ret48_max: 0.0, breadth_max: 0.40, ret24_max: 0.01}
+  positive: {ret48_min: 0.0, ret48_max: 0.10, breadth_min: 0.60}
+  lookalikes: {k: 25, min_separation_days: 14, span_days: 90, max_per_span: 3}
+  sensitivity_k: [15, 40]
+  embargo_hours: 24
+  min_clusters: 12
+  bootstrap: {reps: 20000, seed: 20261009, level: 0.90}
+  stress: {future_down: -0.02, future_rebound: 0.02}
+  short:
+    fee_rate: 0.001
+    half_spread: 0.0005
+    horizons_hours: [1, 3, 6]
+    take_profit: 0.004
+    stop_loss: 0.004
+    barrier_max_hours: 6
+    tolerance: 0.000000000001
+    minimum_episodes: 30

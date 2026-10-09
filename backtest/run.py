@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--holdout", action="store_true", help="open the sealed holdout (only for the frozen launch model)")
     ap.add_argument("--no-cache", action="store_true", help="recompute even if a cached result matches")
     ap.add_argument("--score", action="store_true", help="also compute the competition-style score (docs/EVALUATION.md)")
-    ap.add_argument("--score2", action="store_true", help="publish fixed-checkpoint diagnostics to leaderboard_2.md")
+    ap.add_argument("--score2", action="store_true", help="publish weak-market rankings and short diagnostics to leaderboard_2.md")
     a = ap.parse_args(argv)
     if (a.score or a.score2) and a.holdout:
         ap.error("--score and --score2 never open the holdout; use --holdout without --score")
@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
         if a.score2:
             from backtest.scoring.score2 import publish
             board = publish(score, cfg, report_path=md.with_name(f"{md.stem}-score2.md"))
-            log.info("score2 leaderboard: %s; adaptive status remains checkpoint-controlled", board)
+            log.info("score2 leaderboard: %s; conditional rank and uncertainty updated", board)
     return 0
 
 

@@ -1,118 +1,73 @@
-# Score2: automatic checkpoint comparison
+# Using the weak-market scoreboard
 
-Owner: Book. Implementation branch: feature/book-score2. This feature has not been merged into main. Use a worktree containing this implementation.
+The secondary board is /home/ubuntu/test/MiniMax/results/scoring/leaderboard_2.md. Its reading guide is at the top. CSVs are leaderboard_2.csv and short_leaderboard_2.csv in the same directory. The original leaderboard.md and scoring algorithm retain their meaning.
 
-Score2 adds the familiar model-run workflow to a separate historical continuation table. It preserves the original leaderboard and the frozen October 8 research study.
+This implementation lives in Book's /home/ubuntu/test/MiniMax/.worktrees/book-book-bear-eval, branch feature/book-bear-eval. Run from that worktree until a teammate reviews and merges it. No main merge or live deployment has happened.
 
-## Commands
+## What the ranking answers
 
-Execute through ssh metallurgy-server and work in Book's feature worktree:
+It compares models starting from cash in many past weak-market states similar to the dated competition context. The observed weak-state filter requires BTC 48h log return[-10%,0], market breadth<=40%, and BTC 24h<=1%. Matching only uses information available at the historical starting time. It does not choose cases because they later fell.
 
-    cd /home/ubuntu/test/MiniMax/.worktrees/book-book-score2
+Two fixed profiles are used: a complete archived reference (Oct 8 00UTC) and a fresher BTC-only sensitivity (Oct 9 00UTC). The fresh broad 30-coin endpoints have 29/30 coverage; BCH is missing. The old failed adaptive forecast method remains failed. The sensitivity is explicitly a different price-only profile, not a disguised coverage pass.
 
-New secondary board only:
+Each primary profile contains 25 cases at least 14days apart and at most 3 in any 90days. Compare 216,228,240hours after each cash start.228hours matches Oct 9 00UTC to the documented Oct 18 12UTC finish. The checkpoint stays frozen as time passes. Historical starts 12UTC versus current reference 00UTC introduce a clock difference.
 
-    scripts/lock harness-book-score2 -- nice -n 10 .venv/bin/python -B -m backtest.run --model book_NAME --score2
+The Conservative score is the minimum joint 90% one-sided lower return-advantage bound over both profiles, all 3horizons, and both cash and the fixed original e 20. Higher is better. A negative score means underperformance remains plausible. This is historical conditional evidence, not a forecast or probability of winning. All compatible models get a visible experimental rank, even when no replacement is statistically supported. Original hard-gate failures stay visible.
 
-Both existing and secondary boards, sharing one scoring computation:
+The common resampling uses 20,000 fixed-seed calendar-quarter draws. Quarter labels sharing any replay interval are joined. One centered standardized maximum across currently compared models/contexts/baselines applies a multiple-comparison penalty. The standard error is fixed from bootstrap draws, so this is not a full bootstrap-t. Strengthened evidence requires a positive score, original eligibility, at least 12 raw quarters within each primary profile and 12 merged clusters globally. Unknown future-regime coverage, spent research and repeated tuning remain limits.
 
-    scripts/lock harness-book-score2 -- nice -n 10 .venv/bin/python -B -m backtest.run --model book_NAME --score --score2
+## Reading the numbers
 
-Refresh the secondary board from its already published rows:
+Mean, median, p 10, worst 10%mean and worst are after-cost strategy returns, not the old hit-rate score. Trading fees/spreads and one-bar execution lag are already in compatible cached paths; the chosen horizon charges terminal liquidation once. p 10 is the bad-tail threshold. Worst 10%mean averages the lowest 10% including fractional boundary mass.
 
-    scripts/lock harness-book-score2 -- nice -n 10 .venv/bin/python -B -m backtest.scoring leaderboard2
+Delta e 20 is paired on the same historical cases against the fixed original e 20 runkey 0ec3cf0ca1185b36. A later same-name revision cannot silently replace that benchmark. Cash is a zero-return comparator in confidence bounds; the registered team_cash row may have tiny activity-guard costs.
 
-Import the original frozen 38 registered models:
+CS uses the same FLOORED.V1 daily-raw formula as the original evaluator: .4Sortino+.3Sharpe+.3Calmar. It is recalculated on shortened paths, including terminal liquidation, with HKT 16UTC boundaries and partial first/last days. CS UTC is the alternate-clock sensitivity. CS_HIT_positive averages only profitable shortened cases and differs from original_cs_hit (the original 14-day LENIENT-clearing CS_HIT). Actual final competition formula remains organizer-dependent.
 
-    scripts/lock harness-book-score2 -- nice -n 10 .venv/bin/python -B -m backtest.scoring import-score2
+Down/rebound tables are stress diagnostics only: within archived weak cases they partition realized future BTC 240h return<=-2% or>=+2%. Strategy returns remain 228h, explicitly named. Positive-state controls use observed historical strength. None of these future partitions select or weight the main ranking.
 
-Check scripts/status before heavy work and run long jobs in an owned mm-book-* tmux session. The outer harness lock differs from the publisher's internal scoring-score2 lock.
+## Separate short diagnostics
 
---score alone keeps its original behavior. --score2 alone does not append to the primary registry or regenerate leaderboard.md. It still computes the full competition-style score/cache required for compatibility and writes normal harness/score reports, followed by a per-model -score2.md report.
+The short table counts actual window-specific cached entry/decision fills changing zero/long into short. Adding to an existing short is not another trigger. Guard onsets are separate.
 
-No scoring option opens the holdout. No publication deploys a model, changes the live bot or calls a signed competition API.
+Correct 1/3/6h means a unit short from that onset to the corresponding hourly price would earn a positive return after two 0.10% fees and a declared 0.05% half-spread per side. Wrong direction and a small fall that still loses after costs are separate. Missing prices and labels extending beyond the replay endpoint are unresolved, rather than invented wins/losses.
 
-## Where to read
+Those horizon labels examine market direction even if the actual strategy covered earlier. Cover behavior is separately exported. Additions and partial covers prevent exact position-size attribution: unit-short cover proxies are not actual account short PnL. Hourly TP/SL samples cannot resolve intrahour ordering; every barrier retains that ambiguity.
 
-| File | Purpose |
-|---|---|
-| /home/ubuntu/test/MiniMax/results/scoring/leaderboard_2.md | Reading guide, evidence gates, all latest compatible model summaries and paper-prefix comparison |
-| /home/ubuntu/test/MiniMax/results/scoring/leaderboard_2.csv | Detailed numeric table for analysis |
-| /home/ubuntu/test/MiniMax/results/scoring/registry_2.jsonl | Separate append-only history of published score2 runs |
-| /home/ubuntu/test/MiniMax/results/scoring/score2/ | Content-addressed source scores and immutable remaining-return vectors |
-| /home/ubuntu/test/MiniMax/results/scoring/leaderboard.md | Existing team full-round leaderboard; separate scoring system |
-| /home/ubuntu/test/MiniMax/results/book/20261008-regime-eval/ | Preserved original market study, validation, raw snapshots and 38-model evidence |
-| /home/ubuntu/test/MiniMax/results/book/20261009-score2/ | Integration verification and end-to-end test logs |
+Use the number of historical windows with onsets as evidence support. Thousands of events within a few windows are correlated. Precision intervals resample quarterly clusters of counts, not independent-trade binomial trials. The CSV also has window-average precision, unit-short proxy return, cover/rebound/censor counts and minimum-onset status. This table does not enter the main ranking.
 
-The new board updates automatically after a successful --score2 publication. It displays the latest run of each model for this protocol, while its registry retains previous attempts. Exact repeat publication is idempotent. Ineligible full models remain visible with failed original gates.
+Minute/second strategies require a separate correctly time labelled executable bid/ask or finer-bar simulator, realistic signal and order delays, and out-of-sample episodes. Existing hourly caches and current live-only quotes cannot validate those historical timings. The pipeline does not convert a fast strategy into validated HFT; directional competition rules still apply.
 
-The board's update is about MODEL RESULTS. The market checkpoint is frozen at October 8 12:00 UTC / 20:00 Shanghai. It does not move to the current time when a new model is scored.
+## Test a new registered model
 
-## How to interpret Score2
+Implement/register your model using the existing project model contract. Keep its parameters in config.yaml. From Book's worktree run:
 
-The model's historical path starts from cash at hour zero. Its checkpoint is hour 96, with another 240 hours to run. Score2 measures:
+    .venv/bin/python -B -m backtest.run --model book_NAME --score2
 
-    remaining return = E_336 * (1 - close_fee * gross_336) / E_96 - 1
+This computes the ordinary full compatible scoring cache, appends the new revision to registry_2.jsonl, writes immutable permodel evidence, and regenerates the secondary Markdown/CSVs/ranks. It does not add that run to the original registry.
 
-Existing cached paths already include historical trading costs and execution lag. The additional terminal liquidation charges 0.1% on final gross notional. It does not erase losses in the initial four days or charge a fictional fee to close cash.
+To publish the same computation to both boards:
 
-Every model continues its OWN historical holdings. This comparison does not simulate switching models from identical incumbent holdings, pending orders and accrued activity.
+    .venv/bin/python -B -m backtest.run --model book_NAME --score --score2
 
-| Column | Meaning |
-|---|---|
-| score2_mean | Weighted mean remaining-period historical return |
-| score2_median | Weighted middle result |
-| score2_p10 | 10th-percentile bad-tail threshold |
-| score2_worst | Worst observed remaining-period return |
-| delta_vs_incumbent | Paired average difference versus the FIXED original e20 cache |
-| delta_lower90 / delta_upper90 | Paired calendar-month bootstrap interval |
-| delta_lower_family | Nominal multiple-candidate adjusted lower difference bound |
-| original_eligible | Original scoring hard gates, not deployment eligibility |
-| original_headline_ret | Original average return-threshold success score, not percentage profit |
-| attempts | Published attempts under this score2 protocol |
-| look_* | Legacy descriptive-case results; these do not repair failed adaptive gates |
-| paper_* | Frozen paper-replay comparison, only for the model revision selected in the original study |
+To rebuild the secondary tables without retraining:
 
-Decimal 0.02 means +2%; -0.10 means -10%. A positive mean is not a forecast for the coming ten days. Overlapping windows are not independent observations. Month clusters can remain dependent across months, and finite bootstrap tails are approximate. Multiple-model adjustment does not undo earlier strategy-development search.
+    .venv/bin/python -B -m backtest.scoring leaderboard2
 
-The fixed incumbent remains the original cache even when the same model name is rescored with changed code or parameters. Revised model aliases do not inherit the old revision's paper-replay identity.
+To import all models pinned in this study:
 
-## What "adaptive disabled" means
+    .venv/bin/python -B -m backtest.scoring import-score2
 
-The intended adaptive method puts extra weight on historical windows resembling the current market. That extra weight is allowed only after separate checks establish forecast usefulness, sufficient current coverage, confirmed input data and stability.
+Run heavy commands through your own scripts/lock, nice 10 and mm-book-* tmux session, respecting the server rules. A new model need not reproduce the old model's code, but must use the same scoring tool, data inputs, full window order, fee contracts and cache dimensions. Changed evaluation/data/window protocols or incomplete/corrupt artifacts fail closed.
 
-At this frozen checkpoint:
+The latest same-name model revision is displayed; earlier revisions remain in the append-only logical registry and immutable artifact directories. Every new included model can change simultaneous bounds and ranks. Multiple-comparison adjustment covers currently compared models, not every abandoned experiment. Record all attempts and reserve independent prospective paper testing.
 
-1. Average forecast-distribution skill improved, mainly for volatility and drawdown.
-2. Direction nondegradation was not established. Brier degradation was -0.002326 on average, but its 90% interval was [-0.015777, +0.010862], still allowing harm. This does not prove the method worsened direction.
-3. BCH has no competition ticker row at the checkpoint, leaving 29/30 exact breadth endpoints. The unchanged 98% coverage guard fails.
-4. The archive was complete only through October 8 00:00 UTC; the 12:00 query includes ticker-assisted observations.
-5. A common-account switch simulation and executable short-timing ledger have not been validated.
+## Evidence and implementation
 
-Consequently active alpha is zero and every historical window has uniform baseline weight. We can compute and publish historical diagnostics, but blank rank cells and production_eligible=false prevent presenting them as a validated production ranking.
+Frozen inputs/cases: results/book/20261009-weak-eval-v2; full REPORT.md and model_windows.csv explain evidence. Cases are frozen before candidate scenario comparisons. Version 1 in results/book/20261009-weak-eval preserves source discrepancies; the October 8 failed generic evaluator remains results/book/20261008-regime-eval.
 
-Software tests establish implementation correctness. They cannot establish that the market matcher predicts direction or that a model will profit.
+Code: research/book/weak_eval/prepare.py and run.py freeze inputs/cases; backtest/scoring/weak_stats.py selects cases and computes uncertainty; weak_risk.py computes money/risk metrics; weak_short.py builds onset labels; weak_board.py verifies compatible evidence and publishes; weak_render.py writes the reading guide.
 
-## What can improve the evidence
+Source scores, vectors and short ledgers are under results/scoring/score2/<protocol>/<model>/<runkey-scorehash>/. The checkpoint/code hashes define the protocol. New rows automatically update the board, while a new market checkpoint requires a separately frozen evaluation version.
 
-Book can investigate verified public archive backfills and construct a NEW checkpoint/version with complete, causal data. Preserve the failed snapshot. Missing BCH must not be imputed or removed merely to meet the guard. A revised competition-tradable universe is a separate declared method with consistent historical treatment and fresh validation.
-
-Even complete data cannot automatically clear the statistical direction guard. Improving the matcher requires a defensible revised protocol and chronological/prospective evidence; changing thresholds or repeatedly searching this same confirmation period cannot manufacture reliability.
-
-For switching models, the team can supply sanitized state exported by the running bot: holdings, pending orders, fills, accrued activity and deployed model identity. No secrets or manual competition-key API calls are needed or permitted for this research. Those records allow an account-aware transition study.
-
-For a fast-short candidate, provide a causal trigger/cover implementation and executable quote/event ledger with latency, spread, both-side fees and separate independent episodes. The short table stays separate from the main score. HFT remains prohibited.
-
-No additional information is required to use the new --score2 publication workflow.
-
-## Integrity, versions and concurrency
-
-Before expensive work, --score2 checks the configured frozen checkpoint. Publication requires a full run with the same scoring tool, data/input signature, ordered window set and compatible cached dimensions. It reproduces every original liquidated return within 1e-12 and checks cache hashes before/after reading.
-
-Protocol identity fingerprints the checkpoint and metric/publisher source files. Changed scoring definitions cannot silently mingle with old rows. After an intentional scorer revision, run import-score2 to seed the new protocol's existing model set.
-
-Source score files and remaining-return vectors are immutable and content-addressed. A separate lock serializes registry publication and board regeneration. Corrupt or incompatible inputs are rejected before registry/board mutation. Markdown and CSV files use atomic replacement.
-
---score --score2 publishes to two independent systems: if the secondary compatibility check fails after a valid primary publication, the primary result remains published and the secondary board remains unchanged.
-
-Changing the market asof requires a separately reviewed checkpoint/protocol. The command deliberately does not rewrite the original snapshot or its registered_snapshot.json to admit new models.
+The board is a fresh-cash research baseline. Current EC 2 holdings, executable switching cost, competition short permission and real account fills remain UNVERIFIED. A good historical rank supports further model testing, not an automatic live-bot switch.

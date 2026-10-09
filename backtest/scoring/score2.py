@@ -35,6 +35,9 @@ def signature(score):
 
 
 def load_checkpoint(cfg):
+    if cfg["book_score2"]["schema_version"]==2:
+        from backtest.scoring.weak_board import load_checkpoint as load_weak
+        return load_weak(cfg)
     options=cfg["book_score2"]
     if options["schema_version"]!=1:raise ValueError("unsupported score2 schema")
     root=safe_path(options["checkpoint"])
@@ -307,6 +310,9 @@ def _publish_scores(scores,cfg,cp):
 
 
 def publish(score,cfg,report_path=None):
+    if cfg["book_score2"]["schema_version"]==2:
+        from backtest.scoring import weak_board
+        return weak_board.publish(score,cfg,report_path)
     cp=load_checkpoint(cfg);board,frame=_publish_scores([score],cfg,cp)
     if report_path is not None:
         r=frame.loc[frame.model==score["model"]["name"]].iloc[0]
@@ -320,6 +326,9 @@ def publish(score,cfg,report_path=None):
 
 
 def import_registered(cfg):
+    if cfg["book_score2"]["schema_version"]==2:
+        from backtest.scoring import weak_board
+        return weak_board.import_registered(cfg)
     cp=load_checkpoint(cfg)
     entries=json.loads((cp["root"]/"registered_snapshot.json").read_text())
     scores=[]
@@ -331,6 +340,9 @@ def import_registered(cfg):
 
 
 def refresh(cfg):
+    if cfg["book_score2"]["schema_version"]==2:
+        from backtest.scoring import weak_board
+        return weak_board.refresh(cfg)
     cp=load_checkpoint(cfg)
     with locked("scoring-score2"):
         return _write(_entries(cfg),cp,cfg)[0]

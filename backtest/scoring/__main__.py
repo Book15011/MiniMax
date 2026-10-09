@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("b")
     c.add_argument("--no-cache", action="store_true")
     sub.add_parser("leaderboard", help="regenerate the leaderboard")
-    sub.add_parser("leaderboard2", help="regenerate the separate checkpoint diagnostics board")
+    sub.add_parser("leaderboard2", help="regenerate the separate weak-market ranking board")
     sub.add_parser("import-score2", help="import the frozen registered model set into leaderboard_2")
     a = ap.parse_args(argv)
     cfg = load_config()
