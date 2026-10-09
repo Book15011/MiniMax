@@ -85,6 +85,10 @@ def plan_orders(targets: dict[str, float], h: Holdings, quotes: dict[str, Quote]
     eq = equity(h, quotes)
     if eq <= 0:
         return [], ["equity is not positive; nothing planned"]
+    room = 1.0 - cash_buffer
+    gross = sum(abs(float(v)) for v in targets.values())
+    if gross > room:     # targets that cannot all fit beside the cash reserve are shrunk evenly, so the reserve comes
+        targets = {k: float(v) * room / gross for k, v in targets.items()}   # from every coin, not only from the buys
     cur = current_weights(h, quotes, eq)
     reduce: list[Order] = []
     adds: list[tuple[str, str, float]] = []       # (kind, pair, usd value)

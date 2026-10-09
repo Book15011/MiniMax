@@ -25,9 +25,12 @@ Each completed hour bar H (UTC), about `process_after_s` after the hour:
 Live trades about an hour earlier than the backtest assumes (it lags fills by one bar), so the backtest is the
 conservative side. Hours, days and the start time run on Roostoo's server clock (machine clock plus the offset
 measured every hour); the offset is logged, with a warning above clock_warn_s. Restarts resume from the state file; missed hours are not replayed, an overdue decision or
-guard runs at the next hour. In live mode, before `live.start_at` the bot only records bars. A committed change of
+guard runs at the next hour. In live mode, before `live.start_at` and from `live.end_at` on the bot only records
+bars; the round's starting equity is the first hour from start_at with money in the account (late funding). A committed change of
 `live.model` takes effect at the next hour (the new model decides at once; active days are kept); paper and
-live never share a state file. If the exchange refuses a short, the bot trades long-only from then on.
+live never share a state file, nor do the test and competition accounts, and a state whose round began before
+`live.start_at` (a test run) is refused. The competition key runs only with `live.start_at` set. If the exchange
+refuses a short, the bot trades long-only from then on.
 """
 from __future__ import annotations
 
@@ -36,6 +39,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 import time
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -51,6 +55,7 @@ from src.contracts import MarketView, check_targets
 from src.execution.planner import Holdings, ShortPos, current_weights, equity, plan_orders
 from src.live import feed
 from src.live.broker import LiveBroker, PaperAccount, ShortsUnreadable, quotes_from_ticker
+from src.live.sleeve import PERMANENT as SLEEVE_PERMANENT
 from src.models import get
 from src.validation.features import daily_bars, is_allowed
 
@@ -107,6 +112,14 @@ def confirm_fills(fills: list[dict], before: dict, after: dict) -> list[dict]:
     return fills
 
 
+def sleeve_split(h: Holdings, pairs: set[str], reserve_usd: float) -> Holdings:
+    """The hourly model's share of the account (live.sleeve): without the sleeve's pairs, and without the sleeve's
+    free cash. The USD may go negative (the sleeve's cash is still in the model's coins): the planner then sells
+    down to the model's targets on its smaller equity, which frees the sleeve's cash."""
+    return Holdings(h.usd_free - reserve_usd, {p: q for p, q in h.spot.items() if p not in pairs},
+                    {p: x for p, x in h.shorts.items() if p not in pairs})
+
+
 def holdings_to_json(h: Holdings) -> dict:
     return {"usd_free": h.usd_free, "spot": h.spot, "shorts": {p: asdict(s) for p, s in h.shorts.items()}}
 
@@ -120,20 +133,26 @@ def holdings_from_json(d: dict) -> Holdings:
 
 class Runner:
     def __init__(self, cfg: dict, model_name: str, mode: str, broker, client: RoostooClient, state_dir: Path,
-                 log: logging.Logger, long_only: bool = False, rest=None, archive=None):
+                 log: logging.Logger, long_only: bool = False, rest=None, archive=None, account: str | None = None,
+                 sleeve=None):
         self.cfg, self.mode, self.broker, self.client, self.dir, self.log = cfg, mode, broker, client, state_dir, log
+        self.account = account or mode                    # "paper", or the key's ROOSTOO_ENV: "test" | "competition"
         self.lv, self.h, self.ex, self.v = cfg["live"], cfg["harness"], cfg["execution"], cfg["validation"]
         self.model = get(model_name)
         self.params = (cfg.get("models") or {}).get(model_name, {}) or {}
         self.long_only = long_only or not self.model.spec.uses_shorts
         self.pairs = {binance_symbol(p): p for p in universe(cfg)}
         self.rest, self.archive = rest, archive
+        self.sleeve, self.sleeve_thread = sleeve, None              # live.sleeve: runs as a thread of this process
         self.state_path = state_dir / "state.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {
-            "model": model_name, "mode": mode, "last_bar": None, "last_decision": None, "prev_targets": {},
-            "standing": {}, "active_days": [], "paper": None}
+            "model": model_name, "mode": mode, "account": self.account, "last_bar": None, "last_decision": None,
+            "prev_targets": {}, "standing": {}, "active_days": [], "paper": None}
         if self.state["mode"] != mode:
             raise SystemExit(f"state.json is for {self.state['mode']} mode; move it away to start {mode} fresh")
+        if self.state.setdefault("account", self.account) != self.account:   # a test run's positions are not ours
+            raise SystemExit(f"state.json is for the {self.state['account']} account; move it away to start on the "
+                             f"{self.account} account fresh")
         self.switched_from = None
         if self.state["model"] != model_name:             # a committed model change (e.g. the team_cash exit)
             self.switched_from = self.state["model"]
@@ -141,6 +160,12 @@ class Runner:
         self.long_only = self.long_only or bool(self.state.get("long_only"))
         self.start_at = (pd.Timestamp(self.lv["start_at"]).tz_localize("UTC")      # live only: paper is a rehearsal
                          if mode == "live" and self.lv.get("start_at") else None)
+        self.end_at = (pd.Timestamp(self.lv["end_at"]).tz_localize("UTC")          # the round's end: record only
+                       if mode == "live" and self.lv.get("end_at") else None)
+        began = self.state.get("round_start")
+        if self.start_at is not None and began is not None and pd.Timestamp(began) < self.start_at:
+            raise SystemExit(f"state.json is from a run that began {began}, before live.start_at {self.start_at} "
+                             "(a test run?); move it away to start the round fresh")
         self.store = feed.Store.load(state_dir)
         self.rules = parse_exchange_info(client.exchange_info())
         self.commit = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], cwd=REPO_ROOT, capture_output=True,
@@ -162,6 +187,32 @@ class Runner:
         tmp.write_text(json.dumps(self.state, indent=1, default=str))
         tmp.replace(self.state_path)
 
+    # -- the sleeve (live.sleeve, off unless enabled)
+    def sleeve_reserve(self) -> tuple[set[str], float]:
+        """(the sleeve's pairs, its free cash). Without a readable sleeve state its whole capital is kept aside; a sleeve
+        that stopped for good (loss limit, KILL, errors) and holds nothing gives its cash back to the model."""
+        sl = self.lv.get("sleeve") or {}
+        if not sl.get("enabled") or sl.get("mode") != "live":       # a paper sleeve takes nothing from the model
+            return set(), 0.0
+        pairs = set(sl["lots_usd"])
+        try:
+            st = json.loads((self.dir / (sl.get("state_file") or "sleeve.json")).read_text())
+        except (OSError, ValueError):
+            return pairs, float(sl["capital_usd"])
+        if st.get("stopped") in SLEEVE_PERMANENT and st.get("flat"):
+            return set(), 0.0
+        return pairs, max(0.0, float(st.get("cash_free", sl["capital_usd"])))
+
+    def sleeve_capital(self) -> float:
+        """The capital the model leaves to the sleeve now (0 when off, paper, or stopped for good and flat)."""
+        return float((self.lv.get("sleeve") or {}).get("capital_usd", 0.0)) if self.sleeve_reserve()[0] else 0.0
+
+    def holdings_split(self) -> tuple[Holdings, Holdings]:
+        """(the whole account, the model's share). They are the same object when no sleeve is enabled."""
+        h_all = self.broker.holdings(with_shorts=not self.long_only)
+        pairs, reserve = self.sleeve_reserve()
+        return h_all, (sleeve_split(h_all, pairs, reserve) if pairs else h_all)
+
     # -- one hour
     def due_decision(self, H: pd.Timestamp) -> bool:
         rb = self.model.spec.rebalance_hours
@@ -178,6 +229,8 @@ class Runner:
             return False
         if self.state.get("locked_at"):
             return True
+        if not self.state.get("round_start") or not float(self.state.get("round_start_equity") or 0) > 0:
+            return False                                    # no funded first hour yet
         if H - pd.Timestamp(self.state["round_start"]) < pd.Timedelta(days=float(eg["from_day"])):
             return False
         r = eq / float(self.state["round_start_equity"]) - 1.0
@@ -220,21 +273,32 @@ class Runner:
         self.store.save(self.dir)
         self.emit("feed", bar=H, added=added, complete_through=self.store.complete_through)
         try:
-            h = self.broker.holdings(with_shorts=not self.long_only)
+            h_all, h = self.holdings_split()
         except ShortsUnreadable as e:
             self.long_only = True
             self.emit("error", bar=H, error=f"{e}; trading long-only from now on (UNVERIFIED short format)")
-            h = self.broker.holdings(with_shorts=False)
-        eq = equity(h, quotes)
+            h_all, h = self.holdings_split()
+        eq_all = equity(h_all, quotes)                       # the whole account: the round's return and the lock-in
+        eq = equity(h, quotes)                               # the model's share: what its targets are sized on
+        cap = self.sleeve_capital()
+        if float(self.state.get("sleeve_capital", 0.0)) != cap:     # the sleeve's share changed: decide again now on
+            self.state["sleeve_capital"] = cap                       # the model's new equity, trading every difference
+            self.state["last_decision"] = None
+            self.emit("sleeve", bar=H, capital=cap, model_equity=eq, account_equity=eq_all)
         grid = self.h["grid_hour_utc"]
         if self.start_at is not None and H < self.start_at:  # before the round: record data, never trade
-            self.emit("snapshot", bar=H, equity=eq, waiting_until=self.start_at)
+            self.emit("snapshot", bar=H, equity=eq_all, waiting_until=self.start_at)
             self.state["last_bar"] = str(H)
             self.save()
             return
-        if self.state.get("round_start") is None:            # the round's first hour: its equity is the baseline
-            self.state.update(round_start=str(H), round_start_equity=float(eq))
-        if self.endgame_locked(H, eq):                        # end-of-round lock-in: hold cash to the end
+        if self.end_at is not None and H >= self.end_at:     # the round is over (the exchange liquidates): no trades
+            self.emit("snapshot", bar=H, equity=eq_all, round_over=self.end_at)
+            self.state["last_bar"] = str(H)
+            self.save()
+            return
+        if self.state.get("round_start") is None and eq_all > 0:  # the round's first funded hour: its equity is the baseline
+            self.state.update(round_start=str(H), round_start_equity=float(eq_all))
+        if self.endgame_locked(H, eq_all):                        # end-of-round lock-in: hold cash to the end
             self.state["standing"] = {}
             w_now = current_weights(h, quotes, eq)
             if sum(abs(x) for x in w_now.values()) > 2 * float(self.h["keep_alive_weight"]):   # sell until out
@@ -250,8 +314,10 @@ class Runner:
                 w = w.clip(lower=0.0)
             w = w[w != 0.0]
             first = self.state["last_decision"] is None
+            sleeve_pairs = self.sleeve_reserve()[0]
             self.state.update(prev_targets={k: float(x) for k, x in w.items()}, last_decision=str(H),
-                              standing={self.pairs[s]: float(x) for s, x in w.items() if s in self.pairs})
+                              standing={self.pairs[s]: float(x) for s, x in w.items()
+                                        if s in self.pairs and self.pairs[s] not in sleeve_pairs})
             self.emit("decision", bar=H, universe=uni, universe_as_of=g, equity=eq, first=first,
                       targets=self.state["standing"])
             self.trade("rebalance", H, self.state["standing"], h, quotes, self.model.spec.band, exact=first)
@@ -264,17 +330,18 @@ class Runner:
         if (no_trade                                                             # every later hour of the day retries
                 and into_day >= self.h["activity_guard_offset_hours"] + 1):        # until a fill is confirmed; also right
             # after a decision that filled nothing, as the engine does (an hourly model decides every hour)
-            h = self.broker.holdings(with_shorts=not self.long_only)
+            h = self.holdings_split()[1]
             fills = self.trade("guard", H, self.state["standing"], h, quotes, 0.0, exact=True)
             if not any(f["status"] == "FILLED" for f in fills):
                 t = keep_alive_targets(h, quotes, equity(h, quotes), float(self.h["keep_alive_weight"]),
                                        1.0 - float(self.ex["cash_buffer"]))
                 self.trade("keep_alive", H, t, h, quotes, 0.0, exact=True)
-        h = self.broker.holdings(with_shorts=not self.long_only)
+        h_all, h = self.holdings_split()
         eq = equity(h, quotes)
         w = current_weights(h, quotes, eq)
-        self.emit("snapshot", bar=H, equity=eq, usd_free=h.usd_free, gross=sum(abs(x) for x in w.values()),
-                  weights=w, active_days=len(self.state["active_days"]))
+        extra = {} if h is h_all else {"model_equity": eq, "sleeve_value": equity(h_all, quotes) - eq}
+        self.emit("snapshot", bar=H, equity=equity(h_all, quotes), usd_free=h.usd_free, gross=sum(abs(x) for x in w.values()),
+                  weights=w, active_days=len(self.state["active_days"]), **extra)
         self.state["last_bar"] = str(H)
         self.save()
 
@@ -301,9 +368,26 @@ class Runner:
             self.log.warning("machine clock is %+.1f s off Roostoo's; the bot runs on Roostoo's time (%s)", off / 1000, level)
         return off
 
+    def _sleeve_main(self) -> None:
+        """The sleeve's thread. Whatever happens to it, the hourly model keeps running."""
+        try:
+            self.sleeve.run()
+            self.emit("sleeve_thread", status="ended", stopped=self.sleeve.stopped)
+        except Exception as e:                             # noqa: BLE001 - the model must never stop for the sleeve
+            self.log.exception("sleeve thread failed")
+            self.emit("sleeve_thread", status="failed", error=f"{type(e).__name__}: {e}")
+
+    def start_sleeve(self) -> None:
+        if self.sleeve is not None and (self.sleeve_thread is None or not self.sleeve_thread.is_alive()):
+            self.sleeve_thread = threading.Thread(target=self._sleeve_main, name="sleeve", daemon=True)
+            self.sleeve_thread.start()
+            self.emit("sleeve_thread", status="started", mode=self.sleeve.mode, capital=self.sleeve.capital)
+
     def run(self, once: bool = False) -> None:
         self.emit("start", long_only=self.long_only, state=self.state_path, clock_offset_ms=self.check_clock(),
                   switched_from=self.switched_from, start_at=self.start_at)
+        if not once:
+            self.start_sleeve()
         while True:
             H = self.latest_bar(self.now())
             if self.state["last_bar"] is None or H > pd.Timestamp(self.state["last_bar"]):
@@ -352,6 +436,8 @@ def build(cfg: dict, args, log: logging.Logger) -> Runner:
         creds = load_credentials(REPO_ROOT / ex["env_file"])
         if creds.env == "competition" and os.environ.get("MM_HOST") != "ec2":
             raise SystemExit("ROOSTOO_ENV=competition outside EC2: refused (AGENTS.md rule 3)")
+        if creds.env == "competition" and not lv.get("start_at"):
+            raise SystemExit("ROOSTOO_ENV=competition needs live.start_at (the round's start): refused")
     else:
         creds = None
     client = RoostooClient(cfg["exchange"]["base_url"], creds, ex["calls_per_minute"], ex["timeout_s"], log=log)
@@ -365,7 +451,12 @@ def build(cfg: dict, args, log: logging.Logger) -> Runner:
                               float(ex["fee"]))
     rest = feed.rest_fetcher(lv["binance_rest"]) if lv.get("binance_rest") else None
     archive = feed.archive_fetcher(cfg["data"]["base_url"]) if lv.get("use_archive", True) else None
-    return Runner(cfg, args.model or lv["model"], args.mode, broker, client, state_dir, log, args.long_only, rest, archive)
+    sleeve = None
+    if (lv.get("sleeve") or {}).get("enabled"):
+        from src.live.sleeve import build_in_process
+        sleeve = build_in_process(cfg, client, args.mode, state_dir, log)
+    return Runner(cfg, args.model or lv["model"], args.mode, broker, client, state_dir, log, args.long_only, rest, archive,
+                  account=creds.env if creds else None, sleeve=sleeve)
 
 
 def main(argv: list[str] | None = None) -> int:

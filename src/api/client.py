@@ -177,8 +177,11 @@ class RoostooClient:
 
     # ---------------- signed, read-only ----------------
     def balance(self) -> dict:
-        """{coin: {"Free": float, "Lock": float}}"""
-        return self._call("GET", "/v3/balance", signed=True).get("Wallet") or {}
+        """{coin: {"Free": float, "Lock": float, ...}}. The live API answers with `SpotWallet` (plus an empty
+        `MarginWallet`), not the `Wallet` of the docs: reading only `Wallet` showed a funded account as empty
+        (TEST account, 2026-10-02: SpotWallet USD Free 50000). Both are accepted."""
+        d = self._call("GET", "/v3/balance", signed=True)
+        return d.get("SpotWallet") or d.get("Wallet") or {}
 
     def pending_count(self) -> dict:
         d = self._call("GET", "/v3/pending_count", signed=True, empty_ok=True)
