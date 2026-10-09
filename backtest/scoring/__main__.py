@@ -94,8 +94,15 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("b")
     c.add_argument("--no-cache", action="store_true")
     sub.add_parser("leaderboard", help="regenerate the leaderboard")
+    sub.add_parser("leaderboard2", help="regenerate the separate weak-market ranking board")
+    sub.add_parser("import-score2", help="import the frozen registered model set into leaderboard_2")
     a = ap.parse_args(argv)
     cfg = load_config()
+    if a.cmd in {"leaderboard2", "import-score2"}:
+        from backtest.scoring.score2 import refresh, import_registered
+        path = refresh(cfg) if a.cmd == "leaderboard2" else import_registered(cfg)
+        print(path)
+        return 0
     if a.cmd == "field":
         return cmd_field(cfg, not a.no_cache)
     if a.cmd == "compare":

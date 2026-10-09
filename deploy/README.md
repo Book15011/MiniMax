@@ -65,9 +65,11 @@ The organizers' EC2 is reached **only through Session Manager** (browser shell, 
    It prints the machine clock, Roostoo's clock, the offset, and the NTP status from `timedatectl` and `chronyc tracking`. It must end with `RESULT OK`: offset ≤ `live.clock_warn_s` (2 s) and NTP synchronized.
    - The bot already keeps time by Roostoo's clock: machine clock plus the offset, measured every hour, logged as a `clock` event and warned on above 2 s.
    - Still, a drifting machine clock means something is wrong with the host, so fix it before going live. Roostoo rejects requests more than 60 s off.
-3. **Seed the bars.**
-   - Without SSH, the simplest route is to let the bot fetch them. With Binance's API reachable (step 5), run `python -m src.live.runner run --mode paper --once` once on EC2.
-   - Otherwise, attach the research server's `data/live/{close_1h.parquet,qv_1h.parquet,store_meta.json}` to a GitHub release, or put them in a gist, and download them with `curl`.
+3. **Seed the bars.** `setup_ec2.sh` copies `deploy/seed/` (the last 300 days of hourly bars for every panel series,
+   committed with the code) into `data/live` when no store is there. The bot then fetches every hour after the seed's
+   `complete_through` itself (Binance REST, else the daily archive plus the Roostoo ticker). Without a store the bot
+   cannot start: it reads `data/live/close_1h.parquet` at startup. To refresh the seed before a push, copy a running
+   paper bot's store, keeping only the bars up to its `complete_through`.
 4. **Keys.** A teammate types `/opt/minimax/.env` by hand in the Session Manager shell, then runs `chmod 600 /opt/minimax/.env`:
 
    ```
