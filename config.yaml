@@ -590,6 +590,28 @@ models:
 
 # Leaderboard pick rule (backtest/scoring/selection.py). Not part of the tool version: changing it rescores nothing.
 # The leaderboard always shows both picks; `rule` only sets which one orders the table. Changing it is a team decision.
+  # --- book: preregistered research-led study, no parameter sweep ---
+  book_short_trend: &book_short_study
+    coins: [BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT, XRPUSDT]
+    lookbacks_hours: [24, 72, 168]
+    vol_hours: 168
+    coin_cap: 0.25
+    gross_cap: 1.0
+    target_daily_vol: 0.0125
+    entry_hour_utc: 1
+    exit_check_hours: 6
+    breakdown_hours: 72
+    rebound_hours: 24
+    volume_recent_hours: 24
+    volume_base_hours: 168
+    volume_ratio: 1.5
+    breadth_hours: 48
+    breadth_reference: BTCUSDT
+    breadth_min_coins: 3
+    breadth_positive_max: 0.4
+  book_short_rebound: *book_short_study
+  book_short_breakdown: *book_short_study
+
 selection:
   rule: margin                    # amended 2026-10-02 (reports/review/20261002-amend-pick-rule.md); legacy = the pre-registered tie test
   tie_margin: 0.03                # margin rule: tied only if also within this of the top's HEADLINE_RET
