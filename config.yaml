@@ -659,6 +659,15 @@ models:
   baitoey_e20_out15:
     <<: *pol_switch_vt_tl_e20v45
     switch: {<<: *team_trend_2, ema_days: 20, hysteresis_down: 0.015}
+  # --- baitoey: BTC-only short sleeve and e20v45 add-ons (research/baitoey/prereg/20261009-btc-short.md) ---
+  baitoey_btc_short_a: {variant: a, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}
+  baitoey_btc_short_b: {variant: b, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}
+  baitoey_btc_short_c: {variant: c, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}
+  baitoey_btc_short_d: {variant: d, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}
+  baitoey_e20_btcs_a: {vt: *pol_switch_vt_tl_e20v45, short: {variant: a, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}}
+  baitoey_e20_btcs_b: {vt: *pol_switch_vt_tl_e20v45, short: {variant: b, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}}
+  baitoey_e20_btcs_c: {vt: *pol_switch_vt_tl_e20v45, short: {variant: c, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}}
+  baitoey_e20_btcs_d: {vt: *pol_switch_vt_tl_e20v45, short: {variant: d, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}}
 # Leaderboard pick rule (backtest/scoring/selection.py). Not part of the tool version: changing it rescores nothing.
 # The leaderboard always shows both picks; `rule` only sets which one orders the table. Changing it is a team decision.
 selection:
