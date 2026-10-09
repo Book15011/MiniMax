@@ -39,7 +39,7 @@ __ASSESSMENT__
 
 **book_cashshort_pullback** adds a preceding rebound followed by negative four-hour return before a new short. This tests whether avoiding an extended decline helps entry timing. The results do not establish that the filter works.
 
-**book_transition_short** is one separate frozen four-hour hypothesis. When BTC's 48-hour return is <=-2%, drawdown from its 96-hour high is >=3%, and positive 48-hour breadth is <=40%, it halves long targets and permits capped shorts. It uses negative 48-hour risk-adjusted momentum and negative four-hour entry confirmation. Existing shorts can survive a small rebound, but exit on a four-hour rebound >=2%, nonnegative 48-hour return, loss of rank or cleared regime. Four-hour calls intentionally change the long-selection cadence.
+**book_transition_short** is one separate frozen four-hour hypothesis. When BTC's 48-hour return is <=-2%, drawdown from its 96-hour high is >=3%, and positive 48-hour breadth is <=40%, it halves long targets and permits capped shorts. It uses negative 48-hour risk-adjusted momentum and negative four-hour entry confirmation. Previously negative target weights can survive a small rebound, but clear on a four-hour rebound >=2%, nonnegative 48-hour return, loss of rank or cleared regime. Four-hour calls intentionally change the long-selection cadence. Retention uses previous intended targets, as required by MarketView; a small target may not have executed because of band, quantity precision or cash. Actual fills must therefore be read from the replay ledger.
 
 Every sleeve has total shorts <=25%, each short <=10%, and an additional 1% daily short-volatility bound. Liquidity selection requires complete 168-hour volume, top 30 with at least 20 coins, and every selected breadth endpoint. Tunable parameters live in config.yaml.
 
@@ -57,7 +57,7 @@ The unit proxy uses 0.10% per-side fees and the existing 0.05% halfspread per si
 
 ## Observed competition-prefix comparison
 
-Fixed start: October 4 20HKT (12UTC). Fixed end: October 9 09:15HKT (01:15UTC). Each model starts with $100k cash and uses the shared planner and PaperBroker, one-hour decision lag, ten-second order spacing, pair precision and 0.10% fees.
+Fixed start: October 4 20HKT (12UTC). Fixed end: October 9 09:15HKT (01:15UTC). Each short candidate starts with $100k cash and uses the shared planner and PaperBroker, one-hour decision lag, ten-second order spacing, pair precision and 0.10% fees. The separately fitted frozen reconstruction retains five-minute batching; its execution schedule differs.
 
 Daily models refresh at 16UTC. The transition model acts every four hours with the same daily universe refresh. This fine diagnostic omits the activity guard; primary score2 retains it.
 
@@ -117,6 +117,8 @@ The historical rule can admit a prediction exactly three minutes after the displ
 Prediction-only and instrumented broker reruns reproduce event SHA256 8b4bcb4a27bc410535fbd7c142f7f2a7365e13ed884161089e41ac0fe360a00f. A read guard blocks observed CSV labels, selected events/targets and evaluation records; the frozen predictor still reproduces the hash. This proves label-read isolation at inference, not generalization after retrospective fitting.
 
 Per-fill minimum cash was $99.40, maximum gross was 99.8988%, and there were no rejections. Of 32 fills, 27 used recorded unsigned quotes and five used archive proxies.
+
+The common-period frozen reconstruction returned **+4.8133%**, with **2.8423% MDD**, versus the observed ledger +5.1794%. It still matched only 19/33 literal trades. An independent signed-cash/positions/equity reconstruction passed; the unchanged prediction hash and zero rejections were verified. The auxiliary minute execution clock after October 9 00UTC is explicitly ticker-assisted (causal recorded last price within 30 seconds); those clock points are not represented as archived bars. Full-minute valuation uses the canonical quotes.
 
 The calibrated reconstruction remains a separate diagnostic. Its five-session fit and batching/reconciliation behavior are not presented as a validated historical score2 model. No claim is made that 85% is impossible for every strategy; this tested family has not achieved it.
 

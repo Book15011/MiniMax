@@ -7,6 +7,7 @@ FINAL=R/"20261010-short-next-final"
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def js(p):return json.loads(Path(p).read_text())
 required=[
+ ("20261010-clone-prefix-v1/valuation_audit.json",lambda x:x["status"]=="PASS" and x["prediction_same_as_original"] and x["rejections"]==0),
  ("20261010-transition-short/status.json",lambda x:len(x)==2 and all(r["returncode"]==0 for r in x)),
  ("20261010-transition-cost/status.json",lambda x:len(x)==2 and all(r["returncode"]==0 for r in x)),
  ("20261010-short-next-prefix-v3-audit-v2/audit.json",lambda x:x["passed"]),
@@ -37,7 +38,7 @@ for name,row in selected.iterrows():
 st=["| Model/profile | Onsets | Windows firing | Correct1h / valid | Correct6h / valid | 6h precision90% range | Window-mean6h unit proxy |","|---|---:|---:|---:|---:|---:|---:|"]
 for row in short[short.model.isin(names[1:]+["book_short_breakdown"])].itertuples():
  st.append(f"| {row.model}/{row.profile} | {row.onsets} | {row.windows_with_onsets}/{row.total_windows} | {row.correct_1h}/{row.valid_1h} | {row.correct_6h}/{row.valid_6h} | {row.precision_6h_lower90:.1%} to {row.precision_6h_upper90:.1%} | {row.window_mean_proxy_net_6h:+.3%} |")
-pref=pd.concat([pd.read_csv(R/"20261010-short-next-prefix-v3/prefix_comparison.csv"),pd.read_csv(R/"20261010-transition-prefix-v1/prefix_comparison.csv").query("model!='observed_literal_ledger'")],ignore_index=True)
+pref=pd.concat([pd.read_csv(R/"20261010-short-next-prefix-v3/prefix_comparison.csv"),pd.read_csv(R/"20261010-transition-prefix-v1/prefix_comparison.csv").query("model!='observed_literal_ledger'"),pd.read_csv(R/"20261010-clone-prefix-v1/prefix_comparison.csv")],ignore_index=True)
 pt=["| Model | Full-cost return | MDD | Orders | Short-opening orders | Completed / censored short cycles | Profitable completed cycles |","|---|---:|---:|---:|---:|---:|---:|"]
 for row in pref.itertuples():
  hit="unknown" if pd.isna(row.short_cycle_hit_rate) else f"{row.short_cycle_hit_rate:.1%}"
