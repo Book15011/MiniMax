@@ -615,6 +615,13 @@ models:
   baitoey_ovl_brk_dual: {vt: *baitoey_vt_dual, channel_days: 20, scan_days: 120}
   baitoey_ovl_evt_dual: {vt: *baitoey_vt_dual, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 0.5}
   baitoey_ovl_evtctl_dual: {vt: *baitoey_vt_dual, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 1.0}
+  # --- baitoey: faster down switch for e20v45 (research/baitoey/prereg/20261009-faster-down-switch.md) ---
+  baitoey_e20_out10:
+    <<: *pol_switch_vt_tl_e20v45
+    switch: {<<: *team_trend_2, ema_days: 20, hysteresis_down: 0.01}
+  baitoey_e20_out15:
+    <<: *pol_switch_vt_tl_e20v45
+    switch: {<<: *team_trend_2, ema_days: 20, hysteresis_down: 0.015}
 # Leaderboard pick rule (backtest/scoring/selection.py). Not part of the tool version: changing it rescores nothing.
 # The leaderboard always shows both picks; `rule` only sets which one orders the table. Changing it is a team decision.
 selection:
