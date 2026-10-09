@@ -60,20 +60,24 @@ def run_short(c: pd.Series, p: dict, start_ns: int, switch_down: np.ndarray | No
     """The short's trades from start_ns (flat there) to the last bar of c (hourly BTC closes, no gaps assumed):
     dicts with i (decision bar), f (fill bar), x (exit decision bar, None while open), reason, entry, stop."""
     v = p["variant"]
+    fam = v[0]                                                   # a, b, c, d; a2 / b2 are faster a / b
     hard, tstop = float(p["hard_stop"]), int(p["time_stop_hours"])
+    ema_days, below, above = int(p.get("ema_days", 40)), float(p.get("entry_below", 0.03)), float(p.get("cover_above", 0.03))
+    ret_days, low_days, high_days = int(p.get("ret_days", 20)), int(p.get("low_days", 20)), int(p.get("high_days", 10))
     blk = int(p["event_block_hours"]) * H_NS
     x = c.to_numpy(float)
     tn = c.index.asi8
     n = len(x)
     ema40 = c.ewm(span=40 * 24, adjust=False).mean().to_numpy()
+    ema_a = ema40 if ema_days == 40 else c.ewm(span=ema_days * 24, adjust=False).mean().to_numpy()
     dpos = np.flatnonzero(c.index.hour == GRID)
     d = pd.Series(x[dpos])
-    low20 = d.shift(1).rolling(20).min().to_numpy()
+    low20 = d.shift(1).rolling(low_days).min().to_numpy()
     mean20 = d.shift(1).rolling(20).mean().to_numpy()
-    high10 = d.shift(1).rolling(10).max().to_numpy()
-    ret20 = (d / d.shift(20) - 1).to_numpy()
+    high10 = d.shift(1).rolling(high_days).max().to_numpy()
+    ret20 = (d / d.shift(ret_days) - 1).to_numpy()
     ev = events(tuple(p["events"]))
-    fund = funding_daily() if v == "d" else None
+    fund = funding_daily() if fam == "d" else None
 
     def blocked(i):
         return np.searchsorted(ev, tn[i] + blk, side="right") > np.searchsorted(ev, tn[i], side="right")
@@ -85,9 +89,9 @@ def run_short(c: pd.Series, p: dict, start_ns: int, switch_down: np.ndarray | No
         return j < 0 or not (fund[1][j] < fund[2][j])          # NaN percentile: no filter yet
 
     def entry(k, i, last_exit):
-        if v in "ad":
-            return bool(x[i] < ema40[i] * 0.97 and ret20[k] < 0), None
-        if v == "b":
+        if fam in "ad":
+            return bool(x[i] < ema_a[i] * (1 - below) and ret20[k] < 0), None
+        if fam == "b":
             return bool(x[i] < low20[k]), None
         lo = max(i - 72, last_exit + 1)                          # C: the touch must come after the last exit
         if lo >= i or not np.isfinite(mean20[k]):
@@ -98,9 +102,9 @@ def run_short(c: pd.Series, p: dict, start_ns: int, switch_down: np.ndarray | No
     def cover(kk, j):
         if switch_down is not None and not switch_down[j]:
             return True                                         # add-on: the switch reads up
-        if v in "ad":
-            return bool(x[j] > ema40[j] * 1.03)
-        if v == "b":
+        if fam in "ad":
+            return bool(x[j] > ema_a[j] * (1 + above))
+        if fam == "b":
             return bool(x[j] > high10[kk])
         return False
 
@@ -109,7 +113,7 @@ def run_short(c: pd.Series, p: dict, start_ns: int, switch_down: np.ndarray | No
     while k < len(dpos):
         i = dpos[k]
         cond, bh = entry(k, i, last_exit)
-        if v in "ad" and not armed:                             # a fresh signal needs one close outside the condition
+        if fam in "ad" and not armed:                             # a fresh signal needs one close outside the condition
             armed = not cond
             k += 1
             continue
@@ -141,8 +145,8 @@ def run_short(c: pd.Series, p: dict, start_ns: int, switch_down: np.ndarray | No
         xe, why = min(cands)
         trades.append({"i": i, "f": f, "x": xe, "reason": why, "entry": e, "stop": stop})
         last_exit = xe
-        armed = v not in "ad"
-        k = int(np.searchsorted(dpos, xe, side="left" if v in "ad" else "right"))
+        armed = fam not in "ad"
+        k = int(np.searchsorted(dpos, xe, side="left" if fam in "ad" else "right"))
     return trades
 
 
@@ -186,7 +190,9 @@ class E20BtcShort:
         if BTC in view.universe and BTC in view.close:
             c = view.close[BTC].iloc[-TAIL_H:].dropna()
             sw = p["vt"]["switch"]
-            now, had = short_on(c, p["short"], switch_down_series(c, sw["ema_days"], float(sw["hysteresis"])))
+            gate = None if p["short"].get("gate", "switch") == "none" else \
+                switch_down_series(c, sw["ema_days"], float(sw["hysteresis"]))
+            now, had = short_on(c, p["short"], gate)
         had = had and float(prev.get(BTC, 0.0)) <= -SIZE + 1e-9     # the short is in the previous book
         base_prev = _clean(prev.add(pd.Series({BTC: SIZE}), fill_value=0.0)) if had else prev
         if view.t.hour == GRID or prev.empty:                        # e20v45's decision (or a window's first)

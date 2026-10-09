@@ -94,3 +94,24 @@ def test_the_add_on_between_decisions_keeps_the_book_and_drops_only_a_stopped_sh
     held = m.targets(view(path([100.0] * 150 + [95.0, 100.0], end_day=150, end_hour=20), prev, params))
     stopped = m.targets(view(path([100.0] * 150 + [95.0, 100.0], end_day=151, end_hour=0), prev, params))
     assert held.to_dict() == prev and stopped.round(9).to_dict() == {"AUSDT": 0.3}
+
+
+def test_a2_uses_the_20_day_ema_and_a_1_percent_band():
+    c = path([100.0] * 150 + [98.5, 98.5, 100.5])                 # -1.5%: below EMA20 x 0.99, not below EMA40 x 0.97
+    a = bs.run_short(c, P, start(100))
+    a2 = bs.run_short(c, {**P, "variant": "a2", "ema_days": 20, "entry_below": 0.01, "cover_above": 0.01, "ret_days": 7}, start(100))
+    assert a == [] and a2[0]["i"] == bar(c, 150, 16)
+
+
+def test_b2_breaks_the_10_day_low_and_covers_above_the_5_day_high():
+    c = path([100.0] * 140 + [98.0] * 10 + [97.5, 98.2, 98.2])     # day 140 breaks the 10-day low (a first short),
+    b2 = bs.run_short(c, {**P, "variant": "b2", "low_days": 10, "high_days": 5}, start(100))   # day 150 breaks it again
+    assert b2[0]["i"] == bar(c, 140, 16) and b2[0]["reason"] == "time"
+    assert b2[-1]["i"] == bar(c, 150, 16) and b2[-1]["reason"] == "cover" and b2[-1]["x"] == bar(c, 151, 16)
+
+
+def test_an_ungated_add_on_shorts_whatever_the_switch_reads():
+    m = bs.make(bs.E20BtcShort, "t3", "t")
+    params = {"vt": {"switch": {"ema_days": 20, "hysteresis": 0.03}}, "short": {**P, "gate": "none"}}
+    held = m.targets(view(path([100.0] * 150 + [95.0, 100.0], end_day=150, end_hour=20), {"BTCUSDT": -0.4}, params))
+    assert held.to_dict() == {"BTCUSDT": -0.4}
