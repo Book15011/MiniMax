@@ -13,10 +13,11 @@ previous targets, liquidity/breadth coverage boundaries, no missing-endpoint
 replacement, negative momentum, causal failed-rebound ordering, unusedcash/gross/
 percoin/risk limits, and source dependency identity.
 
-The full pytest suite is PENDING at this commit. One existing run continues in
-mm-book-conditional-short-tests under scripts/lock, nice-n10; no repeat run.
-Evidence: results/book/20261009-conditional-short-research/pytest.log and pytest.exit.
-Publication must await its successful completion.
+The full pytest suite PASSED:263 tests in194.94s (exit0). The single run
+completed in mm-book-conditional-short-tests under scripts/lock, nice-n10;
+no repeat run. Evidence: results/book/20261009-conditional-short-research/
+pytest.log and pytest.exit. Source implementation remains frozen atbe4f58a;
+this completion update changes documentation only.
 
 The reproducible source audit passes:
 PYTHONPATH=. .venv/bin/python -B research/book/conditional_short/source_audit.py
