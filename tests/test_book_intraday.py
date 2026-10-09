@@ -11,12 +11,12 @@ def data(n=3000):
  z=pd.DataFrame({"open":100.,"high":100.,"low":100.,"close":100.,"quote_volume":1000.,"taker_buy_quote":400.},index=idx)
  return {s:z.copy() for s in ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT"]}
 def rules():return {s.removesuffix("USDT")+"/USD":PairRule(s.removesuffix("USDT")+"/USD",4,6,Decimal("1")) for s in data()}
-def fixture_replay(prices,signal_at=0,lag=1,end=None):
+def fixture_replay(prices,signal_at=0,lag=1,end=None,cost=1):
  idx=pd.date_range("2025-01-03",periods=len(prices),freq="min",tz="UTC")
  close=pd.DataFrame({"BTCUSDT":prices},index=idx)
  sig=pd.DataFrame({"BTCUSDT":False},index=idx);sig.iloc[signal_at,0]=True
  sigma=close*0+.01;weak=pd.Series(True,index=idx)
- cfg={**CFG,"signal_minutes":1,"lag_minutes":lag,"max_hold_minutes":1000}
+ cfg={**CFG,"signal_minutes":1,"lag_minutes":lag,"max_hold_minutes":1000,"fee":CFG["fee"]*cost,"halfspread":CFG["halfspread"]*cost}
  return replay(close,sig,sigma,weak,cfg,{"BTC/USD":rules()["BTC/USD"]},endpoints=[len(prices)-1] if end is None else end)
 def test_features_ignore_future():
  d=data();f=features(d,CFG);cut=d["BTCUSDT"].index[-30]
@@ -50,6 +50,8 @@ def test_terminal_censor_not_counted_as_completed_hit():
  assert r["windows"].iloc[0].censored==1
 def test_cost_increase_reexecutes_and_reduces_return():
  r=fixture_replay([100,100,99,98])
+ stressed=fixture_replay([100,100,99,98],cost=2)
+ assert stressed["windows"].iloc[0]["return"]<r["windows"].iloc[0]["return"]
  # Ordinary fixture ledger includes both entry and terminal fees.
  assert r["events"].fee.sum()>0
  assert r["windows"].iloc[0].fees>0
@@ -71,3 +73,7 @@ def test_precision_is_not_rounded_up():
  assert q==float(Decimal(str(q)).quantize(Decimal(".000001")))
 def test_invalid_missing_quote_fails():
  with pytest.raises(ValueError):fixture_replay([100,float("nan"),99])
+
+def test_future_prices_leave_prior_fills_unchanged():
+ a=fixture_replay([100,100,99,98,98]);b=fixture_replay([100,100,99,98,50])
+ pd.testing.assert_frame_equal(a["events"].query("minute<4"),b["events"].query("minute<4"))

@@ -12,24 +12,24 @@ def features(data,cfg):
  low=pd.DataFrame({s:z.low for s,z in data.items()})
  buy=pd.DataFrame({s:z.taker_buy_quote for s,z in data.items()})
  if not close.index.is_unique or close.isna().any().any():raise ValueError("Incomplete prices")
- ret15=close/close.shift(15)-1;ret60=close/close.shift(60)-1
- r=np.log(close).diff();sigma=r.rolling(60,min_periods=60).std()*np.sqrt(180)
+ ret15=close/close.shift(cfg["signal_minutes"])-1;ret60=close/close.shift(cfg["breakout_minutes"])-1
+ r=np.log(close).diff();sigma=r.rolling(cfg["breakout_minutes"],min_periods=cfg["breakout_minutes"]).std()*np.sqrt(cfg.get("risk_horizon_minutes",180))
  ema=close.ewm(span=cfg["ema_minutes"],adjust=False,min_periods=cfg["ema_minutes"]).mean()
  ema60=close.ewm(span=60,adjust=False,min_periods=60).mean()
- ret48=close/close.shift(2880)-1
- weak=(ret48.BTCUSDT<0)&(close.BTCUSDT<ema.BTCUSDT)&((ret60<0).mean(axis=1)<=1)
- # Breadth means positive one-hour return, with all five endpoints required.
- weak &= (ret60>0).mean(axis=1)<=.4
+ ret48=close/close.shift(cfg["warmup_minutes"])-1
+ weak=(ret48.BTCUSDT<0)&(close.BTCUSDT<ema.BTCUSDT)
+ # Breadth means positive one-hour return, with all selected endpoints required.
+ weak &= (ret60>0).mean(axis=1)<=cfg.get("breadth_max",.4)
  ready=close.rolling(cfg["warmup_minutes"]+1,min_periods=cfg["warmup_minutes"]+1).count().eq(cfg["warmup_minutes"]+1)
  common=ready&(close<ema)&(sigma>=cfg["sigma_floor"])
- volume15=qv.rolling(15,min_periods=15).sum()
- prior_volume=volume15.shift(15).rolling(240,min_periods=240).mean()
+ volume15=qv.rolling(cfg["signal_minutes"],min_periods=cfg["signal_minutes"]).sum()
+ prior_volume=volume15.shift(cfg["signal_minutes"]).rolling(cfg.get("volume_baseline_minutes",240),min_periods=cfg.get("volume_baseline_minutes",240)).mean()
  prior_low=low.shift(1).rolling(cfg["breakout_minutes"],min_periods=cfg["breakout_minutes"]).min()
  breakout=(close<prior_low*(1-cfg["break_buffer"]))&(ret15<0)&(volume15>prior_volume*cfg["volume_multiple"])
- failed=(close.shift(15)/close.shift(45)-1>cfg["rebound_prior"])&(ret15<cfg["rebound_fail"])&(close.shift(15)>=ema60.shift(15))&(close<ema60)
- bounce=(ret60.shift(15)>cfg["bounce_move"])&(ret15<0)
+ failed=(close.shift(cfg["signal_minutes"])/close.shift(3*cfg["signal_minutes"])-1>cfg["rebound_prior"])&(ret15<cfg["rebound_fail"])&(close.shift(cfg["signal_minutes"])>=ema60.shift(cfg["signal_minutes"]))&(close<ema60)
+ bounce=(ret60.shift(cfg["signal_minutes"])>cfg["bounce_move"])&(ret15<0)
  relative=(ret60<cfg["relative_move"])&(ret60.sub(ret60.BTCUSDT,axis=0)<cfg["relative_excess"])&(ret15<0)
- flow=buy.rolling(15,min_periods=15).sum()/volume15.replace(0,np.nan)
+ flow=buy.rolling(cfg["signal_minutes"],min_periods=cfg["signal_minutes"]).sum()/volume15.replace(0,np.nan)
  raw=dict(zip(FAMILIES,[breakout,failed,bounce,relative,breakout&(flow<cfg["flow_max"])]))
  signals={name:(mask&common).mul(weak,axis=0).astype(bool) for name,mask in raw.items()}
  return {"close":close,"sigma":sigma,"strength":-ret60/sigma.replace(0,np.nan),"weak":weak,"signals":signals}

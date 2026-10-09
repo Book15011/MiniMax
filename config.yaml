@@ -816,6 +816,9 @@ book_weak_eval:
     minimum_episodes: 30
 
 book_intraday_short:
+  volume_baseline_minutes: 240
+  risk_horizon_minutes: 180
+  breadth_max: 0.4
   signal_minutes: 15
   warmup_minutes: 2880
   ema_minutes: 1440
