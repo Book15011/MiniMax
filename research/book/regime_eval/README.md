@@ -61,3 +61,5 @@ A faithful model switch requires shared holdings, accrued activity, pending orde
 The short metric requires executable entry bid and cover ask, both-side fees, positive entry and cover delays, and independent episodes. There is no validated executable candidate ledger. Minute OHLC cannot establish seconds ordering; recorded second quotes cover only about three days. Short capability remains UNVERIFIED, and the main HFT prohibition remains in force.
 
 Reviewer sign-off and any future merge are separate. This branch has not been merged or deployed.
+
+The automatic secondary-board interface is available on feature/book-score2. See docs/SCORE2.md for --score2, --score --score2 and leaderboard2 commands. It preserves this frozen research study.

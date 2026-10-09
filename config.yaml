@@ -645,3 +645,13 @@ book_regime_eval:
   live_panel: results/book/shadow/h1
   paper_equity: results/book/paper-live/equity.csv
   out_dir: results/book/20261008-regime-eval
+
+
+# Separate automatic checkpoint board. Never modifies the original leaderboard.
+book_score2:
+  schema_version: 1
+  checkpoint: results/book/20261008-regime-eval
+  registry: results/scoring/registry_2.jsonl
+  leaderboard: results/scoring/leaderboard_2.md
+  csv: results/scoring/leaderboard_2.csv
+  artifacts: results/scoring/score2

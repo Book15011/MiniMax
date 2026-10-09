@@ -1,4 +1,4 @@
-"""Score one model: python -m backtest.run --model <name> [--score] [--holdout] [--no-cache] | --list
+"""Score one model: python -m backtest.run --model <name> [--score] [--score2] [--holdout] [--no-cache] | --list
 
 Writes reports/<name>/<YYYYMMDD-HHMM>.md (commit it) and a .log next to it (never committed).
 --score adds the competition-style score (docs/EVALUATION.md): <YYYYMMDD-HHMM>-score.md and its charts.
@@ -24,14 +24,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--holdout", action="store_true", help="open the sealed holdout (only for the frozen launch model)")
     ap.add_argument("--no-cache", action="store_true", help="recompute even if a cached result matches")
     ap.add_argument("--score", action="store_true", help="also compute the competition-style score (docs/EVALUATION.md)")
+    ap.add_argument("--score2", action="store_true", help="publish fixed-checkpoint diagnostics to leaderboard_2.md")
     a = ap.parse_args(argv)
-    if a.score and a.holdout:
-        ap.error("--score never opens the holdout; use --holdout without --score")
+    if (a.score or a.score2) and a.holdout:
+        ap.error("--score and --score2 never open the holdout; use --holdout without --score")
     if a.list or not a.model:
         for name, m in sorted(discover().items(), key=lambda kv: (kv[1].spec.method, kv[0])):
             print(f"{m.spec.method:10s} {name:28s} {m.spec.author:8s} {m.spec.description}")
         return 0
     cfg = load_config()
+    if a.score2:
+        from backtest.scoring.score2 import load_checkpoint
+        try:
+            load_checkpoint(cfg)
+        except (ValueError, FileNotFoundError, KeyError) as exc:
+            ap.error(f"score2 checkpoint/configuration preflight failed: {exc}")
     model = get(a.model)
     md, lg, log = open_run(cfg, a.model)
     t0 = time.time()
@@ -43,9 +50,14 @@ def main(argv: list[str] | None = None) -> int:
     for c, ok, d in out["checks"]:
         log.info("must-pass %-30s %s  %s", c, "PASS" if ok else "FAIL", d)
     log.info("report: %s", md)
-    if a.score:
+    if a.score or a.score2:
         from backtest.scoring.report import score_and_publish
-        score_and_publish(model, market, cfg, md.with_name(f"{md.stem}-score.md"), log, use_cache=not a.no_cache)
+        score = score_and_publish(model, market, cfg, md.with_name(f"{md.stem}-score.md"),
+                                  log, use_cache=not a.no_cache, register=a.score)
+        if a.score2:
+            from backtest.scoring.score2 import publish
+            board = publish(score, cfg, report_path=md.with_name(f"{md.stem}-score2.md"))
+            log.info("score2 leaderboard: %s; adaptive status remains checkpoint-controlled", board)
     return 0
 
 
