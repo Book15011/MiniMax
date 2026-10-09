@@ -65,6 +65,8 @@ def fetch():
  if (OUT/"fine_data_manifest.json").exists():raise ValueError("Fine data already frozen")
  old=json.loads((ROOT/"results/book/20261009-short-competition/data_manifest.json").read_text())
  oldmap={(x["symbol"],x["day"]):x for x in old["archives"]}
+ prior=ROOT/"results/book/20261009-short-next/prefix_archive_receipt.json"
+ if prior.exists():oldmap.update({(x["symbol"],x["day"]):x for x in json.loads(prior.read_text())})
  tasks=[Task("spot","klines",a+"USDT","daily",str(d.date()),"1m")
         for a in plan["assets"] for d in pd.date_range("2026-10-04","2026-10-08")]
  def download(t):
@@ -81,7 +83,16 @@ def fetch():
   if hashlib.sha256(raw).hexdigest()!=expected:raise ValueError("Bad archive checksum")
   p.write_bytes(raw)
   return {"symbol":t.symbol,"day":t.period,"url":url,"path":str(p),"sha256":expected,"status":"verified"}
- with ThreadPoolExecutor(max_workers=4) as pool:records=list(pool.map(download,tasks))
+ receipt=OUT/"prefix_archive_receipt.json"
+ if receipt.exists():
+  records=json.loads(receipt.read_text())
+  expected={(t.symbol,t.period) for t in tasks}
+  if {(r["symbol"],r["day"]) for r in records}!=expected:raise ValueError("Archive receipt task mismatch")
+  for r in records:
+   if sha(r["path"])!=r["sha256"]:raise ValueError("Archive receipt hash mismatch")
+ else:
+  with ThreadPoolExecutor(max_workers=4) as pool:records=list(pool.map(download,tasks))
+  receipt.write_text(json.dumps(records,indent=2))
  parts=[]
  for r in records:
   d=read_kline_zip(Path(r["path"]));d["timestamp"]=pd.to_datetime(d.open_time,unit="ms",utc=True)+pd.Timedelta(minutes=1)
@@ -106,10 +117,24 @@ def fetch():
                    "note":"Canonical selected prefix receipt; growing source is not claimed immutable"})
  quotes=pd.concat(chunks,ignore_index=True);quotes["ts_utc"]=pd.to_datetime(quotes.ts_utc,utc=True)
  quotes=quotes.sort_values(["ts_utc","pair"])
- if quotes.duplicated(["ts_utc","pair"]).any():raise ValueError("Duplicate recorded quote")
+ duplicates=quotes[quotes.duplicated(["ts_utc","pair"],keep=False)]
+ duplicates.to_csv(OUT/"quote_duplicate_evidence.csv",index=False)
+ distinct=quotes.drop_duplicates()
+ conflict=distinct[distinct.duplicated(["ts_utc","pair"],keep=False)]
+ bad_keys=pd.MultiIndex.from_frame(conflict[["ts_utc","pair"]].drop_duplicates())
+ raw_bad=pd.MultiIndex.from_frame(quotes[["ts_utc","pair"]]).isin(bad_keys)
+ quotes[raw_bad].to_csv(OUT/"quote_quarantined_conflicts.csv",index=False)
+ bad=pd.MultiIndex.from_frame(distinct[["ts_utc","pair"]]).isin(bad_keys)
+ quote_policy={"rule":"Collapse only identical full rows; quarantine all rows at any conflicting timestamp/pair; use prior unambiguous asof<=30s else unchanged verified minute proxy<=120s",
+               "selected_rows":len(quotes),"identical_repetitions_removed":len(quotes)-len(distinct),
+               "conflicting_keys_quarantined":len(bad_keys),"conflicting_rows_quarantined":int(raw_bad.sum()),
+               "retained_rows":int((~bad).sum())}
+ quotes=distinct.loc[~bad].copy()
+ if quotes.duplicated(["ts_utc","pair"]).any():raise ValueError("Quote quarantine failed")
  quotes.to_parquet(OUT/"prefix_quotes.parquet",index=False)
  result={"archives":records,"quote_receipts":receipts,"plan_sha256":sha(OUT/"prefix_plan.json"),
-         "files":{n:sha(OUT/n) for n in ["prefix_minutes.parquet","prefix_quotes.parquet"]},
+         "files":{n:sha(OUT/n) for n in ["prefix_minutes.parquet","prefix_quotes.parquet","quote_duplicate_evidence.csv","quote_quarantined_conflicts.csv"]},
+         "quote_policy":quote_policy,
          "proxy":"1bp halfspread, checksummed Binance1m, before recorder; recorded Roostoo asof quotes preferred"}
  (OUT/"fine_data_manifest.json").write_text(json.dumps(result,indent=2))
  print(json.dumps({"verified_archives":len(records),"minute_rows":len(minute),"quote_rows":len(quotes)}),flush=True)
@@ -153,11 +178,12 @@ def replay():
  (OUT/"prefix_audit.json").write_text(json.dumps({"failure_counts":failures,"plan_sha256":sha(OUT/"prefix_plan.json"),
        "runner_sha256":sha(__file__),"fine_manifest_sha256":sha(OUT/"fine_data_manifest.json"),"config":basic,
        "warnings":["No activity guard in this diagnostic; primary score2 includes it","Observed T001fee confirmed; other observed fees assumed0.1%",
-       "Observed literal ledger retains initial100k capital deficit","Signals use completed shadow hourly store, not independently checksum verified here",
+       "Observed literal ledger retains initial100k capital deficit","Signal source and verification are stated in pinned data_manifest.json; do not infer historical bid/ask coverage",
        "No independent holdout; archived proxy precedes recorder; minute samples may understate intraminute drawdown"]},indent=2))
  print(frame.to_string(index=False));print("failures",failures,flush=True)
  if any(failures.values()):raise ValueError("Fine replay has failures; do not use as complete comparison")
 
 if __name__=="__main__":
- ap=argparse.ArgumentParser();ap.add_argument("stage",choices=("prepare","fetch","replay"));a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument("stage",choices=("prepare","fetch","replay"));ap.add_argument("--out",type=Path,default=OUT);a=ap.parse_args();OUT=a.out.resolve()
+ if (ROOT/"results/book").resolve() not in OUT.parents:raise ValueError("Output outside dedicated Book results")
  {"prepare":prepare,"fetch":fetch,"replay":replay}[a.stage]()
