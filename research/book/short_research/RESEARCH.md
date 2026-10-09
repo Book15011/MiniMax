@@ -6,6 +6,14 @@ Test three mechanisms in a small frozen experiment, rather than searching hundre
 
 The observed five-coin log is useful for its daily schedule, fixed basket and portfolio allocation. It does not identify a unique rule. Cloning and outperforming its observed portfolio are separate questions. Do not select a general model merely because it matches or beats five already inspected dates.
 
+## Implementation declaration (before candidate outcomes)
+The exact frozen implementation is specified by research/book/short_study/PROTOCOL.md and commit317a600.
+Its volatility cap uses the conservative perfectly-correlated bound sum(|weight| × hourlyvol × sqrt24), rather than estimating a covariance matrix. This avoids optimistic diversification assumptions for a small highly correlated basket.
+CandidateC additionally requires current five-major BTC48h weakness and at most40% positive breadth among at least3 valid majors; this is a declared entry condition, not the frozen30-asset query or a coverage repair.
+The25% cap is applied to inverse-volatility base weights before multiplying by bounded conviction, preserving cash. ShortC positions already held do not require a new volume surge at every check.
+The fixed3pp band is ModelSpec metadata, as in the existing contract; other tunables are in config.yaml.
+These details were fixed before results and are not changes made to improve a displayed score.
+
 ## Timestamped local evidence
 I read main:AGENTS.md through SSH before research. All project inspection and artifact writing stayed on metallurgy-server. The source model files are our own repository code.
 
