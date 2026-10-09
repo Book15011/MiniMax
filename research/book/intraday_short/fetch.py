@@ -6,9 +6,9 @@ import pandas as pd
 from src.data.binance_downloader import Task,http_get,parse_checksum
 from src.data.loader import read_kline_zip
 ROOT=Path("/home/ubuntu/test/MiniMax")
-OUT=ROOT/"results/book/20261010-intraday-short-v1"
+OUT=ROOT/"results/book/20261010-intraday-short-v2"
 CP=ROOT/"results/book/20261009-weak-eval-v2"
-COINS=("BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT")
+COINS=("BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT")
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def main():
  OUT.mkdir(parents=True,exist_ok=True)
@@ -31,10 +31,15 @@ def main():
  planpath.write_text(json.dumps(plan,indent=2));cases.to_parquet(OUT/"cases.parquet")
  def fetch(t):
   path=OUT/"raw"/t.symbol/t.filename;path.parent.mkdir(parents=True,exist_ok=True)
-  url=t.url("https://data.binance.vision/data");checksum=http_get(url+".CHECKSUM").text
+  url=t.url("https://data.binance.vision/data")
+  prior=ROOT/"results/book/20261010-intraday-short-v1/raw"/t.symbol/t.filename
+  if prior.exists() and prior.with_suffix(".zip.CHECKSUM").exists():
+   checksum=prior.with_suffix(".zip.CHECKSUM").read_text();raw=prior.read_bytes()
+  else:
+   checksum=http_get(url+".CHECKSUM").text;raw=None
   digest,name=parse_checksum(checksum)
   if name!=t.filename:raise ValueError("Wrong filename")
-  raw=path.read_bytes() if path.exists() else http_get(url).content
+  raw=(path.read_bytes() if path.exists() else http_get(url).content) if raw is None else raw
   if hashlib.sha256(raw).hexdigest()!=digest:raise ValueError("Bad checksum")
   path.write_bytes(raw);path.with_suffix(".zip.CHECKSUM").write_text(checksum)
   return {"symbol":t.symbol,"period":t.period,"granularity":t.granularity,"path":str(path),"sha256":digest,"url":url}

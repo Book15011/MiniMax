@@ -62,10 +62,52 @@ def _precision(row, h):
     return f"{_count(good)}/{_count(n)} ({_number(ratio, percent=True, digits=1)})"
 
 
+def short_rank_view(short):
+    """Descriptive display ranks only; no changes to primary metric/evidence."""
+    f=short.copy(deep=True)
+    for n in ("valid_6h","precision_6h_lower90","window_mean_proxy_net_6h","minimum_onsets_met"):
+        if n not in f:f[n]=float("nan")
+    f["accuracy_rank"]=float("nan");f["return_proxy_rank"]=float("nan")
+    valid=pd.to_numeric(f.valid_6h,errors="coerce").fillna(0)>0
+    for _,g in f[valid].groupby("profile",sort=False):
+        order=g.sort_values(["precision_6h_lower90","model"],ascending=[False,True],na_position="last").index
+        order=[i for i in order if pd.notna(f.loc[i,"precision_6h_lower90"])]
+        for rank,i in enumerate(order,1):f.loc[i,"accuracy_rank"]=rank
+        order=g.sort_values(["window_mean_proxy_net_6h","model"],ascending=[False,True],na_position="last").index
+        order=[i for i in order if pd.notna(f.loc[i,"window_mean_proxy_net_6h"])]
+        for rank,i in enumerate(order,1):f.loc[i,"return_proxy_rank"]=rank
+    f["evidence_label"]=["MINIMUM_COUNT_ONLY" if _yes(v) else "INSUFFICIENT" for v in f.minimum_onsets_met]
+    return f
+
+def ranked_short_lines(short,frame):
+    lines=["","## Ranked short accuracy and returns","",
+        "Two descriptive ranks within each profile: accuracy rank sorts the six-hour precision lower90% bound; "
+        "return rank sorts the equal-firing-window mean six-hour after-cost unit proxy. A rank is not a reliability pass. "
+        "MINIMUM_COUNT_ONLY means the existing onset-count rule passed; independent evidence can still be weak. "
+        "INSUFFICIENT means the count rule failed. Zero valid labels receive no rank.","",
+        "Unit proxy returns use one dollar of short entry notional, not the model's actual quantity or portfolio contribution. "
+        "Full portfolio mean and CS are shown separately. Minute short-only executable comparisons: "
+        "/home/ubuntu/test/MiniMax/results/book/20261010-intraday-short-v2/leaderboard_short.md. "
+        "That separate experiment uses a different fixed asset pool and must not be pooled into these hourly ranks.",""]
+    f=short_rank_view(short);b=frame.set_index("model") if len(frame) else pd.DataFrame()
+    rows=[]
+    for _,r in f.sort_values(["profile","accuracy_rank","return_proxy_rank","model"],na_position="last").iterrows():
+        mean=cs=None
+        if len(b) and r.model in b.index:
+            row=b.loc[r.model];mean=row.get("fresh_mean" if r.profile=="weak_fresh_btc" else "return_mean");cs=row.get("CS")
+        rows.append([r.model,r.profile,_count(r.accuracy_rank),_count(r.return_proxy_rank),
+            _count(r.get("onsets")),f"{_count(r.get('windows_with_onsets'))}/{_count(r.get('total_windows'))}",
+            _precision(r,6),_number(r.get("precision_6h_lower90"),True),
+            _number(r.get("window_mean_proxy_net_6h"),True,True),
+            _number(mean,True,True),_number(cs),r.evidence_label])
+    lines+=_table(["Model","Profile","Accuracy rank","Return proxy rank","Onsets","Firing windows",
+        "6h correct/valid","6h accuracy lower90%","6h unit proxy return","Full portfolio mean","CS","Sample flag"],rows)
+    return lines
+
 def render(cp, frame, short, evidence):
     """Produce Markdown from already computed, versioned evidence.
 
-    This presentation function never selects windows, assigns ranks, infers a winner
+    This presentation function never selects windows, changes primary ranks, infers a winner
     from mean returns, or upgrades hourly short proxies into executable account PnL.
     """
     c, base = cp["c"], cp["base"]
@@ -265,6 +307,7 @@ def render(cp, frame, short, evidence):
                           counts("cost_only_loss"), counts("unresolved"), counts("rebound_losses")])
     lines += _table(["Model", "Profile", "Wrong direction 1/3/6h", "Cost-only loss 1/3/6h",
                      "Unresolved 1/3/6h", "Rebound losses 1/3/6h"], srows)
+    lines += ranked_short_lines(short,frame)
     lines += ["", "## Evidence strength and limits", "",
               f"Stronger historical replacement evidence requires the original hard gates, a positive "
               f"joint conservative selection score, and at least **{minclusters} merged overlap clusters "
