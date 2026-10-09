@@ -589,6 +589,24 @@ models:
     sleeves:
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
+  pol_switch_vt_tl_e20v45_d2:   # e20v45, down below EMA x 0.98, up above x 1.03 (reports/review/20261009-prereg-e20v45-band.md, addendum 1)
+    prev: own
+    switch: {<<: *team_trend_2, ema_days: 20, hysteresis: 0.03, down_hysteresis: 0.02}
+    sleeves:
+      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
+  pol_switch_vt_tl_e20v45_d1:   # e20v45, down below EMA x 0.99, up above x 1.03 (addendum 1)
+    prev: own
+    switch: {<<: *team_trend_2, ema_days: 20, hysteresis: 0.03, down_hysteresis: 0.01}
+    sleeves:
+      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
+  pol_switch_vt_tl_e20v45_d0:   # e20v45, down below the EMA, up above x 1.03 (addendum 1)
+    prev: own
+    switch: {<<: *team_trend_2, ema_days: 20, hysteresis: 0.03, down_hysteresis: 0.00}
+    sleeves:
+      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
+      pol_trend_ls: {when: down, params: *pol_trend_ls}
   # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
   pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
     vt: *baitoey_vt_mom
