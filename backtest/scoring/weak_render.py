@@ -86,8 +86,8 @@ def ranked_short_lines(short,frame):
         "MINIMUM_COUNT_ONLY means the existing onset-count rule passed; independent evidence can still be weak. "
         "INSUFFICIENT means the count rule failed. Zero valid labels receive no rank.","",
         "Unit proxy returns use one dollar of short entry notional, not the model's actual quantity or portfolio contribution. "
-        "Full portfolio mean and CS are shown separately. Minute short-only executable comparisons: "
-        "/home/ubuntu/test/MiniMax/results/book/20261010-intraday-short-v2/leaderboard_short.md. "
+        "Full portfolio mean and CS are shown separately; CS is the archive-full primary risk value for both rows. Minute short-only executable comparisons: "
+        "/home/ubuntu/test/MiniMax/results/book/20261010-intraday-short-v3/leaderboard_short.md. "
         "That separate experiment uses a different fixed asset pool and must not be pooled into these hourly ranks.",""]
     f=short_rank_view(short);b=frame.set_index("model") if len(frame) else pd.DataFrame()
     rows=[]
