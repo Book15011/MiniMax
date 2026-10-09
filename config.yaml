@@ -593,3 +593,63 @@ models:
 selection:
   rule: margin                    # amended 2026-10-02 (reports/review/20261002-amend-pick-rule.md); legacy = the pre-registered tie test
   tie_margin: 0.03                # margin rule: tied only if also within this of the top's HEADLINE_RET
+
+# Book: offline reconstruction study; never read by the live runner.
+observed_baseline_study:
+  input: results/book/20261009-observed-baseline/observed_trades.csv
+  output: results/book/20261009-observed-baseline
+  start: "2026-10-04T12:00:00Z"
+  end: "2026-10-09T01:15:00Z"
+  first_decision: "2026-10-05T01:00:00Z"
+  decision_hour: 1
+  seed: 100000
+  fee: 0.001
+  min_order: 1.0
+  minute_max_age: 120
+  quote_max_age: 30
+  proxy_half_spread: 0.0001
+  initial_equal: true
+  precisions: {BNB: 3, BTC: 5, ETH: 4, SOL: 3, XRP: 1}
+  assets: [BNB, BTC, ETH, SOL, XRP]
+  match_seconds: 120
+  match_quantity_relative: 0.05
+  target_agreement: 0.85
+  train_last_date: "2026-10-07"
+  validation_first_date: "2026-10-08"
+  search:
+    lookbacks: [6, 12, 20, 24, 48, 72, 120, 168]
+    ema_pairs: [[6, 24], [12, 26], [12, 48], [24, 72], [24, 168], [48, 168]]
+    families: [momentum, mean, rsi, ema]
+    scales: [raw, vol, variance, sign]
+    signal_delay_hours: [0, 1]
+    allocations: [normalized, bounded]
+    gross: [0.4, 0.6, 0.8, 0.9, 0.95, 0.98, 1.0]
+    clips:
+      raw: [0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1.0]
+      vol: [0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+      variance: [10, 25, 50, 100, 250, 500, 1000]
+      sign: [1.0]
+    vol_hours: 24
+    delays_minutes: [3, 4, 5, 6, 7]
+    bands: [0.0, 0.01, 0.02, 0.05]
+    shortlist: 60
+
+  refine:
+    fast_min: 1
+    fast_max: 24
+    slow_min: 12
+    slow_max: 96
+    signal_delay_hours: [0, 1, 2, 3]
+    scales: [raw, vol, variance]
+    clip_min: 0.0001
+    clip_max: 10000
+    clip_count: 160
+    gross_min: 0.4
+    gross_max: 1.0
+    shortlist: 30
+
+  broker:
+    cash_buffer: 0.001
+    initial_gross: 1.0
+    order_spacing_seconds: 10
+    price_precisions: {BNB: 2, BTC: 2, ETH: 2, SOL: 2, XRP: 4}
