@@ -1,5 +1,5 @@
 # Book short research: where to look and how to use it
-Seven methods are already ranked; an eighth, slower breakdown is preregistered separately before its returns. The persistent flow method improved accuracy to 42/107 (39.25%) from 33/110 (30%) and recent-prefix return to +0.596% from +0.493%. Its broader mean remains -0.076%, and every method failed the stronger-evidence rules. The improvement is a research lead, not a verified live replacement.
+Eight methods are now ranked. The slower breakdown ranks first by the conservative return bound and worst-profile mean, but its archive-full average is still -0.032%. Persistent flow ranks first for accuracy: 42/107 completed cycles (39.25%), versus the original flow 33/110 (30%). Its recent-prefix return improved from +0.493% to +0.596%, while its broader mean remains -0.076%. Every method failed the stronger-evidence rules; these are research leads, not verified live replacements.
 
 Everything is remote under /home/ubuntu/test/MiniMax. Feature/book-intraday-short is Book's research branch; nothing here changes the live bot.
 
@@ -46,3 +46,7 @@ All68unique historical weak/control starts plus the recentprefix are retained. P
 The recentprefix is spent; the clone was fitted on it. Papers in RESEARCH.md motivate hypotheses rather than validate our exact thresholds. Full risk, false/positive signals, costs, source hashes and all failures stay visible.
 
 Slower-range experiment: .venv/bin/python -B -m research.book.intraday_short.run_slow --score. Its run_slow_all.py runs tests, evaluation, independent audit and publication in one locked batch. Completed source/evidence cannot be overwritten. The initial7 remain in v3 and v2.
+
+Validation complete: 541 full-suite tests passed on the frozen worktree; independent archive audit matched 19,095,144 cells; 1,656 execution ledgers reconciled. The earlier Git clean/dirty determinism failure is preserved and was resolved by freezing the worktree before rerunning.
+
+Operational scope: these are supplemental sleeves without an activity guard or verified live adapter. Roostoo ticker lacks taker-buy quote flow; flow models need another live feed. Completed minute OHLCV/flow availability on deployment is UNVERIFIED. No live feed, signed endpoint or running bot was changed.
