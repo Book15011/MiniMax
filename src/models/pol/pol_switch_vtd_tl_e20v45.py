@@ -6,7 +6,12 @@ Pre-registration: reports/review/20261009-prereg-e20v45-dual.md (written before 
 from __future__ import annotations
 
 from src.contracts import ModelSpec
+from src.models.baitoey import baitoey_vt_dual
+from src.models.pol import _combo
 from src.models.pol._combo import Combo
+
+_combo.SLEEVES.setdefault("baitoey_vt_dual", baitoey_vt_dual.MODEL)   # registered here: _combo.py (and so every cached
+                                                                      # combo, e20v45 included) stays unchanged
 
 
 class SwitchVtdTlE20V45(Combo):
