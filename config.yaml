@@ -503,7 +503,7 @@ models:
   baitoey_mr_4h:                  # MR_4h registered for the live bot (Pol, 2026-10-01; Baitoey to review)
     <<: *baitoey_mr_bbrsi
     bar_hours: 4
-  baitoey_vt_dual:                # research/baitoey/prereg/20261002-dual-momentum.md
+  baitoey_vt_dual: &baitoey_vt_dual   # research/baitoey/prereg/20261002-dual-momentum.md
     <<: *baitoey_vt_mom
     min_score: 0.0                # a coin holds a slot only while its own momentum score is above this
   baitoey_two_sleeve:               # trend sleeve + momentum sleeve (spec 2026-10-04); these defaults are variant C
@@ -604,6 +604,17 @@ models:
     shock_4h: 0.05
     cooldown_hours: 24
 
+  # --- baitoey: three overlays on e20v45 and vt_dual (research/baitoey/prereg/20261009-overlays.md) ---
+  baitoey_ovl_altbtc_a_e20: {vt: *pol_switch_vt_tl_e20v45, lookback_days: 10}
+  baitoey_ovl_altbtc_b_e20: {vt: *pol_switch_vt_tl_e20v45, lookback_days: 10}
+  baitoey_ovl_brk_e20: {vt: *pol_switch_vt_tl_e20v45, channel_days: 20, scan_days: 120}
+  baitoey_ovl_evt_e20: {vt: *pol_switch_vt_tl_e20v45, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 0.5}
+  baitoey_ovl_evtctl_e20: {vt: *pol_switch_vt_tl_e20v45, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 1.0}
+  baitoey_ovl_altbtc_a_dual: {vt: *baitoey_vt_dual, lookback_days: 10}
+  baitoey_ovl_altbtc_b_dual: {vt: *baitoey_vt_dual, lookback_days: 10}
+  baitoey_ovl_brk_dual: {vt: *baitoey_vt_dual, channel_days: 20, scan_days: 120}
+  baitoey_ovl_evt_dual: {vt: *baitoey_vt_dual, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 0.5}
+  baitoey_ovl_evtctl_dual: {vt: *baitoey_vt_dual, events: [CPI, FOMC_MINUTES], before_hours: 12, after_hours: 6, scale: 1.0}
 # Leaderboard pick rule (backtest/scoring/selection.py). Not part of the tool version: changing it rescores nothing.
 # The leaderboard always shows both picks; `rule` only sets which one orders the table. Changing it is a team decision.
 selection:
