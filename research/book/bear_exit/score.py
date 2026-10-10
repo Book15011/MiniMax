@@ -6,6 +6,7 @@ from research.book.bear_exit.run import OUT,NAMES,OLD,STUDY
 from research.book.intraday_short.report import clustered_interval,eligible
 from research.book.bear_exit.audit import terminal_audit
 from research.book.bear_exit.entry_diagnostics import publish as publish_entries
+from research.book.bear_exit.control_audit import audit as audit_control
 def table(headers,rows):
  return "\n".join(["| "+" | ".join(headers)+" |","|"+"|".join("---" for _ in headers)+"|"]+["| "+" | ".join(map(str,row))+" |" for row in rows])
 def pct(x):return "unknown" if pd.isna(x) else f"{x:+.3%}"
@@ -19,6 +20,7 @@ def main():
  if len(status)!=len(NAMES)+1 or any(z["returncode"] for z in status):raise ValueError("Tests or normal scoring incomplete")
  if json.loads((OUT/"evaluation_before.json").read_text())!=json.loads((OUT/"evaluation_after.json").read_text()):raise ValueError("Frozen inputs changed")
  f=pd.read_csv(OUT/"window_results.csv");cases=pd.read_parquet(OUT/"cases.parquet");summ=[];rows=[]
+ audit_control(OUT,STUDY)
  terminal_checks=[]
  for z in f.itertuples():
   stem=OUT/"cases"/z.case/(z.model+"-"+z.scenario+"-"+str(z.hours))
@@ -86,7 +88,7 @@ def main():
  text+="A completed short episode runs from flat to short to flat, aggregating partial covers. It is correct only if net profit after fees and spread is positive. Accuracy=wins/completed; open episodes are censored from accuracy but included at full closing cost in return. Tiny sample accuracy cannot establish reliability. The main scoreboard's1/3/6h onset precision is a separate fixed-horizon proxy.\n\n"
  text+="Conservative rank sorts the worst of six profile/horizon quarter-cluster lower bounds on mean return. Bootstrap20000 and simultaneous adjustment use21declared short hypotheses(previous8minute+6price+4selective+these3new); repeated earlier research still limits inference. Accuracy rank uses the worst-profile90%interval lower bound at228h. Return rank sorts mean portfolio return. P10 and Worst describe losses; MDD is minute peak-to-trough loss; CS keeps0.4Sortino+0.3Sharpe+0.3Calmar. Mean gross is realised exposure, which can differ despite identical caps.\n\n"
  text+=table(["Rank","Model","Lower return","Return","Median","P10","Worst","Short wins/closed","Accuracy","Accuracy rank","Censored","MDD","CS","Mean gross","Evidence"],[[r.rank,r.model,pct(r.selection_lower90),pct(r.mean),pct(r.median),pct(r.p10),pct(r.worst),f"{r.wins}/{r.completed}",rate(r.accuracy),int(r.accuracy_rank) if pd.notna(r.accuracy_rank) else "-",r.censored,rate(r.MDD),f"{r.CS:.3f}",rate(r.mean_gross),"PASS" if r.stronger_evidence else "FAIL"] for r in rank.itertuples()])
- text+="\n\nThe unchanged evidence checks require every profile/horizon lower bound>0,at least30completed shorts,12quarters and12firing windows, positive doubled-cost mean, nonnegative median and positive-control mean>=-1%. No thresholds were loosened. paired_control.csv shows within-window return differences from the equal-risk control; absolute profit and normal --score2 incumbent comparisons must also pass.\n\n"
+ text+="\n\nThe unchanged guard benchmark must first reproduce all615 prior corrected ledgers byte-for-byte (events, cycles, minute path and endpoint). See control_reproduction_audit.json. The unchanged evidence checks require every profile/horizon lower bound>0,at least30completed shorts,12quarters and12firing windows, positive doubled-cost mean, nonnegative median and positive-control mean>=-1%. No thresholds were loosened. paired_control.csv shows within-window return differences from the equal-risk control; absolute profit and normal --score2 incumbent comparisons must also pass.\n\n"
  text+="## When historical prices actually fell or rebounded\n\nThese conditional labels are diagnostic only: future240hBTCreturn<=-2% is down and>=+2% is rebound. Returns here remain the main228hportfolio endpoint. They do not select training windows, enter targets, alter the main rank or prove the next market direction. Neutral cases remain included in the full25windowtable. Small subgroup results are weaker evidence.\n\n"
  scenario_main=scenario_table[scenario_table.profile=="weak_archived"]
  text+=table(["Future case","Model","Windows","Mean return","P10","Worst","Net wins/closed","Accuracy","MDD","CS"],[[z.future_label,z.model,z.windows,pct(z.mean_return),pct(z.p10),pct(z.worst),f"{z.wins}/{z.completed}",rate(z.accuracy),rate(z.MDD),f"{z.CS:.3f}"] for z in scenario_main.itertuples()])
