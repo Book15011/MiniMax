@@ -1538,6 +1538,51 @@ models:
     band: 0.01
     sigma_floor: 1.0e-12
 
+  book_pooled_trend:
+    coins:
+    - BNBUSDT
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - XRPUSDT
+    ema_pairs:
+    - - 6
+      - 24
+    - - 12
+      - 48
+    - - 24
+      - 96
+    risk_reference: 0.004
+    risk_span: 24
+    signal_lag: 1
+    risk_lag: 2
+    pars:
+    - 0.5670791607195595
+    - 0.05227215138106667
+    - 0.016720647466070382
+    - 0.030571896161474932
+    - 0.013942137350843709
+    - -0.016826572239131643
+    - -0.010244638928768257
+    - -0.03292248685616661
+    - 1.6373809439623066
+    - 0.6938024117481945
+    - 0.3975425347929773
+    - 0.0789077034026308
+    warmup_hours: 4608
+    hours_per_day: 24
+    rebalance_hours: 24
+    band: 0.01
+    sigma_floor: 1.0e-12
+    return_hours:
+    - 6
+    - 12
+    - 24
+    - 48
+    feature_scale: 0.005
+    calibration_only: true
+    training_label_end_utc: '2026-10-09T01:15:00Z'
+
 selection:
   rule: margin
   tie_margin: 0.03
