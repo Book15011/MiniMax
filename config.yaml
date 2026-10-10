@@ -1448,7 +1448,7 @@ models:
   book_e20combo_alt_half_cash:
     <<: *e20guard_r
     base: {vt: *id013, lookback_days: 10}
-  book_pooled_offsets:
+  book_pooled_offsets: &pooled_offsets
     coins:
     - BNBUSDT
     - BTCUSDT
@@ -1503,6 +1503,14 @@ models:
     - SOLUSDT
     forecast_cap: 1.0
     max_gross: 1.0
+  # --- book: the 26/33 clone rule on our coins (feature/e20-shortguard; research only) ---
+  book_clone_ourcoins:
+    <<: *pooled_offsets
+    coins: [AAVEUSDT, FETUSDT, FILUSDT, PUMPUSDT, SUIUSDT, WLDUSDT]
+  book_e20clone_cash: &e20clone
+    e20: *id013
+    clone: *pooled_offsets
+  book_e20clone_flip: *e20clone
 selection:
   rule: margin
   tie_margin: 0.03
