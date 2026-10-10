@@ -1,88 +1,77 @@
 exchange:
   base_url: https://mock-api.roostoo.com
   quote_currency: USD
-
-# PLACEHOLDER -- the real Roostoo rate limit is still UNKNOWN.
-# Do not treat this value as validated; set it once the limit is confirmed.
-poll_interval_seconds: null  # TODO: set after rate limit is known
-
-# Trading universe: 65 active crypto pairs, ordered by 24h USD volume.
-# Source: the PUBLIC /v3/exchangeInfo snapshot of 2026-09-29 -- pairs with AssetType == crypto,
-# minus TON/USD and OMNI/USD (no ticker data). The 21 AssetType == stock pairs are excluded.
-# MUST be re-checked against the competition account's exchangeInfo once API keys arrive.
-# All code reads the universe from here; do not hard-code pair lists elsewhere.
+poll_interval_seconds: null
 universe:
-  - BTC/USD
-  - ETH/USD
-  - ZEC/USD
-  - SOL/USD
-  - XRP/USD
-  - NEAR/USD
-  - HBAR/USD
-  - SUI/USD
-  - LINK/USD
-  - UNI/USD
-  - BNB/USD
-  - DOGE/USD
-  - XLM/USD
-  - PUMP/USD
-  - WLD/USD
-  - ONDO/USD
-  - ENA/USD
-  - AVAX/USD
-  - TAO/USD
-  - ADA/USD
-  - LTC/USD
-  - PEPE/USD
-  - ARB/USD
-  - TRX/USD
-  - FET/USD
-  - XPL/USD
-  - AAVE/USD
-  - SEI/USD
-  - TRUMP/USD
-  - FIL/USD
-  - PAXG/USD
-  - ICP/USD
-  - ASTER/USD
-  - DOT/USD
-  - PENGU/USD
-  - VIRTUAL/USD
-  - CRV/USD
-  - POL/USD
-  - APT/USD
-  - CAKE/USD
-  - ZEN/USD
-  - PENDLE/USD
-  - PLUME/USD
-  - WLFI/USD
-  - SHIB/USD
-  - BONK/USD
-  - EIGEN/USD
-  - LINEA/USD
-  - WIF/USD
-  - TUT/USD
-  - FLOKI/USD
-  - BIO/USD
-  - EDEN/USD
-  - HEMI/USD
-  - FORM/USD
-  - CFX/USD
-  - S/USD
-  - OPEN/USD
-  - AVNT/USD
-  - MIRA/USD
-  - SOMI/USD
-  - STO/USD
-  - BMT/USD
-  - 1000CHEEMS/USD
-  - LISTA/USD
-
+- BTC/USD
+- ETH/USD
+- ZEC/USD
+- SOL/USD
+- XRP/USD
+- NEAR/USD
+- HBAR/USD
+- SUI/USD
+- LINK/USD
+- UNI/USD
+- BNB/USD
+- DOGE/USD
+- XLM/USD
+- PUMP/USD
+- WLD/USD
+- ONDO/USD
+- ENA/USD
+- AVAX/USD
+- TAO/USD
+- ADA/USD
+- LTC/USD
+- PEPE/USD
+- ARB/USD
+- TRX/USD
+- FET/USD
+- XPL/USD
+- AAVE/USD
+- SEI/USD
+- TRUMP/USD
+- FIL/USD
+- PAXG/USD
+- ICP/USD
+- ASTER/USD
+- DOT/USD
+- PENGU/USD
+- VIRTUAL/USD
+- CRV/USD
+- POL/USD
+- APT/USD
+- CAKE/USD
+- ZEN/USD
+- PENDLE/USD
+- PLUME/USD
+- WLFI/USD
+- SHIB/USD
+- BONK/USD
+- EIGEN/USD
+- LINEA/USD
+- WIF/USD
+- TUT/USD
+- FLOKI/USD
+- BIO/USD
+- EDEN/USD
+- HEMI/USD
+- FORM/USD
+- CFX/USD
+- S/USD
+- OPEN/USD
+- AVNT/USD
+- MIRA/USD
+- SOMI/USD
+- STO/USD
+- BMT/USD
+- 1000CHEEMS/USD
+- LISTA/USD
 data:
   base_url: https://data.binance.vision/data
-  lock_file: data/.downloader.lock   # one lock for every download job
-  max_workers: 8                     # hard-capped at 8 in code
-  # Each group: monthly [start, end|latest] and/or daily_from (daily files up to the newest published day).
+  lock_file: data/.downloader.lock
+  max_workers: 8
   jobs:
     spot_klines_1m:
       market: spot
@@ -92,9 +81,11 @@ data:
       parquet_dir: data/binance_spot/parquet
       manifest: data/binance_spot/_manifest.jsonl
       groups:
-        - symbols: universe
-          monthly: ["2025-09", "2026-08"]
-          daily_from: "2026-09-01"
+      - symbols: universe
+        monthly:
+        - 2025-09
+        - 2026-08
+        daily_from: '2026-09-01'
     spot_klines_1h:
       market: spot
       dataset: klines
@@ -102,236 +93,384 @@ data:
       raw_dir: data/binance_spot/klines_1h
       manifest: data/binance_spot/_manifest_1h.jsonl
       groups:
-        - symbols: [BTCUSDT, ETHUSDT]
-          monthly: ["2018-01", "2025-08"]
-        - symbols: universe
-          exclude: [BTCUSDT, ETHUSDT]
-          monthly: ["2020-01", "2025-08"]
-        # One overlap month, only to assert that 1m->1h resampling matches the 1h archive.
-        - symbols: [BTCUSDT]
-          monthly: ["2026-08", "2026-08"]
-        # Historically large coins (incl. delisted) to limit survivorship bias, plus renamed tickers.
-        - symbols: [LUNAUSDT, FTTUSDT, BCHUSDT, ETCUSDT, EOSUSDT, ATOMUSDT, XMRUSDT, ALGOUSDT, VETUSDT,
-                    THETAUSDT, AXSUSDT, SANDUSDT, MANAUSDT, GALAUSDT, APEUSDT, OPUSDT, INJUSDT, RUNEUSDT,
-                    EGLDUSDT, XTZUSDT, MKRUSDT, GRTUSDT, CHZUSDT, KSMUSDT, SUSHIUSDT, COMPUSDT, SNXUSDT,
-                    NEOUSDT, MATICUSDT, FTMUSDT]
-          monthly: ["2020-01", "2026-08"]
-          daily_from: "2026-09-01"
-    # Months before these starts come from the lob-execution-hma copy (src/data/external_copy.py).
+      - symbols:
+        - BTCUSDT
+        - ETHUSDT
+        monthly:
+        - 2018-01
+        - 2025-08
+      - symbols: universe
+        exclude:
+        - BTCUSDT
+        - ETHUSDT
+        monthly:
+        - 2020-01
+        - 2025-08
+      - symbols:
+        - BTCUSDT
+        monthly:
+        - 2026-08
+        - 2026-08
+      - symbols:
+        - LUNAUSDT
+        - FTTUSDT
+        - BCHUSDT
+        - ETCUSDT
+        - EOSUSDT
+        - ATOMUSDT
+        - XMRUSDT
+        - ALGOUSDT
+        - VETUSDT
+        - THETAUSDT
+        - AXSUSDT
+        - SANDUSDT
+        - MANAUSDT
+        - GALAUSDT
+        - APEUSDT
+        - OPUSDT
+        - INJUSDT
+        - RUNEUSDT
+        - EGLDUSDT
+        - XTZUSDT
+        - MKRUSDT
+        - GRTUSDT
+        - CHZUSDT
+        - KSMUSDT
+        - SUSHIUSDT
+        - COMPUSDT
+        - SNXUSDT
+        - NEOUSDT
+        - MATICUSDT
+        - FTMUSDT
+        monthly:
+        - 2020-01
+        - 2026-08
+        daily_from: '2026-09-01'
     futures_funding:
       market: futures/um
       dataset: fundingRate
       raw_dir: data/external/binance_futures/fundingRate
       manifest: data/external/binance_futures/_manifest_fundingRate.jsonl
       groups:
-        - symbols: [BTCUSDT]
-          monthly: ["2026-08", latest]
+      - symbols:
+        - BTCUSDT
+        monthly:
+        - 2026-08
+        - latest
     futures_metrics:
       market: futures/um
       dataset: metrics
       raw_dir: data/external/binance_futures/metrics
       manifest: data/external/binance_futures/_manifest_metrics.jsonl
       groups:
-        - symbols: [BTCUSDT]
-          daily_from: "2026-08-12"
+      - symbols:
+        - BTCUSDT
+        daily_from: '2026-08-12'
   external_copy:
-    source: /home/ubuntu/test/lob-execution-hma/data/raw_l1   # READ-ONLY source
+    source: /home/ubuntu/test/lob-execution-hma/data/raw_l1
     dest: data/external/lob_copy
-    datasets: [funding_rate, open_interest]
+    datasets:
+    - funding_rate
+    - open_interest
   fred:
     url: https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}
     dir: data/external/fred
-    series: [CPIAUCNS, DFEDTARU, DGS10, DTWEXBGS, SP500, VIXCLS, DCOILWTICO]
-
-# Lookalike validation set (src/validation). Every value here is recorded in validation/validation_set_v1.json.
+    series:
+    - CPIAUCNS
+    - DFEDTARU
+    - DGS10
+    - DTWEXBGS
+    - SP500
+    - VIXCLS
+    - DCOILWTICO
 validation:
-  live_start: "2026-10-03 16:00"     # T*, UTC (= 2026-10-04 00:00 HKT)
-  holdout_days: 56                   # H = T* - 56d
+  live_start: 2026-10-03 16:00
+  holdout_days: 56
   horizon_days: 14
-  pool_earliest: "2020-06-01"
+  pool_earliest: '2020-06-01'
   grid_hour_utc: 16
   k: 25
   min_separation_days: 14
   span_days: 90
   max_per_span: 3
-  hourly_from_1m: "2025-09-01"       # symbols with 1m data use resampled 1m from here on
-  overlap_check: {symbol: BTCUSDT, month: "2026-08"}
-  segment_gap_days: 7                # a longer hole starts a new listing (e.g. LUNA 2022, FTT 2022-23)
+  hourly_from_1m: '2025-09-01'
+  overlap_check:
+    symbol: BTCUSDT
+    month: 2026-08
+  segment_gap_days: 7
   renames:
-    - {old: MATICUSDT, new: POLUSDT}
-    - {old: FTMUSDT, new: SUSDT}
-  rename_checks: {min_overlap_hours: 24, max_median_abs_log_diff: 0.005, max_abs_log_diff: 0.02,
-                  max_gap_hours: 168, max_gap_abs_log_diff: 0.05}
+  - old: MATICUSDT
+    new: POLUSDT
+  - old: FTMUSDT
+    new: SUSDT
+  rename_checks:
+    min_overlap_hours: 24
+    max_median_abs_log_diff: 0.005
+    max_abs_log_diff: 0.02
+    max_gap_hours: 168
+    max_gap_abs_log_diff: 0.05
   universe:
     top_n: 30
     min_history_days: 90
     volume_days: 30
-    exclude: [PAXGUSDT]
-    stablecoins: [USDCUSDT, FDUSDUSDT, TUSDUSDT, BUSDUSDT, DAIUSDT, USDPUSDT, PYUSDUSDT, USD1USDT,
-                  EURUSDT, AEURUSDT, USDEUSDT, USTUSDT]
-    leveraged_regex: "^[A-Z0-9]+(UP|DOWN|BULL|BEAR)USDT$"
-  funding_min_coverage: 0.5          # P1 needs >= 50% of the expected prints in the last 7 days
-  funding_prints_per_day: 3          # BTCUSDT perp funds every 8h
+    exclude:
+    - PAXGUSDT
+    stablecoins:
+    - USDCUSDT
+    - FDUSDUSDT
+    - TUSDUSDT
+    - BUSDUSDT
+    - DAIUSDT
+    - USDPUSDT
+    - PYUSDUSDT
+    - USD1USDT
+    - EURUSDT
+    - AEURUSDT
+    - USDEUSDT
+    - USTUSDT
+    leveraged_regex: ^[A-Z0-9]+(UP|DOWN|BULL|BEAR)USDT$
+  funding_min_coverage: 0.5
+  funding_prints_per_day: 3
   oi_max_staleness_hours: 1
-  cpi_release_day: 16                # month m assumed released on the 16th of m+1, 00:00 UTC
-  macro_lag_days: {DTWEXBGS: 7}      # H.10 is published weekly: use values at least 7 days old
+  cpi_release_day: 16
+  macro_lag_days:
+    DTWEXBGS: 7
   walkforward:
-    start: "2022-07-01"
+    start: '2022-07-01'
     step_days: 7
-    screen_end: "2024-06-30"
-    confirm_start: "2024-07-01"
+    screen_end: '2024-06-30'
+    confirm_start: '2024-07-01'
     random_draws: 50
     bootstrap_reps: 2000
     bootstrap_block: 4
     seed: 20261003
-  sensitivity_k: [15, 40]
-
-risk: {}   # TBD
-
-# Exchange client and order planning (src/api, src/execution, src/live).
+  sensitivity_k:
+  - 15
+  - 40
+risk: {}
 execution:
-  env_file: .env                # holds ROOSTOO_API_KEY, ROOSTOO_SECRET_KEY, ROOSTOO_ENV (test here; competition only on EC2)
-  calls_per_minute: 20          # our ceiling; the documented limit is 30 calls/min including queries
+  env_file: .env
+  calls_per_minute: 20
   timeout_s: 10
-  fee: 0.001                    # 0.1% market orders and shorts; 0.05% limit (maker) fills
-  cash_buffer: 0.01             # keep 1% of equity in USD so buys never fail on rounding
-  min_trade_usd: 10             # skip orders smaller than this (dust)
-
-# Live bot (src/live/runner.py, deploy/README.md). Paper trading on the research server; live only on EC2.
+  fee: 0.001
+  cash_buffer: 0.01
+  min_trade_usd: 10
 live:
-  model: pol_switch_vt_tl_e20v45       # launch model (2026-10-02; reports/review/20261002-e20v45-readiness.md)
-  mode: paper                   # paper | live
-  start_at: "2026-10-04 12:00"  # UTC = Oct 4 20:00 HKT, the round's start (Roostoo competition 538). Live mode: earlier bars recorded, never traded
-  clock_warn_s: 2               # warn when the machine clock is this far off Roostoo's (the bot runs on Roostoo's time anyway)
-  clock_error_s: 30             # error above this; Roostoo rejects signatures more than 60 s off
-  state_dir: data/live          # hourly store, state.json and JSONL logs (gitignored)
-  history_days: 300             # hourly bars kept: >= the longest lookback (team_trend_2's state needs 240 days)
-  process_after_s: 45           # read bar HH:00 this long after the hour
-  max_fill_hours: 48            # carry a price forward over at most this many unfilled hours in the model's view
-  endgame:                      # end-of-round lock-in (reports/review/20261002-new-rules.md). OFF: enabling it is a team decision
+  model: pol_switch_vt_tl_e20v45
+  mode: paper
+  start_at: 2026-10-04 12:00
+  clock_warn_s: 2
+  clock_error_s: 30
+  state_dir: data/live
+  history_days: 300
+  process_after_s: 45
+  max_fill_hours: 48
+  endgame:
     enabled: false
-    from_day: 10                # days after the round's first hour
-    lock_return: 0.03           # once equity is this far above the round's starting equity: sell everything, hold cash to the end
-  order_spacing_s: 3            # pause between orders. Organizers: no cap on trades per minute, only 30 API calls/min (we use <= 20)
+    from_day: 10
+    lock_return: 0.03
+  order_spacing_s: 3
   paper_equity: 100000
-  binance_rest: https://api.binance.com/api/v3/klines   # blocked on the research server; then the archive
-  use_archive: true             # data.base_url daily 1h klines, published the next day
-
-# Backtest harness (backtest/). Every model is scored the same way; docs/STRATEGY_GUIDE.md explains each field.
+  binance_rest: https://api.binance.com/api/v3/klines
+  use_archive: true
 harness:
-  panel_dir: data/validation              # hourly panel + point-in-time universe written by src.validation.build
-  cache_dir: data/harness                 # cached window results per model (gitignored with data/)
+  panel_dir: data/validation
+  cache_dir: data/harness
   reports_dir: reports
-  universe: roostoo                       # roostoo = only coins Roostoo lists (live-realistic); broad = every liquid series
-  grid_hour_utc: 16                       # windows start and daily decisions happen at 00:00 HKT
+  universe: roostoo
+  grid_hour_utc: 16
   window_days: 14
-  first_window: "2020-06-01"
-  periods:                                # by window start date (inclusive); matches the validation split
-    SCREEN: ["2022-07-01", "2024-06-30"]
-    CONFIRM: ["2024-07-01", "2026-07-25"]
-  holdout_from: "2026-08-08 16:00"        # windows ending after this stay sealed until the launch model is frozen
-  execution_lag_hours: 1                  # a decision at bar t trades at the close of bar t + 1
-  fees: {taker: 0.001, short: 0.001}      # per side; shorts pay 0.1% to open and to close
+  first_window: '2020-06-01'
+  periods:
+    SCREEN:
+    - '2022-07-01'
+    - '2024-06-30'
+    CONFIRM:
+    - '2024-07-01'
+    - '2026-07-25'
+  holdout_from: 2026-08-08 16:00
+  execution_lag_hours: 1
+  fees:
+    taker: 0.001
+    short: 0.001
   spreads_snapshot_glob: data/roostoo_snapshots/ticker_*.json
-  default_half_spread_bps: 5              # coins missing from the snapshot (e.g. delisted ones)
-  activity_guard_offset_hours: 11         # PROPOSED (was 20): if a day has no trade by then, the guard trades at the
-                                          # 04:00 UTC bar (12:00 HKT), mid-day whether days count in UTC or HKT;
-                                          # live, an unconfirmed fill is retried every later hour of the same day
-  guard_utc_day: true                     # PROPOSED: the guard also fires when the day has no trade since 00:00 UTC,
-                                          # so every day counts whether the organizers use UTC or HKT days
-  keep_alive_weight: 0.002              # guard on a day already on target (all cash, one coin): trade 0.2% of equity, reversed next day
+  default_half_spread_bps: 5
+  activity_guard_offset_hours: 11
+  guard_utc_day: true
+  keep_alive_weight: 0.002
   min_active_days: 10
   scenario_sets:
     lookalikes: validation/validation_set_v1.json
     recent_n: 25
-
-# Competition-style scoring (backtest/scoring/, docs/EVALUATION.md). Every value below is listed in the
-# TEAM SIGN-OFF CHECKLIST of docs/EVALUATION.md and stays "pending team review" until the team confirms it.
 scoring:
-  version: 2                              # bump on any formula change; caches and the leaderboard key on it
-                                          # v2 (2026-10-02): return first, reports/review/20261002-prereg-return-first.md
-  e0: 100000                              # USD equity at the start of every window, before the first trade
+  version: 2
+  e0: 100000
   hours_per_day: 24
-  stride_days: 1                          # 1 = every pool window; a full run takes minutes, so no stride is needed
-  window_hour_utc: 12                     # windows start every day at 12:00 UTC, as the round (2026-10-04 12:00 UTC)
-  include_spent_holdout: true             # the holdout (windows ending after harness.holdout_from) was opened once on
-                                          # 2026-10-01 and is spent; every headline is also reported without it
-  live_like: validation/live_like_v2_prelim.json      # PART 0's method on 12:00 UTC starts (src.validation.prelim_v2)
-  validation_set: validation/validation_set_v2_prelim.json   # LOOKALIKE-25, RECENT-25 and the 20 STRESS windows
-  regimes: results/book/20261002-return-first/validation_v2_prelim/outcomes.parquet   # ex-post 3x3 grid (G3, report-only)
-  recency_half_life_days: 60              # REC = 0.5 ** (age / 60 days), age = days from the start to the latest start
-  headline: {live_like: 0.70, recency: 0.30}   # w = 0.7 LL / sum LL + 0.3 REC / sum REC, then the direction rebalance
-  bars:                                   # on R_liq; a window is UP if BTC's close at its end >= at its start
+  stride_days: 1
+  window_hour_utc: 12
+  include_spent_holdout: true
+  live_like: validation/live_like_v2_prelim.json
+  validation_set: validation/validation_set_v2_prelim.json
+  regimes: results/book/20261002-return-first/validation_v2_prelim/outcomes.parquet
+  recency_half_life_days: 60
+  headline:
+    live_like: 0.7
+    recency: 0.3
+  bars:
     LENIENT:
-      down: -0.014965215                  # the previous edition's #20 cut: mean of -1.4186090% (HK) and -1.5744340% (SG)
-      up: 0.0                             # ASSUMPTION: no data on the general field in rising markets
+      down: -0.014965215
+      up: 0.0
     MIDDLE: 0.0
-    STRICT: {stat: median, floor: 0.0}    # max(0, median R_liq of the 6 gate benchmarks): the previous median gate
+    STRICT:
+      stat: median
+      floor: 0.0
   risk:
-    primary: {variant: V1, convention: FLOORED, days: HKT}   # CS_HIT: mean composite over windows clearing LENIENT
-  tie: {reps: 2000, seed: 20261002, level: 0.90, block: calendar_month, cs_tolerance: 0.05}
-  reference_models: [team_cash, team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2, team_mom_ss25]
-  previous_tool_version: 56cb5a2e85d45862 # the leaderboard's "old REL" column (report only)
-  replay:                                 # report only: the previous edition's real windows, ranked among its teams
-    leaderboard_csv: results/pol/20261001-final/past_leaderboards_numeric.csv   # final returns, numbers only
+    primary:
+      variant: V1
+      convention: FLOORED
+      days: HKT
+  tie:
+    reps: 2000
+    seed: 20261002
+    level: 0.9
+    block: calendar_month
+    cs_tolerance: 0.05
+  reference_models:
+  - team_cash
+  - team_btc_hold
+  - team_ew_daily
+  - team_rot_ew
+  - team_rot_iv
+  - team_trend_2
+  - team_mom_ss25
+  previous_tool_version: 56cb5a2e85d45862
+  replay:
+    leaderboard_csv: results/pol/20261001-final/past_leaderboards_numeric.csv
     windows:
-      - {name: "Round 1 (Mar 21-31)", start: "2026-03-21 12:00", hours: 240, competitions: [455, 456]}
-      - {name: "Final (Apr 4-14)", start: "2026-04-04 12:00", hours: 240, competitions: [469]}
-  rel: {bar_stat: max, bar_floor: 0.0, convention: FLOORED, robust_min: 1.0}   # report-only: the v1 primary
-  liquidation_cost: 0.001                 # R_liq charges this on the gross notional still open at the end
-  composite: {sortino: 0.4, sharpe: 0.3, calmar: 0.3}
-  variants:                               # Sharpe, Sortino = (m / denominator) * sqrt(annualize)
-    V1: {returns: daily, annualize: 1, calmar: mean}      # daily_raw (PRIMARY): Calmar = m / MDD
-    V2: {returns: daily, annualize: 365, calmar: mean}    # daily_annual: Calmar = m * 365 / MDD
-    V3: {returns: hourly, annualize: 8760, calmar: mean}  # hourly_annual: Calmar = m * 8760 / MDD
-    V4: {returns: daily, annualize: 1, calmar: total}     # total_calmar: Calmar = R / MDD
-  conventions:                            # denominator floors; 0 = no floor, and a zero denominator gives 0
-    FLOORED: {s_daily: 0.001, dd_daily: 0.001, mdd: 0.002,
-              s_hourly: 0.000204124145231931, dd_hourly: 0.000204124145231931}   # hourly = 0.001 / sqrt(24)
-    POL: {s_daily: 0, dd_daily: 0, s_hourly: 0, dd_hourly: 0, mdd: 0.0001}       # as backtest/metrics.py
-  primary: {variant: HEADLINE_RET}        # mean of HIT LENIENT, MIDDLE and STRICT (backtest/scoring/returnfirst.py)
-  field: [team_btc_hold, team_ew_daily, team_rot_ew, team_rot_iv, team_trend_2, team_mom_ss25]   # the 6 gate benchmarks
-  btc_hold: team_btc_hold                 # reference for G2 and G6
+    - name: Round 1 (Mar 21-31)
+      start: 2026-03-21 12:00
+      hours: 240
+      competitions:
+      - 455
+      - 456
+    - name: Final (Apr 4-14)
+      start: 2026-04-04 12:00
+      hours: 240
+      competitions:
+      - 469
+  rel:
+    bar_stat: max
+    bar_floor: 0.0
+    convention: FLOORED
+    robust_min: 1.0
+  liquidation_cost: 0.001
+  composite:
+    sortino: 0.4
+    sharpe: 0.3
+    calmar: 0.3
+  variants:
+    V1:
+      returns: daily
+      annualize: 1
+      calmar: mean
+    V2:
+      returns: daily
+      annualize: 365
+      calmar: mean
+    V3:
+      returns: hourly
+      annualize: 8760
+      calmar: mean
+    V4:
+      returns: daily
+      annualize: 1
+      calmar: total
+  conventions:
+    FLOORED:
+      s_daily: 0.001
+      dd_daily: 0.001
+      mdd: 0.002
+      s_hourly: 0.000204124145231931
+      dd_hourly: 0.000204124145231931
+    POL:
+      s_daily: 0
+      dd_daily: 0
+      s_hourly: 0
+      dd_hourly: 0
+      mdd: 0.0001
+  primary:
+    variant: HEADLINE_RET
+  field:
+  - team_btc_hold
+  - team_ew_daily
+  - team_rot_ew
+  - team_rot_iv
+  - team_trend_2
+  - team_mom_ss25
+  btc_hold: team_btc_hold
   gates:
-    hard: [G1, G4, G5]                    # eligibility; G2, G3, G6_median and G6_worst are report-only
-    G1: {min_active_days: 10, share_of_windows: 1.0, guard_flag_share: 0.25}   # HKT days (15 buckets for 12:00 starts)
-    G3: {min_cell_median_return: -0.10}
-    G5: {decisions: 30, seed: 20261003, noise_sigma: 0.01}
-  compare: {block_windows: 56, reps: 2000, level: 0.90, seed: 20261003}   # 56: regimes outlast 14-window blocks (EVALUATION.md 7)
-  report: {curves: 25}
-  cache_dir: results/scoring/cache        # shared by every worktree (results/ links to the root's results/)
-  registry: results/scoring/registry.jsonl     # append-only, one line per full run, written under a lock
-  leaderboard: results/scoring/leaderboard.md  # regenerated after every registered run
-
-# Model parameters: one block per model, under its author's marker (keeps merges clean).
+    hard:
+    - G1
+    - G4
+    - G5
+    G1:
+      min_active_days: 10
+      share_of_windows: 1.0
+      guard_flag_share: 0.25
+    G3:
+      min_cell_median_return: -0.1
+    G5:
+      decisions: 30
+      seed: 20261003
+      noise_sigma: 0.01
+  compare:
+    block_windows: 56
+    reps: 2000
+    level: 0.9
+    seed: 20261003
+  report:
+    curves: 25
+  cache_dir: results/scoring/cache
+  registry: results/scoring/registry.jsonl
+  leaderboard: results/scoring/leaderboard.md
 models:
-  # --- team (frozen benchmarks for the scoring field; docs/EVALUATION.md section 3) ---
-  team_rot_ew: &team_rot_ew
-    lookback_days: [3, 7, 14]
-    vol_days: 30                  # covariance window of the book-volatility estimate
+  team_rot_ew: &id001
+    lookback_days:
+    - 3
+    - 7
+    - 14
+    vol_days: 30
     min_history_days: 30
     k: 6
     keep_rank: 12
     weighting: equal
     target_daily_vol: 0.03
-  team_rot_iv: &team_rot_iv
-    lookback_days: [3, 7, 14]
+  team_rot_iv: &id005
+    lookback_days:
+    - 3
+    - 7
+    - 14
     vol_days: 30
     min_history_days: 30
     k: 6
     keep_rank: 12
     weighting: inverse_vol
     target_daily_vol: 0.02
-  team_trend_2: &team_trend_2
-    coins: [BTCUSDT, ETHUSDT]
+  team_trend_2: &id003
+    coins: &id012
+    - BTCUSDT
+    - ETHUSDT
     ema_days: 40
-    hysteresis: 0.03              # in trend above EMA * 1.03, out below EMA * 0.97, unchanged between
-    state_days: 120               # the hysteresis is replayed over this many days at each decision
+    hysteresis: 0.03
+    state_days: 120
     vol_days: 30
-    risk_budget: 0.25             # weight = 0.25 / annualized volatility
+    risk_budget: 0.25
     out_of_trend_scale: 0.15
-  team_mom_ss25:                  # the TEAM_PLAN v1 MOM-SS numbers, frozen (pol_mom_ss may evolve)
-    lookback_days: [3, 7, 14]
+  team_mom_ss25:
+    lookback_days:
+    - 3
+    - 7
+    - 14
     vol_days: 30
     min_history_days: 30
     min_coins: 8
@@ -342,9 +481,11 @@ models:
     long_vol_cap: 0.5
     short_gross: 0.25
     short_k: 4
-  # --- pol ---
-  pol_mom_ss: &pol_mom_ss
-    lookback_days: [3, 7, 14]
+  pol_mom_ss: &id004
+    lookback_days:
+    - 3
+    - 7
+    - 14
     vol_days: 30
     min_history_days: 30
     min_coins: 8
@@ -352,10 +493,10 @@ models:
     k: 5
     keep_rank: 10
     long_gross: 0.75
-    long_vol_cap: 0.5          # annualized; upper bound that assumes the coins are perfectly correlated
+    long_vol_cap: 0.5
     short_gross: 0.25
     short_k: 4
-  pol_trend_ls: &pol_trend_ls
+  pol_trend_ls: &id002
     lookback_days: 21
     threshold: 0.5
     vol_days: 30
@@ -363,236 +504,404 @@ models:
     min_coins: 8
     top_n: 15
     target_vol: 0.35
-  # combinations (src/models/pol/_combo.py): sleeve parameters are anchors to the sleeves' own blocks
   pol_combo_rt:
     replay_steps: 1
     sleeves:
-      team_rot_ew: {weight: 0.5, params: *team_rot_ew}
-      pol_trend_ls: {weight: 0.5, params: *pol_trend_ls}
+      team_rot_ew:
+        weight: 0.5
+        params: *id001
+      pol_trend_ls:
+        weight: 0.5
+        params: *id002
   pol_combo_rb:
     replay_steps: 1
     sleeves:
-      team_btc_hold: {weight: 0.5}
-      team_rot_ew: {weight: 0.5, params: *team_rot_ew}
+      team_btc_hold:
+        weight: 0.5
+      team_rot_ew:
+        weight: 0.5
+        params: *id001
   pol_combo_rtt:
     replay_steps: 1
     sleeves:
-      team_rot_ew: {weight: 0.3333333333333333, params: *team_rot_ew}
-      pol_trend_ls: {weight: 0.3333333333333333, params: *pol_trend_ls}
-      team_trend_2: {weight: 0.3333333333333333, params: *team_trend_2}
+      team_rot_ew:
+        weight: 0.3333333333333333
+        params: *id001
+      pol_trend_ls:
+        weight: 0.3333333333333333
+        params: *id002
+      team_trend_2:
+        weight: 0.3333333333333333
+        params: *id003
   pol_combo_ms_tl:
     replay_steps: 1
     sleeves:
-      pol_mom_ss: {weight: 0.5, params: *pol_mom_ss}
-      pol_trend_ls: {weight: 0.5, params: *pol_trend_ls}
+      pol_mom_ss:
+        weight: 0.5
+        params: *id004
+      pol_trend_ls:
+        weight: 0.5
+        params: *id002
   pol_combo_all:
     replay_steps: 1
     sleeves:
-      team_btc_hold: {weight: 0.14285714285714285}
-      team_ew_daily: {weight: 0.14285714285714285}
-      team_rot_ew: {weight: 0.14285714285714285, params: *team_rot_ew}
-      team_rot_iv: {weight: 0.14285714285714285, params: *team_rot_iv}
-      team_trend_2: {weight: 0.14285714285714285, params: *team_trend_2}
-      pol_mom_ss: {weight: 0.14285714285714285, params: *pol_mom_ss}
-      pol_trend_ls: {weight: 0.14285714285714285, params: *pol_trend_ls}
-  pol_switch_rt:                  # orchestrators: one method at a time, by BTC's trend state (team_trend_2's rule)
+      team_btc_hold:
+        weight: 0.14285714285714285
+      team_ew_daily:
+        weight: 0.14285714285714285
+      team_rot_ew:
+        weight: 0.14285714285714285
+        params: *id001
+      team_rot_iv:
+        weight: 0.14285714285714285
+        params: *id005
+      team_trend_2:
+        weight: 0.14285714285714285
+        params: *id003
+      pol_mom_ss:
+        weight: 0.14285714285714285
+        params: *id004
+      pol_trend_ls:
+        weight: 0.14285714285714285
+        params: *id002
+  pol_switch_rt:
     replay_steps: 1
-    switch: *team_trend_2
+    switch: *id003
     sleeves:
-      team_rot_ew: {when: up, params: *team_rot_ew}
-      pol_trend_ls: {when: down, params: *pol_trend_ls}
+      team_rot_ew:
+        when: up
+        params: *id001
+      pol_trend_ls:
+        when: down
+        params: *id002
   pol_switch_rc:
     replay_steps: 1
-    switch: *team_trend_2
+    switch: *id003
     sleeves:
-      team_rot_ew: {when: up, params: *team_rot_ew}
-  # --- book ---
-  # --- baitoey ---
-  baitoey_mr_bbrsi: &baitoey_mr_bbrsi   # research/baitoey/prereg/20261001-mean-reversion.md
-    bar_hours: 24                 # indicator bars (the study sets them to the rebalance interval)
-    bb_bars: 20                   # Bollinger: 20-bar mean ...
-    bb_k: 2.0                     # ... minus 2 standard deviations
+      team_rot_ew:
+        when: up
+        params: *id001
+  baitoey_mr_bbrsi: &id007
+    bar_hours: 24
+    bb_bars: 20
+    bb_k: 2.0
     rsi_bars: 14
-    rsi_entry: 30                 # buy below the lower band with RSI < 30
-    max_hold_hours: 72            # sell if no buy signal for this long (time stop)
+    rsi_entry: 30
+    max_hold_hours: 72
     vol_days: 30
     min_history_days: 30
-    k: 6                          # slots, each 1/k of the book
+    k: 6
     target_daily_vol: 0.03
-  baitoey_rot_dip:                # same note
-    lookback_days: [3, 7, 14]     # as team_rot_ew
+  baitoey_rot_dip:
+    lookback_days:
+    - 3
+    - 7
+    - 14
     vol_days: 30
     min_history_days: 30
     k: 6
     keep_rank: 12
     weighting: equal
     target_daily_vol: 0.03
-    dip_filter: true              # new entries only when the 14-bar RSI is below dip_rsi
+    dip_filter: true
     bar_hours: 24
     rsi_bars: 14
     dip_rsi: 50
-  baitoey_rot_max: &baitoey_rot_max   # research/baitoey/prereg/20261001-return-max-rotation.md
-    lookback_days: [3, 7, 14]     # as team_rot_ew
+  baitoey_rot_max: &id006
+    lookback_days:
+    - 3
+    - 7
+    - 14
     vol_days: 30
     min_history_days: 30
     k: 4
     keep_rank: 12
     weighting: equal
-    target_daily_vol: .inf        # no volatility cap: always fully invested (gross 1.0)
-    btc_gate: false               # D: all cash when BTC closed below its gate_days average gate_confirm_days in a row
+    target_daily_vol: .inf
+    btc_gate: false
     gate_days: 20
     gate_confirm_days: 2
-  baitoey_breakout:               # variant A of research/baitoey/prereg/20261001-volume-timing.md
-    breakout_hours: 72            # enter above the highest close of the previous 72 h ...
-    entry_volume_ratio: 1.5       # ... while 24 h quote volume > 1.5 x a normal day of the last 7
+  baitoey_breakout:
+    breakout_hours: 72
+    entry_volume_ratio: 1.5
     volume_short_hours: 24
     volume_long_days: 7
-    exit_low_hours: 24            # exit below the lowest close of the previous 24 h ...
-    trail_hours: 72               # ... or below the 72 h highest close minus atr_mult daily ATRs
+    exit_low_hours: 24
+    trail_hours: 72
     atr_days: 14
     atr_mult: 2.0
-    lookback_days: [7, 14]        # ranks simultaneous breakouts (risk-adjusted momentum)
+    lookback_days:
+    - 7
+    - 14
     vol_days: 30
     min_history_days: 30
-    k: 6                          # slots, each 1/k of the book
-    target_daily_vol: 0.03        # book scaled down to <= 3%/day estimated volatility
-  baitoey_vt_mom: &baitoey_vt_mom   # variants B0, B and C of the same note
-    lookback_days: [7, 14]
+    k: 6
+    target_daily_vol: 0.03
+  baitoey_vt_mom: &id008
+    lookback_days: &id009
+    - 7
+    - 14
     vol_days: 30
     min_history_days: 30
     k: 6
     keep_rank: 12
     weighting: equal
     target_daily_vol: 0.03
-    early_exit: true              # B: skip a coin for exit_cooldown_hours after a volume-confirmed 24 h low
+    early_exit: true
     exit_low_hours: 24
     exit_volume_ratio: 1.5
     exit_cooldown_hours: 24
     volume_short_hours: 24
     volume_long_days: 7
-    no_chase: false               # C: skip a coin after a volume spike until it pulls back
+    no_chase: false
     chase_return_hours: 24
     chase_return: 0.15
     chase_volume_ratio: 3.0
     chase_window_hours: 72
     chase_pullback: 0.05
   baitoey_tg_mom:
-    gate_speeds: [[25, 100], [50, 200], [100, 400]]   # [fast, slow] BTC averages in hours; the gate averages them
-    gate_ramp: 0.04               # each gate half is fully on 2% above the slow average, fully off 2% below
-    lookback_hours: [24, 48, 72]
+    gate_speeds:
+    - - 25
+      - 100
+    - - 50
+      - 200
+    - - 100
+      - 400
+    gate_ramp: 0.04
+    lookback_hours:
+    - 24
+    - 48
+    - 72
     vol_days: 30
     min_history_days: 30
     min_coins: 8
     top_n: 15
     k: 4
     keep_rank: 8
-    min_volume_ratio: 1.0         # last 24h quote volume vs the 30-day daily average
-    max_weight: 0.30
+    min_volume_ratio: 1.0
+    max_weight: 0.3
     target_daily_vol: 0.0125
     long_only: false
-    btc_floor: 0.10               # long-only risk-off: BTC weight when fully risk-off
+    btc_floor: 0.1
     short_gross: 0.25
     short_k: 4
-  baitoey_switch_mr:              # research/baitoey/prereg/20261001-calm-switch.md
-    vol_days: 30                  # BTC realized volatility over the last 30 days ...
-    regime_days: 365              # ... against its daily values over the past year
-    calm_quantile: 0.5            # calm = below this quantile (the median)
+  baitoey_switch_mr:
+    vol_days: 30
+    regime_days: 365
+    calm_quantile: 0.5
     sleeves:
-      calm: {<<: *baitoey_mr_bbrsi, bar_hours: 4}    # MR @4h
-      trend: *team_rot_ew                             # the ROT_EW rotation
-  baitoey_mr_4h:                  # MR_4h registered for the live bot (Pol, 2026-10-01; Baitoey to review)
-    <<: *baitoey_mr_bbrsi
+      calm:
+        bar_hours: 4
+        bb_bars: 20
+        bb_k: 2.0
+        rsi_bars: 14
+        rsi_entry: 30
+        max_hold_hours: 72
+        vol_days: 30
+        min_history_days: 30
+        k: 6
+        target_daily_vol: 0.03
+      trend: *id001
+  baitoey_mr_4h:
     bar_hours: 4
-  # --- pol, after the baitoey blocks (the YAML anchors these switches use are defined above) ---
-  pol_switch_rmax_tl:             # pre-registered: reports/review/20261001-prereg-strict-bar.md
+    bb_bars: 20
+    bb_k: 2.0
+    rsi_bars: 14
+    rsi_entry: 30
+    max_hold_hours: 72
+    vol_days: 30
+    min_history_days: 30
+    k: 6
+    target_daily_vol: 0.03
+  pol_switch_rmax_tl:
     prev: own
-    switch: *team_trend_2
+    switch: *id003
     sleeves:
-      baitoey_rot_max: {when: up, params: *baitoey_rot_max}
-      pol_trend_ls: {when: down, params: *pol_trend_ls}
+      baitoey_rot_max:
+        when: up
+        params: *id006
+      pol_trend_ls:
+        when: down
+        params: *id002
   pol_switch_rot_mr:
     prev: own
-    switch: *team_trend_2
+    switch: *id003
     sleeves:
-      team_rot_ew: {when: up, params: *team_rot_ew}
-      baitoey_mr_bbrsi: {when: down, params: *baitoey_mr_bbrsi, override: {bar_hours: 4}}
+      team_rot_ew:
+        when: up
+        params: *id001
+      baitoey_mr_bbrsi:
+        when: down
+        params: *id007
+        override:
+          bar_hours: 4
   pol_switch_rmax_mr:
     prev: own
-    switch: *team_trend_2
+    switch: *id003
     sleeves:
-      baitoey_rot_max: {when: up, params: *baitoey_rot_max}
-      baitoey_mr_bbrsi: {when: down, params: *baitoey_mr_bbrsi, override: {bar_hours: 4}}
-  pol_switch3:                    # pre-registered: reports/review/20261001-prereg-realtest.md
+      baitoey_rot_max:
+        when: up
+        params: *id006
+      baitoey_mr_bbrsi:
+        when: down
+        params: *id007
+        override:
+          bar_hours: 4
+  pol_switch3:
     prev: own
-    switch: *team_trend_2
-    calm: {vol_days: 30, regime_days: 365, calm_quantile: 0.5}   # Baitoey's calm rule with her values (baitoey_switch_mr)
+    switch: *id003
+    calm:
+      vol_days: 30
+      regime_days: 365
+      calm_quantile: 0.5
     sleeves:
-      baitoey_mr_bbrsi: {when: calm, params: *baitoey_mr_bbrsi, override: {bar_hours: 4}}
-      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
-      pol_trend_ls: {when: down, params: *pol_trend_ls}
+      baitoey_mr_bbrsi:
+        when: calm
+        params: *id007
+        override:
+          bar_hours: 4
+      baitoey_vt_mom:
+        when: up
+        params: *id008
+      pol_trend_ls:
+        when: down
+        params: *id002
   pol_switch_vt_tl:
     prev: own
-    switch: *team_trend_2
+    switch: *id003
     sleeves:
-      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
-      pol_trend_ls: {when: down, params: *pol_trend_ls}
-  # --- pol volume study (exploratory, reports/review/20261002-volume.md) ---
-  pol_vt_mvr: &pol_vt_mvr
-    <<: *baitoey_vt_mom
+      baitoey_vt_mom:
+        when: up
+        params: *id008
+      pol_trend_ls:
+        when: down
+        params: *id002
+  pol_vt_mvr: &id010
+    lookback_days: *id009
+    vol_days: 30
+    min_history_days: 30
+    k: 6
+    keep_rank: 12
+    weighting: equal
+    target_daily_vol: 0.03
+    early_exit: true
+    exit_low_hours: 24
+    exit_volume_ratio: 1.5
+    exit_cooldown_hours: 24
+    volume_short_hours: 24
+    volume_long_days: 7
+    no_chase: false
+    chase_return_hours: 24
+    chase_return: 0.15
+    chase_volume_ratio: 3.0
+    chase_window_hours: 72
+    chase_pullback: 0.05
     mvr_short_hours: 24
     mvr_long_days: 30
-    mvr_threshold: 0.85           # universe's 24 h quote volume below 0.85 x its 30-day daily average ...
-    mvr_low_scale: 0.5            # ... holds half the book (same coins)
+    mvr_threshold: 0.85
+    mvr_low_scale: 0.5
     mvr_min_coins: 10
-  pol_mr_cap: &pol_mr_cap
-    <<: *baitoey_mr_bbrsi
-    bar_hours: 4                  # as baitoey_mr_4h
+  pol_mr_cap: &id011
+    bar_hours: 4
+    bb_bars: 20
+    bb_k: 2.0
+    rsi_bars: 14
+    rsi_entry: 30
+    max_hold_hours: 72
+    vol_days: 30
+    min_history_days: 30
+    k: 6
+    target_daily_vol: 0.03
     cap_volume_hours: 24
     cap_volume_days: 7
-    cap_volume_ratio: 1.0         # new entries only above the coin's 7-day normal volume
+    cap_volume_ratio: 1.0
   pol_switch_vtm_tl:
     prev: own
-    switch: *team_trend_2
+    switch: *id003
     sleeves:
-      pol_vt_mvr: {when: up, params: *pol_vt_mvr}
-      pol_trend_ls: {when: down, params: *pol_trend_ls}
+      pol_vt_mvr:
+        when: up
+        params: *id010
+      pol_trend_ls:
+        when: down
+        params: *id002
   pol_switch3_cap:
     prev: own
-    switch: *team_trend_2
-    calm: {vol_days: 30, regime_days: 365, calm_quantile: 0.5}
+    switch: *id003
+    calm:
+      vol_days: 30
+      regime_days: 365
+      calm_quantile: 0.5
     sleeves:
-      pol_mr_cap: {when: calm, params: *pol_mr_cap}
-      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom}
-      pol_trend_ls: {when: down, params: *pol_trend_ls}
-  pol_switch_vt_tl_e20v45: &pol_switch_vt_tl_e20v45   # candidate from the sensitivity check (reports/review/20261002-recheck.md), chosen after looking
+      pol_mr_cap:
+        when: calm
+        params: *id011
+      baitoey_vt_mom:
+        when: up
+        params: *id008
+      pol_trend_ls:
+        when: down
+        params: *id002
+  pol_switch_vt_tl_e20v45: &id013
     prev: own
-    switch: {<<: *team_trend_2, ema_days: 20}
+    switch:
+      coins: *id012
+      ema_days: 20
+      hysteresis: 0.03
+      state_days: 120
+      vol_days: 30
+      risk_budget: 0.25
+      out_of_trend_scale: 0.15
     sleeves:
-      baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
-      pol_trend_ls: {when: down, params: *pol_trend_ls}
-  # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
-  pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
-    vt: *baitoey_vt_mom
+      baitoey_vt_mom:
+        when: up
+        params: *id008
+        override:
+          target_daily_vol: 0.045
+      pol_trend_ls:
+        when: down
+        params: *id002
+  pol_abl_partial:
+    vt: *id008
     alpha: 0.5
     min_weight: 0.005
-  pol_abl_shock:                  # F: cash for 24 h after BTC falls >= 5% over 4 hours (checked hourly)
-    vt: *baitoey_vt_mom
+  pol_abl_shock:
+    vt: *id008
     shock_4h: 0.05
     cooldown_hours: 24
-  pol_abl_shock_e20v45:           # F on the switch candidate (research only)
-    vt: *pol_switch_vt_tl_e20v45
+  pol_abl_shock_e20v45:
+    vt: *id013
     shock_4h: 0.05
     cooldown_hours: 24
-  pol_abl_shock_vtv45:            # F on vt_mom with the 4.5%/day vol cap (research only)
-    vt: {<<: *baitoey_vt_mom, target_daily_vol: 0.045}
+  pol_abl_shock_vtv45:
+    vt:
+      lookback_days: *id009
+      vol_days: 30
+      min_history_days: 30
+      k: 6
+      keep_rank: 12
+      weighting: equal
+      target_daily_vol: 0.045
+      early_exit: true
+      exit_low_hours: 24
+      exit_volume_ratio: 1.5
+      exit_cooldown_hours: 24
+      volume_short_hours: 24
+      volume_long_days: 7
+      no_chase: false
+      chase_return_hours: 24
+      chase_return: 0.15
+      chase_volume_ratio: 3.0
+      chase_window_hours: 72
+      chase_pullback: 0.05
     shock_4h: 0.05
     cooldown_hours: 24
-
-  # Book conditional shorts, frozen research priors; research/book/conditional_short/PROTOCOL.md.
-  book_cashshort_confirm: &book_cashshort_confirm
-    long_base:
+  book_cashshort_confirm:
+    long_base: &id014
       vt:
-        lookback_days: [7, 14]
+        lookback_days:
+        - 7
+        - 14
         vol_days: 30
         min_history_days: 30
         k: 6
@@ -622,25 +931,49 @@ models:
     breadth_top_n: 30
     breadth_min_coins: 20
     breadth_hours: 48
-    breadth_max_positive: 0.40
-    short_lookback_days: [7, 14]
+    breadth_max_positive: 0.4
+    short_lookback_days: &id015
+    - 7
+    - 14
     short_vol_days: 30
     short_min_score: 0.0
     short_k: 3
     short_gross_cap: 0.25
-    short_coin_cap: 0.10
+    short_coin_cap: 0.1
     short_daily_vol: 0.01
     pullback_prior_hours: 24
     pullback_recent_hours: 4
   book_cashshort_pullback:
-    <<: *book_cashshort_confirm
-
-# Leaderboard pick rule (backtest/scoring/selection.py). Not part of the tool version: changing it rescores nothing.
-# The leaderboard always shows both picks; `rule` only sets which one orders the table. Changing it is a team decision.
-  # --- book: preregistered research-led study, no parameter sweep ---
-  book_short_trend: &book_short_study
-    coins: [BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT, XRPUSDT]
-    lookbacks_hours: [24, 72, 168]
+    long_base: *id014
+    btc_symbol: BTCUSDT
+    btc_ema_days: 20
+    btc_ema_warmup_spans: 3
+    btc_return_hours: 168
+    liquidity_hours: 168
+    breadth_top_n: 30
+    breadth_min_coins: 20
+    breadth_hours: 48
+    breadth_max_positive: 0.4
+    short_lookback_days: *id015
+    short_vol_days: 30
+    short_min_score: 0.0
+    short_k: 3
+    short_gross_cap: 0.25
+    short_coin_cap: 0.1
+    short_daily_vol: 0.01
+    pullback_prior_hours: 24
+    pullback_recent_hours: 4
+  book_short_trend: &id016
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - SOLUSDT
+    - XRPUSDT
+    lookbacks_hours:
+    - 24
+    - 72
+    - 168
     vol_hours: 168
     coin_cap: 0.25
     gross_cap: 1.0
@@ -656,9 +989,8 @@ models:
     breadth_reference: BTCUSDT
     breadth_min_coins: 3
     breadth_positive_max: 0.4
-  book_short_rebound: *book_short_study
-  book_short_breakdown: *book_short_study
-
+  book_short_rebound: *id016
+  book_short_breakdown: *id016
   book_transition_short:
     long_base:
       vt:
@@ -706,11 +1038,12 @@ models:
     short_gross_cap: 0.25
     short_coin_cap: 0.1
     short_daily_vol: 0.01
-
-
-# Book frozen price-only trend hypotheses; no original configuration changed.
   book_price_fast_signed:
-    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
     warmup_multiplier: 8
     fast_hours: 6
     slow_hours: 24
@@ -718,12 +1051,16 @@ models:
     channel_hours: 48
     forecast_scale: 2.0
     deadzone_z: 0.25
-    sigma_floor: 0.0000001
+    sigma_floor: 1.0e-07
     gross_cap: 1.0
     coin_cap: 0.35
     target_daily_vol: 0.025
   book_price_fast_short:
-    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
     warmup_multiplier: 8
     fast_hours: 6
     slow_hours: 24
@@ -731,12 +1068,16 @@ models:
     channel_hours: 48
     forecast_scale: 2.0
     deadzone_z: 0.25
-    sigma_floor: 0.0000001
+    sigma_floor: 1.0e-07
     gross_cap: 1.0
     coin_cap: 0.35
     target_daily_vol: 0.025
   book_price_slow_signed:
-    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
     warmup_multiplier: 8
     fast_hours: 24
     slow_hours: 96
@@ -744,12 +1085,16 @@ models:
     channel_hours: 48
     forecast_scale: 2.0
     deadzone_z: 0.25
-    sigma_floor: 0.0000001
+    sigma_floor: 1.0e-07
     gross_cap: 1.0
     coin_cap: 0.35
     target_daily_vol: 0.025
   book_price_slow_short:
-    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
     warmup_multiplier: 8
     fast_hours: 24
     slow_hours: 96
@@ -757,12 +1102,16 @@ models:
     channel_hours: 48
     forecast_scale: 2.0
     deadzone_z: 0.25
-    sigma_floor: 0.0000001
+    sigma_floor: 1.0e-07
     gross_cap: 1.0
     coin_cap: 0.35
     target_daily_vol: 0.025
   book_price_channel_signed:
-    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
     warmup_multiplier: 8
     fast_hours: 6
     slow_hours: 24
@@ -770,12 +1119,16 @@ models:
     channel_hours: 48
     forecast_scale: 2.0
     deadzone_z: 0.25
-    sigma_floor: 0.0000001
+    sigma_floor: 1.0e-07
     gross_cap: 1.0
     coin_cap: 0.35
     target_daily_vol: 0.025
   book_price_channel_short:
-    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
     warmup_multiplier: 8
     fast_hours: 6
     slow_hours: 24
@@ -783,22 +1136,139 @@ models:
     channel_hours: 48
     forecast_scale: 2.0
     deadzone_z: 0.25
-    sigma_floor: 0.0000001
+    sigma_floor: 1.0e-07
     gross_cap: 1.0
     coin_cap: 0.35
     target_daily_vol: 0.025
-
+  book_bear_trend_control:
+    coins: &id017
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+  book_bear_guard:
+    coins: *id017
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+  book_bear_pullback:
+    coins: *id017
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+  book_bear_breakdown:
+    coins: *id017
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
 selection:
-  rule: margin                    # amended 2026-10-02 (reports/review/20261002-amend-pick-rule.md); legacy = the pre-registered tie test
-  tie_margin: 0.03                # margin rule: tied only if also within this of the top's HEADLINE_RET
-
-# Book research evaluator: separate from scoring v2 and live strategy settings.
+  rule: margin
+  tie_margin: 0.03
 book_regime_eval:
   schema_version: 1
-  asof: "2026-10-08 12:00:00+00:00"
-  competition_start: "2026-10-04 12:00:00+00:00"
-  competition_end: "2026-10-18 12:00:00+00:00"
-  historical_end: "2026-09-30 00:00:00+00:00"
+  asof: '2026-10-08 12:00:00+00:00'
+  competition_start: '2026-10-04 12:00:00+00:00'
+  competition_end: '2026-10-18 12:00:00+00:00'
+  historical_end: '2026-09-30 00:00:00+00:00'
   incumbent: pol_switch_vt_tl_e20v45
   tool_version: 3036a0d8bfdaa6a0
   horizon_hours: 336
@@ -806,46 +1276,73 @@ book_regime_eval:
   embargo_hours: 24
   state_grid_hour_utc: 12
   features:
-    FAST: [btc_ret24, btc_ret48, btc_ret168]
-    TREND: [btc_ret720, btc_ma200, btc_high720]
-    BREADTH: [breadth48, alt_minus_btc48]
-    VOL: [btc_vol168, btc_volratio]
-  fast_hours: [24, 48, 168, 720]
+    FAST:
+    - btc_ret24
+    - btc_ret48
+    - btc_ret168
+    TREND:
+    - btc_ret720
+    - btc_ma200
+    - btc_high720
+    BREADTH:
+    - breadth48
+    - alt_minus_btc48
+    VOL:
+    - btc_vol168
+    - btc_volratio
+  fast_hours:
+  - 24
+  - 48
+  - 168
+  - 720
   breadth_hours: 48
   min_breadth_coins: 20
   prefix_similarity_tolerance: 0.02
-  volatility_hours: [168, 720]
+  volatility_hours:
+  - 168
+  - 720
   annual_hours: 8760
   minimum_hour_coverage: 0.98
-  lookalikes: {k: 25, min_separation_days: 14, span_days: 90, max_per_span: 3}
-  sensitivity_k: [15, 40]
-  alpha_candidates: [0.0, 0.25, 0.5]
+  lookalikes:
+    k: 25
+    min_separation_days: 14
+    span_days: 90
+    max_per_span: 3
+  sensitivity_k:
+  - 15
+  - 40
+  alpha_candidates:
+  - 0.0
+  - 0.25
+  - 0.5
   walkforward:
-    start: "2022-07-01 12:00:00+00:00"
-    screen_end: "2024-06-30 23:59:59+00:00"
-    confirm_start: "2024-07-01 00:00:00+00:00"
-    end: "2026-07-25 12:00:00+00:00"
+    start: '2022-07-01 12:00:00+00:00'
+    screen_end: '2024-06-30 23:59:59+00:00'
+    confirm_start: '2024-07-01 00:00:00+00:00'
+    end: '2026-07-25 12:00:00+00:00'
     step_days: 28
     min_queries: 20
     min_pool: 500
     bootstrap_block_queries: 4
-  bootstrap: {reps: 2000, seed: 20261008, level: 0.90}
+  bootstrap:
+    reps: 2000
+    seed: 20261008
+    level: 0.9
   gates:
     min_confirm_skill_lower: 0.0
     max_brier_degradation: 0.0
     max_return_mean_sensitivity: 0.03
     max_up_probability_sensitivity: 0.15
   close_fee: 0.001
-  short: {fee_each_side: 0.001, minimum_episodes: 30}
+  short:
+    fee_each_side: 0.001
+    minimum_episodes: 30
   registry: results/scoring/registry.jsonl
   cache_dir: results/scoring/cache
   historical_panel: data/validation
   live_panel: results/book/shadow/h1
   paper_equity: results/book/paper-live/equity.csv
   out_dir: results/book/20261008-regime-eval
-
-
-# Separate automatic checkpoint board. Never modifies the original leaderboard.
 book_score2:
   schema_version: 2
   checkpoint: results/book/20261009-weak-eval-v2
@@ -853,49 +1350,88 @@ book_score2:
   leaderboard: results/scoring/leaderboard_2.md
   csv: results/scoring/leaderboard_2.csv
   artifacts: results/scoring/score2
-
-# Book conditional weak-market ranking; protocol frozen before model comparison.
 book_weak_eval:
   schema_version: 2
-  asof: "2026-10-09 00:00:00+00:00"
-  reference_asof: "2026-10-08 00:00:00+00:00"
-  competition_end: "2026-10-18 12:00:00+00:00"
-  horizons_hours: [216, 228, 240]
+  asof: '2026-10-09 00:00:00+00:00'
+  reference_asof: '2026-10-08 00:00:00+00:00'
+  competition_end: '2026-10-18 12:00:00+00:00'
+  horizons_hours:
+  - 216
+  - 228
+  - 240
   primary_hours: 228
   historical_panel: data/validation
   live_panel: results/book/shadow/h1
   out_dir: results/book/20261009-weak-eval-v2
   reference_archive_dir: results/book/20261009-weak-eval/provenance
   source_checkpoint: results/book/20261008-regime-eval
-  archive_base_url: "https://data.binance.vision"
+  archive_base_url: https://data.binance.vision
   archive_workers: 4
   features:
-    FAST: [btc_ret24, btc_ret48, btc_ret168]
-    TREND: [btc_ret720, btc_ma200, btc_high720]
-    BREADTH: [breadth48, alt_minus_btc48]
-    VOL: [btc_vol168, btc_volratio]
+    FAST:
+    - btc_ret24
+    - btc_ret48
+    - btc_ret168
+    TREND:
+    - btc_ret720
+    - btc_ma200
+    - btc_high720
+    BREADTH:
+    - breadth48
+    - alt_minus_btc48
+    VOL:
+    - btc_vol168
+    - btc_volratio
   fresh_features:
-    FAST: [btc_ret24, btc_ret48, btc_ret168]
-    TREND: [btc_ret720, btc_ma200, btc_high720]
-    VOL: [btc_vol168, btc_volratio]
-  weak: {ret48_min: -0.10, ret48_max: 0.0, breadth_max: 0.40, ret24_max: 0.01}
-  positive: {ret48_min: 0.0, ret48_max: 0.10, breadth_min: 0.60}
-  lookalikes: {k: 25, min_separation_days: 14, span_days: 90, max_per_span: 3}
-  sensitivity_k: [15, 40]
+    FAST:
+    - btc_ret24
+    - btc_ret48
+    - btc_ret168
+    TREND:
+    - btc_ret720
+    - btc_ma200
+    - btc_high720
+    VOL:
+    - btc_vol168
+    - btc_volratio
+  weak:
+    ret48_min: -0.1
+    ret48_max: 0.0
+    breadth_max: 0.4
+    ret24_max: 0.01
+  positive:
+    ret48_min: 0.0
+    ret48_max: 0.1
+    breadth_min: 0.6
+  lookalikes:
+    k: 25
+    min_separation_days: 14
+    span_days: 90
+    max_per_span: 3
+  sensitivity_k:
+  - 15
+  - 40
   embargo_hours: 24
   min_clusters: 12
-  bootstrap: {reps: 20000, seed: 20261009, level: 0.90}
-  stress: {future_down: -0.02, future_rebound: 0.02}
+  bootstrap:
+    reps: 20000
+    seed: 20261009
+    level: 0.9
+  stress:
+    future_down: -0.02
+    future_rebound: 0.02
   short:
     fee_rate: 0.001
     half_spread: 0.0005
-    horizons_hours: [1, 3, 6]
+    horizons_hours:
+    - 1
+    - 3
+    - 6
     take_profit: 0.004
     stop_loss: 0.004
     barrier_max_hours: 6
-    tolerance: 0.000000000001
+    tolerance: 1.0e-12
     minimum_episodes: 30
-
 book_intraday_short:
   volume_baseline_minutes: 240
   risk_horizon_minutes: 180
@@ -920,16 +1456,14 @@ book_intraday_short:
   cooldown_minutes: 30
   max_positions: 3
   max_short_gross: 0.25
-  max_coin: 0.10
+  max_coin: 0.1
   risk_fraction: 0.0025
   fee: 0.001
   halfspread: 0.0005
   lag_minutes: 1
   seed: 100000.0
-
 book_intraday_persistent:
   exit_rebound_buffer: 0.005
-
 book_intraday_slow:
   range_minutes: 1440
   max_hold_minutes: 1440
