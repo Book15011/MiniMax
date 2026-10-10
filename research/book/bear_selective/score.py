@@ -4,6 +4,8 @@ import argparse,hashlib,json
 import numpy as np,pandas as pd
 from research.book.bear_selective.run import OUT,NAMES,OLD,STUDY
 from research.book.intraday_short.report import clustered_interval,eligible
+from research.book.bear_selective.audit import terminal_audit
+from research.book.bear_selective.entry_diagnostics import publish as publish_entries
 def table(headers,rows):
  return "\n".join(["| "+" | ".join(headers)+" |","|"+"|".join("---" for _ in headers)+"|"]+["| "+" | ".join(map(str,row))+" |" for row in rows])
 def pct(x):return "unknown" if pd.isna(x) else f"{x:+.3%}"
@@ -17,6 +19,18 @@ def main():
  if len(status)!=len(NAMES)+1 or any(z["returncode"] for z in status):raise ValueError("Tests or normal scoring incomplete")
  if json.loads((OUT/"evaluation_before.json").read_text())!=json.loads((OUT/"evaluation_after.json").read_text()):raise ValueError("Frozen inputs changed")
  f=pd.read_csv(OUT/"window_results.csv");cases=pd.read_parquet(OUT/"cases.parquet");summ=[];rows=[]
+ terminal_checks=[]
+ for z in f.itertuples():
+  stem=OUT/"cases"/z.case/(z.model+"-"+z.scenario+"-"+str(z.hours))
+  events=pd.read_csv(str(stem)+".events.csv",dtype={"quantity":str})
+  endpoint=json.loads(Path(str(stem)+".endpoint.json").read_text())
+  proof=terminal_audit(events,STUDY["replay"]["seed"],STUDY["costs"][z.scenario]["fee"],endpoint["full_cost_liquidated_equity"])
+  terminal_checks.append(dict(case=z.case,model=z.model,scenario=z.scenario,hours=z.hours,**proof))
+ (OUT/"terminal_short_quantity_audit.json").write_text(json.dumps(dict(status="PASS",ledgers=len(terminal_checks),
+   maximum_residual_quantity=max(z["maximum_residual_quantity"] for z in terminal_checks),
+   maximum_cash_error_usd=max(z["cash_equity_error_usd"] for z in terminal_checks),
+   source_sha256=hashlib.sha256(Path("research/book/bear_selective/audit.py").read_bytes()).hexdigest()),indent=2))
+
  for name in NAMES:
   bounds=[];accbounds=[];gates=[]
   for profile in STUDY["profiles"]:
@@ -53,6 +67,16 @@ def main():
     lo,hi=clustered_interval(delta,"return",alpha=.1/(STUDY["hypotheses"]*6))
     pairs.append(dict(model=name,control=control,profile=profile,hours=hours,mean_delta=delta["return"].mean(),lower90=lo,upper90=hi))
  pd.DataFrame(pairs).to_csv(OUT/"paired_control.csv",index=False)
+ scenario_rows=[]
+ for profile in STUDY["profiles"]:
+  for label,mask in [("future_down",cases.future_return<=-.02),("future_rebound",cases.future_return>=.02)]:
+   starts=set(map(str,cases.index[cases[profile]&mask]))
+   for name in NAMES:
+    x=f[(f.model==name)&(f.scenario=="original")&(f.hours==STUDY["primary_horizon"])&f.start.isin(starts)]
+    n=int(x.completed.sum());wins=int(x.wins.sum())
+    scenario_rows.append(dict(profile=profile,future_label=label,model=name,windows=len(x),mean_return=x["return"].mean(),p10=x["return"].quantile(.1),worst=x["return"].min(),wins=wins,completed=n,accuracy=wins/n if n else np.nan,MDD=x.maximum_drawdown.mean(),CS=x.CS.mean()))
+ scenario_table=pd.DataFrame(scenario_rows);scenario_table.to_csv(OUT/"scenario_summary.csv",index=False)
+ publish_entries(OUT,STUDY)
  text="# Selective short entries and rebound exits\n\n"
  text+=("No model clears all reliable-improvement checks. These are research ranks; live switching remains unsupported.\n\n" if not rank.stronger_evidence.any() else "Some retrospective gates pass; prospective superiority and a live-account switch remain UNVERIFIED.\n\n")
  text+="Read **Evidence** first, then **Return**, **Short wins/closed**, **Accuracy**, **P10/Worst**, **MDD** and **CS**. Rank1 alone is not a recommendation. The clone's85%trade agreement is a separate objective.\n\n"
@@ -62,13 +86,18 @@ def main():
  text+="Conservative rank sorts the worst of six profile/horizon quarter-cluster lower bounds on mean return. Bootstrap20000 and simultaneous adjustment use18declared short hypotheses(previous8minute+6price+these4); repeated earlier research still limits inference. Accuracy rank uses the worst-profile90%interval lower bound at228h. Return rank sorts mean portfolio return. P10 and Worst describe losses; MDD is minute peak-to-trough loss; CS keeps0.4Sortino+0.3Sharpe+0.3Calmar. Mean gross is realised exposure, which can differ despite identical caps.\n\n"
  text+=table(["Rank","Model","Lower return","Return","Median","P10","Worst","Short wins/closed","Accuracy","Accuracy rank","Censored","MDD","CS","Mean gross","Evidence"],[[r.rank,r.model,pct(r.selection_lower90),pct(r.mean),pct(r.median),pct(r.p10),pct(r.worst),f"{r.wins}/{r.completed}",rate(r.accuracy),int(r.accuracy_rank) if pd.notna(r.accuracy_rank) else "-",r.censored,rate(r.MDD),f"{r.CS:.3f}",rate(r.mean_gross),"PASS" if r.stronger_evidence else "FAIL"] for r in rank.itertuples()])
  text+="\n\nThe unchanged evidence checks require every profile/horizon lower bound>0,at least30completed shorts,12quarters and12firing windows, positive doubled-cost mean, nonnegative median and positive-control mean>=-1%. No thresholds were loosened. paired_control.csv shows within-window return differences from the equal-risk control; absolute profit and normal --score2 incumbent comparisons must also pass.\n\n"
+ text+="## When historical prices actually fell or rebounded\n\nThese conditional labels are diagnostic only: future240hBTCreturn<=-2% is down and>=+2% is rebound. Returns here remain the main228hportfolio endpoint. They do not select training windows, enter targets, alter the main rank or prove the next market direction. Neutral cases remain included in the full25windowtable. Small subgroup results are weaker evidence.\n\n"
+ scenario_main=scenario_table[scenario_table.profile=="weak_archived"]
+ text+=table(["Future case","Model","Windows","Mean return","P10","Worst","Net wins/closed","Accuracy","MDD","CS"],[[z.future_label,z.model,z.windows,pct(z.mean_return),pct(z.p10),pct(z.worst),f"{z.wins}/{z.completed}",rate(z.accuracy),rate(z.MDD),f"{z.CS:.3f}"] for z in scenario_main.itertuples()])
+ text+="\n\nBoth profiles are retained in scenario_summary.csv.\n\n"
  text+="## Early competition prefix: already used\n\nOctober4 20:00HKT to October9 08:00HKT,100kseed. These conditional results do not provide held-out evidence.\n\n"
  text+=table(["Model","Full return","MDD","Wins/closed","Censored","Net short USD","Orders"],[[r.model,pct(r.full_cost_liquidated_return),rate(r.maximum_drawdown),f"{r.wins}/{r.completed}",r.censored,f"{r.net_short_usd:.2f}",r.strategy_orders] for r in prefix.itertuples()])
  text+="\n\nEarlier observed reference+5.2196%and prior clone+4.8661%use this common endpoint but different five-coin holdings and execution assumptions. They are conditional references, not equivalent-risk measurements.\n\n"
+ text+="Actual executed-entry timing has a separate table: entry_accuracy.md and entry_accuracy_1h_3h_6h.csv. It ranks fixed1/3/6h after-cost marks from simulated first fills, with endpoint censoring. This is distinct from completed-trade accuracy and the main hourly target-onset proxy.\n\n"
  text+="## Files and reruns\n\nleaderboard_short.csv has ranks. profile_summary.csv retains all six contexts and cost stress. window_results.csv contains every ledger outcome; cases.parquet gives checkpoint dates; paired_control.csv compares each model with the equal-risk trend control. cases/ contains full events, cycles and minute equity. independent_execution_audit.json checks accounting; evaluation_before/after.json pins source/data; status.json records tests and normal-score jobs.\n\n"
  text+="From /home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short run .venv/bin/python -B -m backtest.run --model MODEL --score2 for automatic entry in /home/ubuntu/test/MiniMax/results/scoring/leaderboard_2.md. Rebuild this frozen report with .venv/bin/python -B -m research.book.bear_selective.score --score. The full batch refuses overwrite; new hypotheses need a new version. Normal --score2 includes the daily activity guard; this supplemental replay omits it. Both use the shared planner/PaperBroker. Historical minute execution prices here use0.05%halfspread proxies and0.10%fees each side; doubled-cost and2h lag runs are retained.\n\n"
  text+="Source data limitations include the fixed modern four-coin cohort and current precision rules, proxy archive spreads, and the absence of the live account's inherited holdings. All adaptive gates remain unchanged, including BCHabsent29/30coverage. No main merge, signed API action or live bot change occurred.\n"
  (OUT/"leaderboard_short.md").write_text(text);Path("research/book/bear_selective/RESULTS.md").write_text(text)
- (OUT/"report_manifest.json").write_text(json.dumps(dict(status="PASS",source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),input_sha256=m["window_results_sha256"],family_hypotheses=STUDY["hypotheses"],all_history_spent=True),indent=2))
+ (OUT/"report_manifest.json").write_text(json.dumps(dict(status="PASS",source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),input_sha256=m["window_results_sha256"],family_hypotheses=STUDY["hypotheses"],all_history_spent=True,audit_helper_sha256=hashlib.sha256(Path("research/book/bear_selective/audit.py").read_bytes()).hexdigest(),entry_helper_sha256=hashlib.sha256(Path("research/book/bear_selective/entry_diagnostics.py").read_bytes()).hexdigest()),indent=2))
  print(rank[["rank","model","mean","accuracy","selection_lower90","stronger_evidence"]].to_string(index=False),flush=True)
 if __name__=="__main__":main()
