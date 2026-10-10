@@ -36,3 +36,11 @@ def test_channel_uses_only_known_completed_prices():
  v=view(-1)
  f,_=forecast(v.close,P,"channel")
  assert ((f>=-1)&(f<=1)).all() and (f==-1).all()
+
+def test_registered_config_contains_numeric_risk_settings():
+ from src.config import load_config
+ cfg=load_config()
+ for family in ["fast","slow","channel"]:
+  for mode in ["signed","short"]:
+   p=cfg["models"]["book_price_"+family+"_"+mode]
+   assert isinstance(p["sigma_floor"],(float,int)) and p["sigma_floor"]>0
