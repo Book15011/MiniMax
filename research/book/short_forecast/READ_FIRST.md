@@ -1,3 +1,7 @@
+# Current comparison
+
+Use /home/ubuntu/test/MiniMax/results/scoring/leaderboard_short_ranked.md for the new 50% conservative return / 30% opportunity F1 / 20% sample-aware accuracy score and separate F1 rank. The current full equal-protocol comparison is /home/ubuntu/test/MiniMax/results/book/20261010-short-combined-v3/leaderboard_short.md: thirteen models, 7,995 unique outcomes, 27 uniform hypotheses. All evidence flags remain FAIL. The older ten-model v2 below is preserved history.
+
 # Read the updated comparison
 The new ten-model equal-protocol comparison is:
  /home/ubuntu/test/MiniMax/results/book/20261010-short-combined-v2/leaderboard_short.md
