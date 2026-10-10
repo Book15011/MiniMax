@@ -1,0 +1,17 @@
+parents:
+- /home/ubuntu/test/MiniMax/results/book/20261010-bear-selective-v2
+- /home/ubuntu/test/MiniMax/results/book/20261010-bear-exit-v1
+- /home/ubuntu/test/MiniMax/results/book/20261010-short-forecast-v1
+- /home/ubuntu/test/MiniMax/results/book/20261010-short-exhaustion-v1
+output: /home/ubuntu/test/MiniMax/results/book/20261010-short-combined-v3
+profiles:
+- weak_archived
+- weak_fresh_btc
+horizons:
+- 216
+- 228
+- 240
+hypotheses: 27
+control: book_bear_guard
+models: 13
+ledgers_per_model: 615
