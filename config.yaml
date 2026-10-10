@@ -1583,6 +1583,62 @@ models:
     calibration_only: true
     training_label_end_utc: '2026-10-09T01:15:00Z'
 
+  book_pooled_offsets:
+    coins:
+    - BNBUSDT
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - XRPUSDT
+    ema_pairs:
+    - - 6
+      - 24
+    - - 12
+      - 48
+    - - 24
+      - 96
+    risk_reference: 0.004
+    risk_span: 24
+    signal_lag: 1
+    risk_lag: 2
+    pars:
+    - 0.5355795085623732
+    - 0.05567976449985295
+    - 0.023882348641813815
+    - 0.04212907307890611
+    - 0.016603215535273073
+    - -0.013899019500220416
+    - -0.014929411667082917
+    - -4.84755953877869e-07
+    - 3.7810422887085693e-06
+    - -8.725429528899653e-07
+    - -5.2808771820928024e-05
+    - -0.0329241015347671
+    - 1.6626311272599816
+    - 0.7288242324869569
+    - 0.40299668668102373
+    - 0.0789091142046827
+    warmup_hours: 4608
+    hours_per_day: 24
+    rebalance_hours: 24
+    band: 0.01
+    sigma_floor: 1.0e-12
+    return_hours:
+    - 6
+    - 12
+    - 24
+    - 48
+    feature_scale: 0.005
+    calibration_only: true
+    training_label_end_utc: '2026-10-09T01:15:00Z'
+    offset_coins:
+    - BNBUSDT
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    forecast_cap: 1.0
+    max_gross: 1.0
+
 selection:
   rule: margin
   tie_margin: 0.03
