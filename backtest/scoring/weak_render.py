@@ -88,6 +88,7 @@ def ranked_short_lines(short,frame):
         "Unit proxy returns use one dollar of short entry notional, not the model's actual quantity or portfolio contribution. "
         "Full portfolio mean and CS are shown separately; CS is the archive-full primary risk value for both rows. Minute short-only executable comparisons: "
         "/home/ubuntu/test/MiniMax/results/book/20261010-intraday-short-v4/leaderboard_short.md. "
+        "Price-based full portfolios and actual completed-short episodes: /home/ubuntu/test/MiniMax/results/book/20261010-price-trend-v1/leaderboard_short.md. "
         "That separate experiment uses a different fixed asset pool and must not be pooled into these hourly ranks.",""]
     f=short_rank_view(short);b=frame.set_index("model") if len(frame) else pd.DataFrame()
     rows=[]

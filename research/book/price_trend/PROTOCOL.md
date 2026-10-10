@@ -1,0 +1,17 @@
+# Book price-trend follow-up: six frozen strategies
+Declared before new candidate returns, client10October2026. The main task remains incomplete.
+
+Previous minute shorts failed across the broader weak cohorts even when a few recent trades won. Prior daily trend used24/72/168h momentum and a1.25%daily risk cap. This distinct study tests faster continuous EMA forecasts, a slower EMA control and normalized channel position. There is no parameter sweep. Exactly six retained models: fast/slow/channel x long-short/short-only. All use only completed hourly closes, no taker flow or special live feed. The existing pipeline can supply such prices; current deployment readiness remains UNVERIFIED.
+
+Fixed BTC/ETH/BNB/XRP, restricted to point-in-time tradable universe. Require a complete positive hourly clock grid for8xslow-span warmup, risk72h, channel48h; missing history fails closed. Fast EMA6/24, slowEMA24/96, channel48h. EMA conviction = clip((EMAfast/EMAslow-1)/(2*EWMA72 hourly sigma),-1,1), zero when absolute standardized gap<0.25. Channel conviction =2*(price-min48h)/(max48h-min48h)-1. Channel includes current completed close; no intrabar fill or future order is inferred.
+Sizing: inverse volatility base shares over all4coins, gross1,coin cap35%, then conviction and perfectly-correlated estimated daily risk cap2.5%; shorts-only discard positive forecasts and keep cash.4hdecisions anchoredat16UTC,band5pp,1hourlag,shared fees/spreads/order accounting. These full portfolios have different native exposure from the old25%minute sleeves. Compare like horizons, show exposure/turnover, and never label raw return differences as equal-risk superiority.
+
+Publish all six by unchanged --score2, preserving protocol603da2948b68ee0f5c8a and all original gates, CS and failed BCH29/30coverage. No main merge/live/signedAPI/holdout. A descriptive high rank cannot override failed stronger evidence.
+Supplementary actual shared-broker fills use the same25+25weak and25control case lists (68unique historical cases), same216/228/240h horizons, four checksummed minute-mark series and accepted hourly signal warmup. Include common spent prefixOct4 20HKT–Oct9 08HKT. Cost0.10%+halfspread0.05%perside, doubledcost reruns and2hourlag stress. Short accuracy counts fully closed position episodes net of all partial-fill fees; open-at-end episodes are censored from accuracy but included in marked return with terminal fee. Report short-only models as return/cycle accuracy and signed models as full return with separate short PnL; keep all cases including inactivity.
+
+Primary research:
+- https://www.aqr.com/Insights/Datasets/Time-Series-Momentum-Original-Paper-Data documents momentum+volatility scaling in traditional futures, with month/year horizons. Mechanism evidence, not proof of hourly crypto edge.
+- https://arxiv.org/abs/2009.12155 is a2020crypto trend-following preprint; it motivates testing sustained trends and cost-aware walk-forward behavior. It does not validate our chosen parameters.
+- https://github.com/pst-group/pysystemtrade/blob/develop/docs/introduction.md gives the author-maintained EMA-difference/volatility mechanism.
+- https://www.nber.org/papers/w20439 motivates explicit rebound scenarios rather than treating down markets as permanent.
+All thresholds are engineering priors, all existing historical and competition data is spent. Family corrections and blocked chronological checks cannot create untouched forward evidence.

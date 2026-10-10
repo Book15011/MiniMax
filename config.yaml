@@ -707,6 +707,87 @@ models:
     short_coin_cap: 0.1
     short_daily_vol: 0.01
 
+
+# Book frozen price-only trend hypotheses; no original configuration changed.
+  book_price_fast_signed:
+    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    risk_hours: 72
+    channel_hours: 48
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    sigma_floor: 1e-07
+    gross_cap: 1.0
+    coin_cap: 0.35
+    target_daily_vol: 0.025
+  book_price_fast_short:
+    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    risk_hours: 72
+    channel_hours: 48
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    sigma_floor: 1e-07
+    gross_cap: 1.0
+    coin_cap: 0.35
+    target_daily_vol: 0.025
+  book_price_slow_signed:
+    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    warmup_multiplier: 8
+    fast_hours: 24
+    slow_hours: 96
+    risk_hours: 72
+    channel_hours: 48
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    sigma_floor: 1e-07
+    gross_cap: 1.0
+    coin_cap: 0.35
+    target_daily_vol: 0.025
+  book_price_slow_short:
+    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    warmup_multiplier: 8
+    fast_hours: 24
+    slow_hours: 96
+    risk_hours: 72
+    channel_hours: 48
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    sigma_floor: 1e-07
+    gross_cap: 1.0
+    coin_cap: 0.35
+    target_daily_vol: 0.025
+  book_price_channel_signed:
+    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    risk_hours: 72
+    channel_hours: 48
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    sigma_floor: 1e-07
+    gross_cap: 1.0
+    coin_cap: 0.35
+    target_daily_vol: 0.025
+  book_price_channel_short:
+    coins: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT"]
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    risk_hours: 72
+    channel_hours: 48
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    sigma_floor: 1e-07
+    gross_cap: 1.0
+    coin_cap: 0.35
+    target_daily_vol: 0.025
+
 selection:
   rule: margin                    # amended 2026-10-02 (reports/review/20261002-amend-pick-rule.md); legacy = the pre-registered tie test
   tie_margin: 0.03                # margin rule: tied only if also within this of the top's HEADLINE_RET
