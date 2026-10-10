@@ -1,0 +1,15 @@
+# Frozen next-price-block check for all six price-based portfolios
+
+Frozen10October2026 before inspecting or scoring this quote block. Model parameters/source are already frozen at13d1894 and are not fitted here. All six candidates are evaluated, including failures; no choice of winner before or during this test. Historical archives and the Oct4-9prefix are spent. Oct9quotes already existed when this protocol was written, so this is a newly inspected retrospective price block, not a wall-clock prospective trial. Its24hours cannot establish statistical reliability.
+
+Endpoints: Oct9 00:00UTC to Oct10 00:00UTC (Oct9 08:00HKT to Oct10 08:00HKT), starting from cash100k. This isolates a new one-day deployable entry test; it is not continuity of a portfolio launched onOct4. Last completed hourly prices throughOct9 00:00come from the already accepted hourly archive prefix. Later hourly prices are latest unsigned Roostoo LastPrice observations at or before the hour. No forward fill older than30seconds is allowed for hourly features, execution or valuation. Four-coin tradability is frozen to BTC/ETH/BNB/XRP from earlier verified universe membership; current bid/ask data have no volume fields, so no new volume ranking is inferred.
+
+Decision00/04/08/12/16/20UTC,1hour execution lag,10secondsbetweenorders,shared planner/PaperBroker,0.10%fee each side,actual recordedbid/ask. Three fixed scenarios: actualcost/1hlag,0.20%fee and doubled recorded spread/1hlag,actualcost/2hlag. Gross<=1,5ppband, no daily activity guard in this supplemental diagnostic (normal --score2 includes it).
+
+All closed natural short cycles aggregate partial covers and fees; terminal active cycles remain censored for accuracy. All positions close analytically at endpoint after full fees for return. Independently reconstruct signed-cash accounting and quote side/age; fail the whole publication on missing coverage or any ledger mismatch. Show all6models, completed wins/closed, censored, return, net short PnL and minute MDD. No model selection thresholds may be relaxed. Frozen hashes must remain unchanged. Do not enter this24hresult into the228hlookalike score or combine periods with different endpoints.
+
+Only existing unsigned collector CSVs are read; no collectors, signed APIs or live bot are changed.
+
+
+## Version2 quote ambiguity amendment before any outcome evaluation
+Version1 failed before models were run:57,324selected rows,32duplicate capture-time/pair keys,14with conflicting fields. Preserve version1 failure and duplicate audit. Source timestamps have only second precision and do not identify within-second chronology. Version2 uses both earliest-file-row and latest-file-row canonicalizations, never averages conflicts or selects the more profitable ordering. Recompute targets/replays for each, retain all36ledgers and show both. If targets/events and outcomes are identical, record that invariance explicitly. Every quote age remains<=30seconds; missing coverage still fails publication. Models, endpoints, costs and all score thresholds remain unchanged.

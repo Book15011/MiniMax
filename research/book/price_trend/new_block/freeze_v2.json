@@ -1,0 +1,17 @@
+{
+  "frozen_at_utc": "2026-10-10T02:23:04.549922+00:00",
+  "files": {
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/config.yaml": "833a757894c041332b249a022bfe3d7754813207662debf1bb14b858882ece53",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/_price_trend.py": "554aa06581d59a6b20ff3f8f19880bb9f29ee14db627d37a9eeeb2dc508df17c",
+    "/home/ubuntu/test/MiniMax/results/book/scalp/quotes/20261009.csv": "fd99f98de87522bca45ed6134c0c39bd2ed341d9a981feae914ceef5bee8f68b",
+    "/home/ubuntu/test/MiniMax/results/book/scalp/quotes/20261008.csv": "0f18dac38122ea728e53f50f70d0f575cfd9f1ef7f1d05011767807fe6ba8eb9",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_price_fast_signed.py": "2ba8e1582c352839c189c6392fd6dafbf662ad74c25b19a0fbea56d60643c70f",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_price_fast_short.py": "734e9df1c517925b0d658dd772fdd12c560d2c4e8e912b4a62670f25e873ae66",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_price_slow_signed.py": "a2a76a88dfb8abf06b747b262ba66f0d5dc2bfee3b8740510abdf800a6a37f5f",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_price_slow_short.py": "3a4e5032511685e78b122c1d40e3ca9e304346c5c8d1e94469468c3bc5e0d188",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_price_channel_signed.py": "0f7e01110240fb74c79702a4329228fa960a63c45cc29fb185698f8a26564921",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_price_channel_short.py": "9509e5e115583f9dcf4c219a12451ed111510140943b4632642650202a5de52b",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/research/book/price_trend/new_block/PROTOCOL_V2.md": "a5193d205a36bb726d3784d2480e23c65ceef2dd4d42502c117c0adeefe3b85c"
+  },
+  "amended_at_utc": "2026-10-10T02:27:04.670268+00:00"
+}
