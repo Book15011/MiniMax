@@ -1,0 +1,156 @@
+frozen_at_utc: 2026-10-10 03:37:26 UTC
+start_utc: '2026-10-11T00:00:00Z'
+end_utc: '2026-10-12T00:00:00Z'
+models:
+  book_bear_trend_control:
+    coins: &id001
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+  book_bear_guard:
+    coins: *id001
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+  book_bear_pullback:
+    coins: *id001
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+  book_bear_breakdown:
+    coins: *id001
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+replay:
+  seed: 100000.0
+  quote_max_age: 0
+  minute_max_age: 60
+  min_order: 1.0
+  cash_buffer: 0.001
+  order_spacing_seconds: 10.0
+scenario_costs:
+  original:
+    fee: 0.001
+    halfspread: 0.0005
+    lag_minutes: 60
+  doubled:
+    fee: 0.002
+    halfspread: 0.001
+    lag_minutes: 60
+  lag2h:
+    fee: 0.001
+    halfspread: 0.0005
+    lag_minutes: 120
+quote_max_age_seconds: 30
+no_activity_guard: true
+capital_start: cash
+fixed_membership:
+- BTCUSDT
+- ETHUSDT
+- BNBUSDT
+- XRPUSDT
+quote_order_controls:
+- first
+- last
+status: AWAITING_FUTURE_DATA

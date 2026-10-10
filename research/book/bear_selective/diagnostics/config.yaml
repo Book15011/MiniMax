@@ -1,0 +1,16 @@
+output: /home/ubuntu/test/MiniMax/results/book/20261010-price-loss-diagnostics-v1
+models:
+- book_price_fast_signed
+- book_price_fast_short
+- book_price_slow_signed
+- book_price_slow_short
+- book_price_channel_signed
+- book_price_channel_short
+profiles:
+- weak_archived
+- weak_fresh_btc
+hours: 228
+fee: 0.001
+halfspread: 0.0005
+max_price_age_seconds: 60
+money_tolerance_usd: 1.0e-06

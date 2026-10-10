@@ -1,0 +1,9 @@
+# Frozen future comparison — not yet scored
+
+Frozen on 2026-10-10 03:37:26 UTC before the stated market period. Compare all4selective-short candidates and cash, without choosing or tuning them after this window. Window: October11 00UTC to October12 00UTC (October11 08HKT to October12 08HKT),cash100k,25%gross/10%coin ceilings. Configuration and exact strategy/execution hashes are frozen in config.yaml/freeze.json.
+
+Use only the existing unsigned quote collector; no signed API or live orders. Include actual bid/ask as-of<=30seconds,1hclosed-price decisions,1hdelayedfills,0.10%fees. Repeat doubledfees/spread and2hdelay; preserve bothfirst/last same-timestamp ordering controls. Snapshot and hash all future input files at evaluation time; fail on missing/late/invalid quotes. Use accepted archive warmup then recorded LastPrice hourly closes, documenting the source boundary. Fixed four-coin diagnostic membership omits refreshed liquidity ranking; dailyactivityguard remains off here and on in normal --score2.
+
+Verify source hashes and frozen model parameter equality before evaluation. If files changed, reproduce the pinned code in a suitable Book worktree; never silently evaluate updated parameters. Include every candidate, inactive periods, all orders and all failures. Report net portfolio return, minuteMDD, completed net-profitable short wins/closed, censored shorts and fixed1/3/6h onset diagnostics separately. Independently audit every ledger and quote side/age. Preserve these future-day results separately before any refit; one day is too short to establish the full reliable-improvement gates or CS.
+
+This protocol is prepared, not an active scheduled job. No future prices, trades or scores are available yet. No automation, live change or recommendation was created. The original228hlookalike board remains a spent retrospective benchmark.
