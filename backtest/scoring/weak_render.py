@@ -88,7 +88,7 @@ def ranked_short_lines(short,frame):
         "Unit proxy returns use one dollar of short entry notional, not the model's actual quantity or portfolio contribution. "
         "Full portfolio mean and CS are shown separately; CS is the archive-full primary risk value for both rows. Minute short-only executable comparisons: "
         "/home/ubuntu/test/MiniMax/results/book/20261010-intraday-short-v4/leaderboard_short.md. "
-        "Cost-filtered short entries and faster exits: /home/ubuntu/test/MiniMax/results/book/20261010-bear-exit-v1/leaderboard_short.md. "
+        "Start with the combined seven-model equal-protocol table: /home/ubuntu/test/MiniMax/results/book/20261010-short-combined-v1/leaderboard_short.md. It ranks completed-trade accuracy, actual simulated-entry timing and return/risk separately, and retains failed evidence flags. "
         "Equal-risk selective short entries and rebound exits: /home/ubuntu/test/MiniMax/results/book/20261010-bear-selective-v2/leaderboard_short.md. "
         "Price-based full portfolios and actual completed-short episodes: /home/ubuntu/test/MiniMax/results/book/20261010-price-trend-v1/leaderboard_short.md. "
         "That separate experiment uses a different fixed asset pool and must not be pooled into these hourly ranks.",""]
