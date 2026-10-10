@@ -1389,6 +1389,38 @@ models:
     rebound_sigma_hours: 6
     rebound_sigma: 0.75
     rebound_floor: 0.003
+  # --- book: e20v45 unchanged + the cash-short study's conditional short leg (feature/e20-shortguard; research only) ---
+  book_e20guard_pullback: &e20guard
+    e20: *id013
+    btc_symbol: BTCUSDT
+    btc_ema_days: 20
+    btc_ema_warmup_spans: 3
+    btc_return_hours: 168
+    liquidity_hours: 168
+    breadth_top_n: 30
+    breadth_min_coins: 20
+    breadth_hours: 48
+    breadth_max_positive: 0.4
+    short_lookback_days: *id015
+    short_vol_days: 30
+    short_min_score: 0.0
+    short_k: 3
+    short_gross_cap: 0.25
+    short_coin_cap: 0.1
+    short_daily_vol: 0.01
+    pullback_prior_hours: 24
+    pullback_recent_hours: 4
+  book_e20guard_confirm: *e20guard
+  book_e20guard_pullback40: &e20guard40
+    <<: *e20guard
+    short_gross_cap: 0.4
+    short_coin_cap: 0.16
+    short_daily_vol: 0.016
+  book_e20guard_confirm40: *e20guard40
+  book_e20guard_pullback_r: &e20guard_r
+    <<: *e20guard
+    volume_fill_hours: 12
+  book_e20guard_confirm_r: *e20guard_r
 selection:
   rule: margin
   tie_margin: 0.03
