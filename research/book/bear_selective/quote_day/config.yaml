@@ -1,0 +1,19 @@
+output: /home/ubuntu/test/MiniMax/results/book/20261010-bear-quote-day-v1
+start: 2026-10-09T00:00Z
+end: 2026-10-10T00:00Z
+assets:
+- BTC
+- ETH
+- BNB
+- XRP
+quote_age_seconds: 30
+seed: 100000.0
+fee: 0.001
+halfspread: 0.0005
+double_multiplier: 2
+lag_minutes: 60
+stress_lag_minutes: 120
+min_order: 1.0
+cash_buffer: 0.001
+order_spacing_seconds: 10.0
+minute_age_seconds: 60

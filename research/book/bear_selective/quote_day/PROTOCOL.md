@@ -1,0 +1,3 @@
+# Previously inspected quote-day diagnostic
+Four selective-short models are frozen before this replay, but the October9day and its six original model results were inspected previously. This is spent retrospective evidence, not a newly inspected or held-out day.
+Reuse both independently preserved first/last same-timestamp quote-order controls from the original v2quote audit. Never resolve ambiguities by selecting profitable fills. Use actual as-of unsigned bid/ask,1hdecisions/1hlag,0.10%fees,cash100k,no daily activityguard. Repeat doubled recorded spread/fees and2h executiondelay, with identical targets. The new risk cap is25%, not the earlier100%cap. All24ledgers are kept. The day is not mixed into the228hscore, and cannot establish a reliable winner or CS.

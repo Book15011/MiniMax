@@ -1,0 +1,30 @@
+{
+  "files": {
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/config.yaml": "bec4dc6c99dcd014cc8cafbd83662b1186ca1463613da2d076edaacd64e11ee8",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/_bear_selective.py": "518f1f72dade4ec5ab77fd51207b9e544a3b0e148b0fb1a01cb331e7333c9f65",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/research/book/bear_selective/quote_day/config.yaml": "d5010ace35cd6f59457adc47c4a4696460797078eb59800008aa189805ece33b",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/research/book/bear_selective/quote_day/PROTOCOL.md": "318e41852db99ec80139b86a9150e0ae647034f84f32d986a58e092cbffd03c6",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/research/book/bear_selective/quote_day/run.py": "565d3b35e419a0e299e3de885a45985646869aadb507c5e5b817bdc8d804fc44",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/research/book/price_trend/new_block/audit.py": "2c692a9fdbf6fba94fcb571ea5b9c0af77e2202eaafb300c6c28676689b598e9",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/validation/short_competition.py": "c3c4d3bd0767121275597d228b03c4c0ecdb09f2a59665bcbff23452f840ee0a",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/execution/planner.py": "996993f20b0fb8d11d8a142fdd4024e6608a5069cfbc42eb9eee8b75e85524f0",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/execution/paper.py": "cedca2e976c2a905af51703d01f5dbdf31a31fed687e9e8d7e4c1a7161b226cb",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_bear_trend_control.py": "c7f8de35b5bbbbdf9222f3609e1353c3bae07d9d9192854601f24952131bdb48",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_bear_guard.py": "559df97de124e7291399ba359af35f19b44fc2eb222c59d17a5a4095f40a15af",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_bear_pullback.py": "9ef04059422986046b3457090571867fad8e1cb670a2a8d50c95aa850f3eff40",
+    "/home/ubuntu/test/MiniMax/.worktrees/book-book-intraday-short/src/models/book/book_bear_breakdown.py": "19d1704a6f0ec7f19491e40b9cc7fc109110a8281c701fe813a8e73f55e95f1c",
+    "/home/ubuntu/test/MiniMax/results/book/20261010-price-new-block-v2/accepted_quotes-first.parquet": "1dd9aec6536ce920dbe933c69fc89e0a853b63e7d96ebc0fc8415644b2479776",
+    "/home/ubuntu/test/MiniMax/results/book/20261010-price-new-block-v2/accepted_quotes-last.parquet": "cd2de8a6acc98a1c99a481842d1425024873addcdd689bc2f5c333ab45705381",
+    "/home/ubuntu/test/MiniMax/results/book/20261010-short-next-prefix-v3/hourly_close.parquet": "a2f1c86d977f92a79117d6c4cd0abbb3061c540d0bfda3c76d7cf23c575d11e3",
+    "/home/ubuntu/test/MiniMax/results/book/20261010-short-next-prefix-v3/hourly_qv.parquet": "25e59d503bf101850708f279ebb566e966fca997cdd854be2b8efd830be2cb0b",
+    "/home/ubuntu/test/MiniMax/results/book/20261010-short-next-prefix-v3/exchange_info.json": "c368de29edef8e4db3f4f6a392a1efa8d51ab8aae8f5492c72e4caffbde915b3",
+    "/home/ubuntu/test/MiniMax/results/book/20261010-short-next-prefix-v3/data_manifest.json": "d488571eb49e1820c6f031861f7fe458cc61be7413bf493238650373b95b14c1"
+  },
+  "retrospective_spent": true,
+  "models": [
+    "book_bear_trend_control",
+    "book_bear_guard",
+    "book_bear_pullback",
+    "book_bear_breakdown"
+  ]
+}
