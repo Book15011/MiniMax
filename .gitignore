@@ -19,3 +19,6 @@ __pycache__/
 
 # Run logs next to reports are never committed (AGENTS.md section 4)
 reports/**/*.log
+
+# Generated Book price-strategy score reports remain server artifacts.
+/reports/book_price_*/
