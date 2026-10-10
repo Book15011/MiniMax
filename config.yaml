@@ -1498,6 +1498,46 @@ models:
     rebalance_hours: 1
     band: 0.01
 
+  book_daily_channel:
+    coins:
+    - BNBUSDT
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - XRPUSDT
+    ema_pairs:
+    - - 6
+      - 24
+    - - 12
+      - 48
+    - - 24
+      - 96
+    channel_scale: 0.005
+    smooth_fraction: 0.25
+    risk_reference: 0.004
+    risk_span: 24
+    signal_lag: 0
+    risk_lag: 2
+    extra:
+    - 12
+    - 48
+    pars:
+    - 0.06039124203719526
+    - 0.0764296751619562
+    - -0.0005597718522797313
+    - -4.415780204697274
+    - 1.7801487443455302
+    - 0.7955330206517675
+    - 0.40627394999797517
+    - 0.07866377111414832
+    - 0.008749516922592937
+    - 0.47749425918015587
+    warmup_hours: 4608
+    hours_per_day: 24
+    rebalance_hours: 24
+    band: 0.01
+    sigma_floor: 1.0e-12
+
 selection:
   rule: margin
   tie_margin: 0.03

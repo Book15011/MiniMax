@@ -1,0 +1,49 @@
+{
+  "source": "/home/ubuntu/test/MiniMax/results/book/20261010-clone-inverse-v1/selection_freeze.json",
+  "source_selection": {
+    "evaluation": 511,
+    "seed": 2,
+    "stage": "inverse",
+    "spec": {
+      "signal_lag": 0,
+      "risk_lag": 2,
+      "risk_span": 24,
+      "extra": [
+        12,
+        48
+      ]
+    },
+    "pars": [
+      0.06039124203719526,
+      0.0764296751619562,
+      -0.0005597718522797313,
+      -4.415780204697274,
+      1.7801487443455302,
+      0.7955330206517675,
+      0.40627394999797517,
+      0.07866377111414832,
+      0.008749516922592937,
+      0.47749425918015587
+    ],
+    "operational": {
+      "delay_minutes": 4,
+      "addition_phase_minutes": 0,
+      "band": 0.01,
+      "reconciliation": "last_intended",
+      "workload": true
+    },
+    "loss": 11.274419994535785,
+    "action_matched": 31,
+    "matched": 23,
+    "observed": 33,
+    "predicted": 34,
+    "recall": 0.696969696969697,
+    "precision": 0.6764705882352942,
+    "f1": 0.6865671641791046,
+    "input_sha256": "abf533ff182a0e1e8dbbc9bc7bcea1be2a3a6237a32bae34f5f01762a98578a2",
+    "retrospective": true
+  },
+  "normal_clock_utc": 16,
+  "clone_clock_utc": 1,
+  "calibration_only": true
+}
