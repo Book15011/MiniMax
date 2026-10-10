@@ -1,0 +1,8 @@
+{
+  "all_old_values_unchanged": true,
+  "added_models": [
+    "book_short_volume_fade",
+    "book_short_range_fail",
+    "book_short_shock_fade"
+  ]
+}

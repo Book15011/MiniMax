@@ -1498,6 +1498,97 @@ models:
     rebalance_hours: 1
     band: 0.01
 
+  book_short_volume_fade:
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    rebalance_hours: 1
+    band: 0.01
+    regime_hours: 168
+    warmup_multiplier: 6
+    risk_hours: 72
+    mean_hours: 24
+    shock_hours: 3
+    volume_hours: 24
+    volume_multiple: 1.75
+    shock_sigma: 1.5
+    rejection_sigma: 0.25
+    range_hours: 24
+    range_buffer: 0.001
+    stop_hours: 6
+    stop_buffer_sigma: 0.25
+    entry_extension: 0.006
+    minimum_distance_mark: 0.002
+    fee: 0.001
+    halfspread: 0.0005
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    sigma_floor: 1.0e-12
+  book_short_range_fail:
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    rebalance_hours: 1
+    band: 0.01
+    regime_hours: 168
+    warmup_multiplier: 6
+    risk_hours: 72
+    mean_hours: 24
+    shock_hours: 3
+    volume_hours: 24
+    volume_multiple: 1.75
+    shock_sigma: 1.5
+    rejection_sigma: 0.25
+    range_hours: 24
+    range_buffer: 0.001
+    stop_hours: 6
+    stop_buffer_sigma: 0.25
+    entry_extension: 0.006
+    minimum_distance_mark: 0.002
+    fee: 0.001
+    halfspread: 0.0005
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    sigma_floor: 1.0e-12
+  book_short_shock_fade:
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    rebalance_hours: 1
+    band: 0.01
+    regime_hours: 168
+    warmup_multiplier: 6
+    risk_hours: 72
+    mean_hours: 24
+    shock_hours: 3
+    volume_hours: 24
+    volume_multiple: 1.75
+    shock_sigma: 2.5
+    rejection_sigma: 0.25
+    range_hours: 24
+    range_buffer: 0.001
+    stop_hours: 6
+    stop_buffer_sigma: 0.25
+    entry_extension: 0.01
+    minimum_distance_mark: 0.002
+    fee: 0.001
+    halfspread: 0.0005
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    sigma_floor: 1.0e-12
+
 selection:
   rule: margin
   tie_margin: 0.03
