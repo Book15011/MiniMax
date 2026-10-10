@@ -10,7 +10,8 @@ from src.contracts import MarketView
 from src.models import discover
 from src.models.book import _e20combo
 
-NAMES = ["book_e20combo_alt_cash", "book_e20combo_alt_cash_pb", "book_e20combo_alt_trim", "book_e20combo_brk_cash"]
+NAMES = ["book_e20combo_alt_cash", "book_e20combo_alt_cash_pb", "book_e20combo_alt_trim", "book_e20combo_brk_cash",
+         "book_e20combo_alt_half_cash"]
 COINS = ["BTCUSDT", "AUSDT", "BUSDT", "CUSDT", "DUSDT"]
 
 
@@ -71,3 +72,14 @@ def test_no_regime_or_own_shorts_pass_through(monkeypatch):
     _, calls = patch(monkeypatch, {"AUSDT": 0.4, "DUSDT": -0.3}, {"CUSDT": -0.2})
     out = _e20combo.targets(view(), base="alt", pullback=False, funding="cash")
     assert calls == [] and out["DUSDT"] == pytest.approx(-0.3) and "CUSDT" not in out
+
+
+def test_alt_half_is_the_average_of_e20v45_and_the_alt_book(monkeypatch):
+    monkeypatch.setitem(_e20combo.BASES, "alt", SimpleNamespace(targets=lambda v: pd.Series({"BTCUSDT": 0.2}, dtype=float)))
+    monkeypatch.setattr(_e20combo, "E20", SimpleNamespace(targets=lambda v: pd.Series({"BTCUSDT": 0.2, "AUSDT": 0.8}, dtype=float)))
+    calls = []
+    monkeypatch.setattr(_e20combo._cashshort, "short_weights",
+                        lambda v, held, p, pullback: calls.append(held.to_dict()) or pd.Series({"CUSDT": -0.25}, dtype=float))
+    out = _e20combo.targets(view("book_e20combo_alt_half_cash"), base="alt_half", pullback=False, funding="cash")
+    assert out["BTCUSDT"] == pytest.approx(0.2) and out["AUSDT"] == pytest.approx(0.4)
+    assert calls == [{"AUSDT": 0.4, "BTCUSDT": 0.2}] and out["CUSDT"] == pytest.approx(-0.25)

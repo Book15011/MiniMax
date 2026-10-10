@@ -1445,6 +1445,9 @@ models:
   book_e20combo_brk_cash:
     <<: *e20guard_r
     base: {vt: *id013, channel_days: 20, scan_days: 120}
+  book_e20combo_alt_half_cash:
+    <<: *e20guard_r
+    base: {vt: *id013, lookback_days: 10}
 selection:
   rule: margin
   tie_margin: 0.03

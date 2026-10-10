@@ -8,6 +8,8 @@ At each daily decision (16:00 UTC):
      (baitoey_ovl_altbtc_b_e20);
    - brk: a long whose daily close broke its 20-day low is held in cash until it closes above its 20-day mean
      (baitoey_ovl_brk_e20).
+   - alt_half (added 2026-10-10 after the first combo results, as the middle option): the average of e20v45's own
+     book and the alt book, i.e. half of the alt longs go to cash when alts lag BTC; exactly e20v45 otherwise.
    It gets the positive part of the previous book, as in _e20guard.py.
 2. If the base holds any short (e20v45's own long/short mode), it is returned unchanged.
 3. The short leg of src/models/book/_cashshort.py (weak-BTC regime: BTC below its 20-day EMA, 7-day return
@@ -28,15 +30,25 @@ from src.contracts import MarketView
 from src.models.baitoey.baitoey_ovl_altbtc_b_e20 import MODEL as ALT_CASH
 from src.models.baitoey.baitoey_ovl_brk_e20 import MODEL as BREAKDOWN
 from src.models.book import _cashshort
+from src.models.pol.pol_switch_vt_tl_e20v45 import MODEL as E20
 
 BASES = {"alt": ALT_CASH, "brk": BREAKDOWN}
+
+
+def _base(view: MarketView, base: str, p: dict, prev: pd.Series) -> pd.Series:
+    if base != "alt_half":
+        return BASES[base].targets(replace(view, params=p["base"], prev_targets=prev)).astype(float)
+    alt = BASES["alt"].targets(replace(view, params=p["base"], prev_targets=prev)).astype(float)
+    own = E20.targets(replace(view, params=p["base"]["vt"], prev_targets=prev)).astype(float)
+    ix = alt.index.union(own.index)
+    return 0.5 * alt.reindex(ix).fillna(0.0) + 0.5 * own.reindex(ix).fillna(0.0)
 
 
 def targets(view: MarketView, *, base: str, pullback: bool, funding: str) -> pd.Series:
     view = _cashshort._causal(view)
     p = view.params
     prev = view.prev_targets[view.prev_targets > 0]
-    w = BASES[base].targets(replace(view, params=p["base"], prev_targets=prev)).astype(float)
+    w = _base(view, base, p, prev)
     w = w[w.abs() > 1e-12]
     if (w < 0).any():
         return w
