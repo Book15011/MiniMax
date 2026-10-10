@@ -10,6 +10,7 @@ from backtest.engine import decide
 from src.live.runner import live_universe,day_start
 from research.book.price_trend.engine import replay,independent_audit
 from src.validation.short_competition import summarize
+from research.book.bear_selective.cutoff import executable_targets
 from research.book.intraday_short import run as minute_metrics
 ROOT=Path("/home/ubuntu/test/MiniMax")
 STUDY=yaml.safe_load(Path("research/book/bear_selective/config.yaml").read_text());OUT=Path(STUDY["output"])
@@ -41,7 +42,7 @@ def case_job(item):
       "price_precisions":{a:RULES[a+"/USD"]["PricePrecision"] for a in ("BTC","ETH","BNB","XRP")},
       "min_order":STUDY["replay"]["min_order"],"cash_buffer":STUDY["replay"]["cash_buffer"],"band":model.spec.band,"order_spacing_seconds":STUDY["replay"]["order_spacing_seconds"],
       "start":str(t0),"end":str(stop)}
-    ev,path,dec,fail,cycles,ep=replay({t:w for t,w in weights.items() if t<stop},prices.loc[:stop],c,cost["lag_minutes"])
+    ev,path,dec,fail,cycles,ep=replay(executable_targets(weights,stop,cost["lag_minutes"]),prices.loc[:stop],c,cost["lag_minutes"])
     if fail:raise ValueError("Shared broker replay failures: "+str(fail[:2]))
     audit=independent_audit(ev,path,prices.loc[:stop],c,ep)
     stem=name+"-"+scenario+"-"+str(n)
@@ -84,7 +85,7 @@ def evaluate():
  panel=resolve(CFG["harness"]["panel_dir"])
  files += [panel/n for n in ("panel_close_1h.parquet","panel_quote_volume_1h.parquet","universe.parquet")]
  files += [Path("config.yaml"),Path(__file__),Path("research/book/price_trend/engine.py"),Path("research/book/bear_selective/PROTOCOL.md"),Path("research/book/bear_selective/config.yaml"),
-  Path("src/models/book/_bear_selective.py"),Path("research/book/bear_selective/score.py"),Path("research/book/bear_selective/test_model.py"),OLD/"data_manifest.json",OLD/"independent_data_audit.json",OLD/"cases.parquet",
+  Path("src/models/book/_bear_selective.py"),Path("research/book/bear_selective/score.py"),Path("research/book/bear_selective/test_model.py"),Path("research/book/bear_selective/cutoff.py"),Path("research/book/bear_selective/test_cutoff.py"),OLD/"data_manifest.json",OLD/"independent_data_audit.json",OLD/"cases.parquet",
   Path("src/validation/short_competition.py"),Path("src/execution/planner.py"),Path("src/execution/paper.py")]
  files += [Path("src/models/book")/(n+".py") for n in NAMES]
  before={str(p.resolve()):sha(p) for p in files};(OUT/"evaluation_before.json").write_text(json.dumps(before,indent=2))

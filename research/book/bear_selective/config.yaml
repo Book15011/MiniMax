@@ -1,10 +1,10 @@
-output: /home/ubuntu/test/MiniMax/results/book/20261010-bear-selective-v1
+output: /home/ubuntu/test/MiniMax/results/book/20261010-bear-selective-v2
 models:
 - book_bear_trend_control
 - book_bear_guard
 - book_bear_pullback
 - book_bear_breakdown
-workers: 4
+workers: 2
 hypotheses: 18
 profiles:
 - weak_archived
