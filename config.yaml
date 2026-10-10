@@ -1260,6 +1260,135 @@ models:
     max_bounce_sigma: 1.5
     rebalance_hours: 1
     band: 0.01
+  book_bear_cost_guard:
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+    cost_lookback_hours: 6
+    cost_move_multiple: 1.5
+    estimated_fee: 0.001
+    estimated_halfspread: 0.0005
+    fast_exit_hours: 3
+    fast_return_hours: 2
+    rebound_window_hours: 12
+    rebound_sigma_hours: 6
+    rebound_sigma: 0.75
+    rebound_floor: 0.003
+  book_bear_fast_exit:
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+    cost_lookback_hours: 6
+    cost_move_multiple: 1.5
+    estimated_fee: 0.001
+    estimated_halfspread: 0.0005
+    fast_exit_hours: 3
+    fast_return_hours: 2
+    rebound_window_hours: 12
+    rebound_sigma_hours: 6
+    rebound_sigma: 0.75
+    rebound_floor: 0.003
+  book_bear_trail_exit:
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    warmup_multiplier: 8
+    fast_hours: 6
+    slow_hours: 24
+    regime_hours: 96
+    risk_hours: 72
+    range_hours: 12
+    trail_hours: 6
+    exit_hours: 12
+    return_hours: 24
+    breadth_max: 0.5
+    forecast_scale: 2.0
+    deadzone_z: 0.25
+    entry_z: 0.5
+    exit_z: 0.1
+    sigma_floor: 1.0e-07
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    pullback_hours: 3
+    pullback_sigma: 0.5
+    rejection_sigma: 0.25
+    break_buffer: 0.0005
+    max_extension_sigma: 1.5
+    max_bounce_sigma: 1.5
+    rebalance_hours: 1
+    band: 0.01
+    cost_lookback_hours: 6
+    cost_move_multiple: 1.5
+    estimated_fee: 0.001
+    estimated_halfspread: 0.0005
+    fast_exit_hours: 3
+    fast_return_hours: 2
+    rebound_window_hours: 12
+    rebound_sigma_hours: 6
+    rebound_sigma: 0.75
+    rebound_floor: 0.003
 selection:
   rule: margin
   tie_margin: 0.03
