@@ -1,0 +1,25 @@
+combined: /home/ubuntu/test/MiniMax/results/book/20261010-short-combined-v3
+output: /home/ubuntu/test/MiniMax/results/book/20261010-short-ranked-v1
+data: /home/ubuntu/test/MiniMax/results/book/20261010-intraday-short-v2
+parents:
+- /home/ubuntu/test/MiniMax/results/book/20261010-bear-selective-v2
+- /home/ubuntu/test/MiniMax/results/book/20261010-bear-exit-v1
+- /home/ubuntu/test/MiniMax/results/book/20261010-short-forecast-v1
+- /home/ubuntu/test/MiniMax/results/book/20261010-short-exhaustion-v1
+profiles: [weak_archived, weak_fresh_btc]
+assets: [BTC, ETH, BNB, XRP]
+horizon_hours: 6
+primary_hours: 228
+lag_minutes: 60
+settlement_minutes: 1
+fee: 0.001
+halfspread: 0.0005
+minimum_short_weight: 0.01
+confidence: 0.9
+bootstrap_reps: 20000
+seed: 20261010
+return_weight: 0.5
+f1_weight: 0.3
+accuracy_weight: 0.2
+models: 13
+control: book_bear_guard
