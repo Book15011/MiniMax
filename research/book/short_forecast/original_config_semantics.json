@@ -1,0 +1,9 @@
+{
+  "original_config_sha256": "0dd24fc4d21c168e9fe87f4f01cb6d7bee46e549113d27f5fee1cfa1f7bf83bb",
+  "new_models": [
+    "book_short_analogue6",
+    "book_short_analogue12",
+    "book_short_ridge6"
+  ],
+  "all_original_values_unchanged": true
+}

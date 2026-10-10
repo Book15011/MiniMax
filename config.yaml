@@ -1389,6 +1389,115 @@ models:
     rebound_sigma_hours: 6
     rebound_sigma: 0.75
     rebound_floor: 0.003
+  book_short_analogue6:
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    training_hours: 1440
+    returns_hours:
+    - 3
+    - 12
+    - 24
+    gap_hours: 24
+    risk_hours: 72
+    risk_reference: 0.004
+    training_stride: 6
+    horizon_hours: 6
+    execution_lag_hours: 1
+    min_training_anchors: 120
+    neighbors: 40
+    min_neighbor_anchors: 8
+    fee: 0.001
+    halfspread: 0.0005
+    ridge_penalty: 1.0
+    quadratic: true
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    sigma_floor: 1.0e-10
+    entry_edge: 0.0015
+    exit_edge: -0.0005
+    edge_scale: 0.006
+    min_win_fraction: 0.55
+    scale_floor: 1.0e-08
+    rebalance_hours: 1
+    band: 0.01
+  book_short_analogue12:
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    training_hours: 1440
+    returns_hours:
+    - 3
+    - 12
+    - 24
+    gap_hours: 24
+    risk_hours: 72
+    risk_reference: 0.004
+    training_stride: 6
+    horizon_hours: 12
+    execution_lag_hours: 1
+    min_training_anchors: 120
+    neighbors: 40
+    min_neighbor_anchors: 8
+    fee: 0.001
+    halfspread: 0.0005
+    ridge_penalty: 1.0
+    quadratic: true
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    sigma_floor: 1.0e-10
+    entry_edge: 0.0015
+    exit_edge: -0.0005
+    edge_scale: 0.006
+    min_win_fraction: 0.55
+    scale_floor: 1.0e-08
+    rebalance_hours: 1
+    band: 0.01
+  book_short_ridge6:
+    coins:
+    - BTCUSDT
+    - ETHUSDT
+    - BNBUSDT
+    - XRPUSDT
+    training_hours: 1440
+    returns_hours:
+    - 3
+    - 12
+    - 24
+    gap_hours: 24
+    risk_hours: 72
+    risk_reference: 0.004
+    training_stride: 6
+    horizon_hours: 6
+    execution_lag_hours: 1
+    min_training_anchors: 120
+    neighbors: 40
+    min_neighbor_anchors: 8
+    fee: 0.001
+    halfspread: 0.0005
+    ridge_penalty: 1.0
+    quadratic: true
+    gross_cap: 0.25
+    coin_cap: 0.1
+    target_daily_vol: 0.01
+    hours_per_day: 24
+    sigma_floor: 1.0e-10
+    entry_edge: 0.0015
+    exit_edge: -0.0005
+    edge_scale: 0.006
+    min_win_fraction: 0.55
+    scale_floor: 1.0e-08
+    rebalance_hours: 1
+    band: 0.01
+
 selection:
   rule: margin
   tie_margin: 0.03
