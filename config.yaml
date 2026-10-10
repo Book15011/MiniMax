@@ -1432,6 +1432,19 @@ models:
     <<: *e20guard
     volume_fill_hours: 12
   book_e20guard_confirm_r: *e20guard_r
+  # --- book: e20v45 + a Baitoey overlay + the cash-short leg (feature/e20-shortguard; research only) ---
+  book_e20combo_alt_cash:
+    <<: *e20guard_r
+    base: {vt: *id013, lookback_days: 10}
+  book_e20combo_alt_cash_pb:
+    <<: *e20guard_r
+    base: {vt: *id013, lookback_days: 10}
+  book_e20combo_alt_trim:
+    <<: *e20guard_r
+    base: {vt: *id013, lookback_days: 10}
+  book_e20combo_brk_cash:
+    <<: *e20guard_r
+    base: {vt: *id013, channel_days: 20, scan_days: 120}
 selection:
   rule: margin
   tie_margin: 0.03
