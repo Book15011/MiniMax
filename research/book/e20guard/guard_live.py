@@ -1,8 +1,10 @@
-"""EXPERIMENTAL / report-only: the e20v45 short-guard variants on the round's live window (feature/e20-shortguard).
+"""EXPERIMENTAL / report-only: e20v45 short-guard and combo variants on the round's live window (feature/e20-shortguard).
+Models from the command line (the first is the book a switch starts from), default: the guard variants.
 
 The paper-live engine, imported unchanged (same bars, fees, 1 h fill lag, from cash at Oct 4 12:00 UTC). Per model:
-round return, max drawdown, the book now, every decision with a short leg, and "Oct 7 again" (the latest book marked
-with each coin's actual move, Oct 7 01:00 -> Oct 8 06:00 UTC).
+round return, max drawdown, the book now, every decision with a short leg, "Oct 7 again" (the latest book marked
+with each coin's actual move, Oct 7 01:00 -> Oct 8 06:00 UTC) and the switch from the first model's book (0.15% of
+the weight traded: fee plus about 5 bps).
 
     PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. python -m src.experimental.e20guard_live   (or as a script)
 """
@@ -22,8 +24,9 @@ sys.path.insert(0, str(MAIN / "results/book/paper-live"))
 import paper_live as pl  # noqa: E402
 
 pl.STORE = MAIN / "results/book/shadow/h1"
-NAMES = ["pol_switch_vt_tl_e20v45", "book_e20guard_pullback", "book_e20guard_confirm", "book_e20guard_pullback40",
-         "book_e20guard_confirm40", "book_e20guard_pullback_r", "book_e20guard_confirm_r"]
+NAMES = sys.argv[1:] or ["pol_switch_vt_tl_e20v45", "book_e20guard_pullback", "book_e20guard_confirm",
+                         "book_e20guard_pullback40", "book_e20guard_confirm40", "book_e20guard_pullback_r",
+                         "book_e20guard_confirm_r"]
 S0, S1 = pd.Timestamp("2026-10-07 01:00", tz="UTC"), pd.Timestamp("2026-10-08 06:00", tz="UTC")
 HK = "Asia/Hong_Kong"
 
@@ -48,17 +51,23 @@ def main() -> None:
     close = mk.close
     shock = close.loc[:S1].iloc[-1] / close.loc[:S0].iloc[-1] - 1
     print("window", pl.T0, "->", close.index[-1], "| BTC", f"{100 * (close.BTCUSDT.iloc[-1] / close.BTCUSDT.loc[:pl.T0].iloc[-1] - 1):+.2f}%")
-    rows = []
+    rows, cur = [], None
     for n in NAMES:
         r = pl.run_model(n, mk, cfg)
         E = np.asarray(r["E"])
         tgt = pd.Series({c: float(x) for c, x in r["target"].items() if abs(float(x)) > 1e-9}, dtype=float)
+        if cur is None:                                  # the first name is the book switched from (e20v45)
+            cur = pd.Series(r["w_end"], dtype=float)
+        ix = tgt.index.union(cur.index)
+        dw = tgt.reindex(ix).fillna(0.0) - cur.reindex(ix).fillna(0.0)
         shorts_on = [(t.tz_convert(HK).strftime("%m-%d %H:%M"), {c.replace("USDT", ""): round(100 * v, 1) for c, v in w[w < 0].items()})
                      for t, w in path(n, mk, cfg) if (w < 0).any()]
         rows.append({"model": n, "round_%": round(100 * (E[-1] - 1), 2),
                      "maxdd_%": round(100 * float((E / np.maximum.accumulate(E) - 1).min()), 2),
                      "net_now_%": round(100 * tgt.sum(), 0), "gross_now_%": round(100 * tgt.abs().sum(), 0),
                      "oct7_again_%": round(100 * float((tgt * shock.reindex(tgt.index).fillna(0)).sum()), 2),
+                     "switch_traded_%": round(100 * float(dw.abs().sum()), 0),
+                     "switch_cost_%": round(100 * float(dw.abs().sum()) * 0.0015, 3),
                      "decisions_with_shorts": len(shorts_on), "short_legs": shorts_on})
     d = pd.DataFrame(rows)
     pd.set_option("display.width", 300)
