@@ -571,7 +571,7 @@ models:
     sleeves:
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
-  book_e20combo_brk_cash:        # LIVE from 2026-10-11 (team decision): e20v45 + Baitoey's breakdown exits + cash-only shorts in a weak BTC regime
+  book_e20combo_brk_cash: &book_recovery_parent        # LIVE from 2026-10-11 (team decision): e20v45 + Baitoey's breakdown exits + cash-only shorts in a weak BTC regime
     # Book's model, feature/e20-shortguard bd5e454 (reports/review/20261010-e20v45-short-protection.md); dry run on the live code:
     # Pol's reports/server-2026-10-11/switch_dryrun_brk_cash.md. Same e20v45 numbers through the anchor.
     base: {vt: *pol_switch_vt_tl_e20v45, channel_days: 20, scan_days: 120}   # breakdown exits: below the 20-day low -> cash until above the 20-day mean
@@ -595,6 +595,24 @@ models:
     short_daily_vol: 0.01
     pullback_prior_hours: 24      # pullback filter off in this model (kept for the shared code)
     pullback_recent_hours: 4
+  book_recovery_vol:  # RESEARCH ONLY: research/book/recovery_study/PROTOCOL.md
+    parent: *book_recovery_parent
+    fast_days: 7
+    slow_days: 30
+    min_complete: 0.9
+    short_confirm_hours: 24
+  book_recovery_short:  # RESEARCH ONLY: research/book/recovery_study/PROTOCOL.md
+    parent: *book_recovery_parent
+    fast_days: 7
+    slow_days: 30
+    min_complete: 0.9
+    short_confirm_hours: 24
+  book_recovery_both:  # RESEARCH ONLY: research/book/recovery_study/PROTOCOL.md
+    parent: *book_recovery_parent
+    fast_days: 7
+    slow_days: 30
+    min_complete: 0.9
+    short_confirm_hours: 24
   # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
   pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
     vt: *baitoey_vt_mom
