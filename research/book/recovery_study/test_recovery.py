@@ -41,3 +41,25 @@ def test_equality_control_and_zero_volatility_delegate_to_parent():
 def test_incomplete_covariance_does_not_invent_risk_information():
     v=view(); c=v.close.copy(); c.iloc[-150:,1]=np.nan
     assert vol_factor(replace(v,close=c),pd.Series([.5,.5],index=c.columns),P)==1
+
+def test_quarter_bound_purges_cross_boundary_outcomes_and_detects_zero_edge():
+    from research.book.recovery_study.run import ci_quarters
+    t=pd.date_range("2022-01-01",periods=600,freq="D",tz="UTC")
+    q=ci_quarters(pd.DataFrame({"start":t,"delta":0.}))
+    assert q["lower"]==q["upper"]==0.
+    assert q["n_purged_windows"]<len(t)
+    q=ci_quarters(pd.DataFrame({"start":t,"delta":.01}))
+    assert np.isclose(q["lower"],.01)
+
+def test_registered_models_equal_parent_when_controls_are_disabled():
+    from src.models.book._recovery import Recovery
+    from src.models.book.book_e20combo_brk_cash import MODEL as BASE
+    from src.config import load_config
+    from backtest.data import load_market,universe_at
+    from backtest.engine import view_frames
+    cfg=load_config();mk=load_market(cfg)
+    for t in [pd.Timestamp("2024-02-01 16:00",tz="UTC"),pd.Timestamp("2025-07-01 16:00",tz="UTC")]:
+        c,q=view_frames(mk.close,mk.quote_volume,t)
+        p=cfg["models"]["book_recovery_vol"]
+        v=MarketView(t,c,q,universe_at(mk,t),params=p)
+        pd.testing.assert_series_equal(Recovery().targets(v),BASE.targets(replace(v,params=p["parent"])))
