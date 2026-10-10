@@ -115,3 +115,40 @@ def test_an_ungated_add_on_shorts_whatever_the_switch_reads():
     params = {"vt": {"switch": {"ema_days": 20, "hysteresis": 0.03}}, "short": {**P, "gate": "none"}}
     held = m.targets(view(path([100.0] * 150 + [95.0, 100.0], end_day=150, end_hour=20), {"BTCUSDT": -0.4}, params))
     assert held.to_dict() == {"BTCUSDT": -0.4}
+
+
+def coin_view(paths: dict, t_day, t_hour, prev=None, params=None, qv=None):
+    n_end = T0 + pd.Timedelta(days=t_day, hours=t_hour)
+    close = pd.DataFrame({k: v.loc[:n_end] for k, v in paths.items()})
+    q = close * 0 + 1e6 if qv is None else pd.DataFrame({k: close[k] * 0 + qv[k] for k in close})
+    return MarketView(t=close.index[-1], close=close, quote_volume=q, universe=tuple(paths), params=params,
+                      prev_targets=pd.Series(dtype=float) if prev is None else pd.Series(prev, dtype=float))
+
+
+def test_the_basket_takes_the_most_traded_altcoins_but_never_btc_or_eth():
+    paths = {k: path([100.0] * 40) for k in ("BTCUSDT", "ETHUSDT", "AUSDT", "BUSDT", "CUSDT")}
+    p = {"coins": "top_alts", "n_coins": 2}
+    v = coin_view(paths, 39, 20, params=p, qv={"BTCUSDT": 9e9, "ETHUSDT": 8e9, "AUSDT": 1e6, "BUSDT": 3e6, "CUSDT": 2e6})
+    assert bs.E20CoinShort.candidates(v, p) == ["BUSDT", "CUSDT"]
+
+
+def test_a_coin_short_between_decisions_keeps_the_book_and_drops_only_its_stopped_short():
+    paths = {"BTCUSDT": path([100.0] * 152), "ETHUSDT": path([100.0] * 150 + [95.0, 100.0])}
+    params = {"vt": {"switch": {"ema_days": 20, "hysteresis": 0.03}}, "short": P, "coins": ["ETHUSDT"], "size_each": 0.4, "max_open": 1}
+    m = bs.make(bs.E20CoinShort, "t4", "t")
+    prev = {"ETHUSDT": -0.4, "AUSDT": 0.3}
+    held = m.targets(coin_view(paths, 150, 20, prev, params))
+    stopped = m.targets(coin_view(paths, 151, 0, prev, params))
+    assert held.to_dict() == prev and stopped.round(9).to_dict() == {"AUSDT": 0.3}
+
+
+def test_at_a_decision_open_shorts_are_added_and_e20_is_scaled_to_make_room(monkeypatch):
+    class Stub:
+        spec = bs.E20V45.spec
+        def targets(self, view):
+            return pd.Series({"AUSDT": 0.6, "BUSDT": 0.4})
+    monkeypatch.setattr(bs, "E20V45", Stub())
+    paths = {"BTCUSDT": path([100.0] * 151), "XUSDT": path([100.0] * 150 + [95.0]), "YUSDT": path([100.0] * 150 + [95.0])}
+    params = {"vt": {"switch": {"ema_days": 20, "hysteresis": 0.03}}, "short": P, "coins": ["XUSDT", "YUSDT"], "size_each": 0.1, "max_open": 4}
+    w = bs.make(bs.E20CoinShort, "t5", "t").targets(coin_view(paths, 150, 16, None, params))
+    assert w.round(9).to_dict() == {"AUSDT": 0.48, "BUSDT": 0.32, "XUSDT": -0.1, "YUSDT": -0.1}

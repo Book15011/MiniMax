@@ -212,3 +212,53 @@ def make(kind: type, name: str, description: str):
     cls = type(name, (kind,), {})
     cls.spec = replace(kind.spec, name=name, description=description)
     return cls()
+
+
+class E20CoinShort:
+    """pol_switch_vt_tl_e20v45 plus rule-based shorts on other coins (research/baitoey/prereg/20261010-e20-coin-shorts.md):
+    fixed coins, or the n_coins altcoins with the largest 30-day quote volume at the last 16:00 UTC decision. Each open
+    short is size_each, at most max_open; e20v45's book is scaled to at most 1 - total short gross while any is open."""
+    spec = ModelSpec(name="baitoey_e20_shortc", method="selector", author="baitoey", rebalance_hours=1,
+                     band=E20V45.spec.band, uses_shorts=True, description="research only: e20v45 + coin shorts")
+
+    @staticmethod
+    def candidates(view: MarketView, p: dict) -> list[str]:
+        if p.get("coins") != "top_alts":
+            return [c for c in p["coins"] if c in view.universe and c in view.close.columns]
+        idx = view.close.index
+        grid = idx[idx.hour == GRID]
+        g = grid[-1] if len(grid) else idx[-1]
+        uni = [c for c in view.universe if c not in (BTC, "ETHUSDT") and c in view.quote_volume.columns and c in view.close.columns]
+        qv = view.quote_volume.loc[:g, uni].iloc[-30 * 24:].sum()
+        return list(qv.sort_values(ascending=False, kind="mergesort").index[: int(p["n_coins"])])
+
+    def targets(self, view: MarketView) -> pd.Series:
+        p = view.params
+        size, mx = float(p["size_each"]), int(p["max_open"])
+        prev = _clean(view.prev_targets)
+        state: dict[str, tuple[bool, bool]] = {}
+        if BTC in view.close:
+            b = view.close[BTC].iloc[-TAIL_H:].dropna()
+            sw = p["vt"]["switch"]
+            down = pd.Series(switch_down_series(b, sw["ema_days"], float(sw["hysteresis"])), index=b.index)
+            for c in self.candidates(view, p):
+                s = view.close[c].iloc[-TAIL_H:].dropna()
+                if len(s) < 3:
+                    continue
+                d = down.reindex(s.index, method="ffill").fillna(True).to_numpy(bool)
+                state[c] = short_on(s, p["short"], d)
+        had = [c for c, (_, h) in state.items() if h and float(prev.get(c, 0.0)) <= -size + 1e-9]
+        base_prev = _clean(prev.add(pd.Series({c: size for c in had}, dtype=float), fill_value=0.0)) if had else prev
+        if view.t.hour == GRID or prev.empty:
+            w = _clean(E20V45.targets(replace(view, params=p["vt"], prev_targets=base_prev)))
+            now = [c for c, (n, _) in state.items() if n][:mx]            # in volume (or listed) order
+            if now:
+                tot, g = size * len(now), float(w.abs().sum())
+                if g > 1 - tot:
+                    w = w * ((1 - tot) / g)
+                w = w.add(pd.Series({c: -size for c in now}, dtype=float), fill_value=0.0)
+            return _clean(w)
+        stopped = [c for c in had if not state[c][0]]
+        if stopped:                                                     # only the stopped shorts go between decisions
+            return _clean(prev.add(pd.Series({c: size for c in stopped}, dtype=float), fill_value=0.0))
+        return prev

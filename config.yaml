@@ -680,6 +680,10 @@ models:
   baitoey_mjt_12_48_6h: {fast: 12, slow: 48, dead_band: 0.0025, vol_days: 30, cap: 0.30, target_daily_vol: 0.03}
   baitoey_mjt_24_96_d: {fast: 24, slow: 96, dead_band: 0.0025, vol_days: 30, cap: 0.30, target_daily_vol: 0.03}
   baitoey_mjt_24_96_6h: {fast: 24, slow: 96, dead_band: 0.0025, vol_days: 30, cap: 0.30, target_daily_vol: 0.03}
+  # --- baitoey: e20v45 + failed-rally shorts on other coins (research/baitoey/prereg/20261010-e20-coin-shorts.md) ---
+  baitoey_e20_shortc_eth: {vt: *pol_switch_vt_tl_e20v45, short: {variant: c, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}, coins: [ETHUSDT], size_each: 0.40, max_open: 1}
+  baitoey_e20_shortc_sol: {vt: *pol_switch_vt_tl_e20v45, short: {variant: c, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}, coins: [SOLUSDT], size_each: 0.40, max_open: 1}
+  baitoey_e20_shortc_alts: {vt: *pol_switch_vt_tl_e20v45, short: {variant: c, replay_days: 90, hard_stop: 0.045, time_stop_hours: 168, event_block_hours: 12, events: [CPI, FOMC_MINUTES]}, coins: top_alts, n_coins: 6, size_each: 0.10, max_open: 4}
 # Leaderboard pick rule (backtest/scoring/selection.py). Not part of the tool version: changing it rescores nothing.
 # The leaderboard always shows both picks; `rule` only sets which one orders the table. Changing it is a team decision.
 selection:
