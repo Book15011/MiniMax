@@ -5,8 +5,8 @@ EXPERIMENTAL and research only. Branch `feature/e20-shortguard`. No live change,
 | | |
 |---|---|
 | Question | Keep e20v45 as the return engine for the rest of the round, and add something that shorts if the market drops more |
-| Code | `src/models/book/_e20guard.py`, `_e20combo.py` and 11 thin models. Baitoey's overlays are cherry-picked from `feature/mom-ss` (`7c2c017`, her authorship kept). Tests: `tests/test_book_e20guard.py`, `tests/test_book_e20combo.py` |
-| Scripts | `research/book/e20guard/`: `guard_live.py` (live round), `guard_regime.py` (the trigger's three conditions), `compare.py` (board rows), `run_score2.sh` |
+| Code | `src/models/book/_e20guard.py`, `_e20combo.py`, `_e20clone.py` and 14 thin models; the clone `book_pooled_offsets` cherry-picked unchanged (`e4170b4`). Baitoey's overlays are cherry-picked from `feature/mom-ss` (`7c2c017`, her authorship kept). Tests: `tests/test_book_e20guard.py`, `tests/test_book_e20combo.py` |
+| Scripts | `research/book/e20guard/`: `guard_live.py` (live round), `guard_regime.py` (the trigger's three conditions), `compare.py` and `decide.py` (board rows), `run_score2.sh` |
 | Evidence | **Live round:** the paper-live engine, from cash at Oct 4 12:00 UTC to Oct 10 15:00 UTC (BTC −2.7%). **Weak-market board:** `results/scoring/leaderboard_2.csv` (228 h from 25 weak checkpoints like Oct 9, two data profiles). **Full history:** each run's standard report (2,245 windows) |
 
 ## Bottom line
@@ -25,18 +25,31 @@ EXPERIMENTAL and research only. Branch `feature/e20-shortguard`. No live change,
      by 2.5 points (confirm_r).
 4. **A live data bug blocks the cash-short trigger this round** (§2). Only the `_r` versions can short before Oct 11
    08:00 UTC.
-5. **Candidates for the team:**
+5. **The 26/33 clone's rule on our coins looked best this round, but history disagrees** (§5b).
+   - e20v45 with the clone's per-coin signal, flipping clone-short coins into shorts: **+2.1%** this round.
+   - From weak markets like now: mean −0.36%, and only +1.0% in a rebound (e20v45: +6.5%).
+   - The clone was fitted on trades from these same October days, so the round is not an out-of-sample test.
+6. **Decision table for the rest of the round** (weak-market board: 25 historical situations like Oct 9, run 228 h;
+   13 rebounded, 7 kept falling):
 
-| If the priority is | Model | Live round | Oct 7 again | Full history: median / bad 10% / best 10% / worst |
-|---|---|---|---|---|
-| Keep every bit of rebound upside | e20v45 (no change) | −6.14% | −4.74% | +0.09% / −12.1% / **+23.3%** / −26.6% |
-| **Middle: half protection, most of the upside** | **`book_e20combo_alt_half_cash`** | **−4.46%** | **−1.16%** | −0.18% / −9.5% / +18.9% / **−21.8%** |
-| Stop further losses, earn a little if it drops | `book_e20combo_alt_cash` | **−2.69%** | **+1.21%** | −0.41% / **−8.9%** / +15.0% / −22.9% |
+| Choice | Model | Mean | Bad 10% | Worst | If it keeps falling | If it rebounds | Switch from the live book |
+|---|---|---|---|---|---|---|---|
+| Stay | e20v45 | +0.74% | −11.75% | −15.20% | −10.26% | **+6.52%** | – |
+| Short guard only | `book_e20guard_confirm` | +0.49% | −11.75% | −15.11% | −9.92% | +6.01% | 40%, 0.06% |
+| **Small change** | **`book_e20combo_brk_cash`** | **+1.05%** | −11.75% | −13.38% | −9.18% | **+6.49%** | **7%, 0.01%** |
+| **Middle** | **`book_e20combo_alt_half_cash`** | +0.50% | **−9.62%** | −13.62% | **−7.27%** | +5.27% | 69%, 0.10% |
+| Strong protection | `book_e20combo_alt_cash` | +0.58% | −10.38% | **−12.14%** | **−4.31%** | +4.08% | 117%, 0.18% |
+| Clone signal | `book_e20clone_flip` | −0.36% | −8.67% | −15.11% | **−3.28%** | +0.98% | 92%, 0.14% |
+| Clone signal | `book_e20clone_cash` | +0.01% | −8.67% | −15.11% | −5.56% | +2.76% | 67%, 0.10% |
+| Clone rule only | `book_clone_ourcoins` (hindsight list) | +0.16% | −4.88% | −14.38% | +0.81% | −0.67% | 127%, 0.19% |
 
-   **Book's pick, pending the board rows:** the middle option.
-   - It halves the loss if Oct 7 repeats, keeps about 80% of e20v45's best-decile upside, and has the best worst case.
-   - When alts are not lagging BTC it is exactly e20v45. So it is an integration, not a change of strategy.
-   - **Switching would trade 69% of the book (about 0.10%).**
+   **Book's reading (team decision):**
+   - **Priority "win back return":** `book_e20combo_brk_cash`. It is slightly better than e20v45 on mean, worst and
+     falling case, keeps the full rebound, and changes 7% of the book. Its protection in a further leg down is small.
+   - **Priority "real protection":** `book_e20combo_alt_half_cash`. It loses about 3 points less if the market keeps
+     falling, for about 1.2 points less in a rebound.
+   - **Not recommended:** the short guard alone (it barely changes e20v45) and the clone switch (it gives up the
+     rebound).
 
 ## 1. Every short model we have researched
 
@@ -78,6 +91,8 @@ The weak-market board scores **99 models**. **71 of them actually open shorts** 
 | `book_e20combo_alt_trim` | same | Funded by trimming if there is no cash |
 | `book_e20combo_alt_half_cash` | Half e20v45, half the alt book: half the alts go to cash when they lag | Unused cash |
 | `book_e20combo_brk_cash` | e20v45 + Baitoey's breakdown exits | Unused cash |
+| `book_e20clone_cash` / `_flip` | e20v45; each held coin the 26/33 clone rule is short on goes to cash / becomes a short of at most the same size | The clone's own signal (`book_pooled_offsets`, cherry-picked unchanged, `e4170b4`) |
+| `book_clone_ourcoins` | The clone rule on the Oct 10 holdings (AAVE, FET, FIL, PUMP, SUI, WLD) instead of its five coins | Its own; the coin list is hindsight, so only the round is a fair test |
 
 **Rules common to all:**
 - The short leg never shorts a coin the long side holds.
@@ -101,6 +116,10 @@ The weak-market board scores **99 models**. **71 of them actually open shorts** 
 | `book_e20combo_brk_cash` | −6.20% | −16.9% | 96% long, 4% short | −4.52% | 7% / 0.01% |
 | `baitoey_ovl_brk_dual` / `book_cashshort_pullback` | −6.52% | −11.7% | 50% long | −2.75% | 53% / 0.08% |
 | `baitoey_ovl_altbtc_b_dual` | −1.69% | −2.9% | cash | 0.00% | 96% / 0.14% |
+| `book_pooled_offsets` (the clone, its 5 coins) | −2.61% | −6.0% | 24% long, 68% short | +1.92% | 188% / 0.28% |
+| `book_clone_ourcoins` | +3.06% | −4.5% | 2% long, 34% short | +1.22% | 127% / 0.19% |
+| `book_e20clone_flip` | +2.06% | −5.1% | 31% long, 25% short | −1.14% | 92% / 0.14% |
+| `book_e20clone_cash` | −1.83% | −6.8% | 31% long | −2.02% | 67% / 0.10% |
 
 **Reading:**
 - **The alt-vs-BTC overlay is what saved money this round.** It moved e20v45's alts to cash at the **Oct 7 00:00 HKT** decision, ten hours before the plunge.
@@ -118,6 +137,11 @@ The weak-market board scores **99 models**. **71 of them actually open shorts** 
 | `book_e20combo_alt_cash` | −0.41% / −8.89% / +14.95% / −22.85% / 47% | −3.38% / +6.87% | −1.25% / +1.60% |
 | `book_e20combo_alt_cash_pb` | −0.46% / −8.61% / +14.95% / −22.92% / 47% | −3.38% / +6.87% | −1.19% / +1.29% |
 | `book_e20combo_alt_half_cash` | −0.18% / −9.54% / +18.92% / −21.83% / 49% | −3.72% / +12.46% | −0.12% / +4.45% |
+| `book_e20combo_brk_cash` | +0.04% / −11.52% / +23.02% / −21.48% / 50% | −2.32% / +21.76% | +1.16% / +9.29% |
+| `book_e20guard_confirm` | +0.06% / −12.03% / +23.07% / −25.26% / 50% | −2.32% / +21.76% | +1.16% / +9.06% |
+| `book_e20clone_flip` | +0.47% / −8.72% / +19.18% / −25.28% / 53% | −0.05% / +10.47% | +0.45% / +9.06% |
+| `book_e20clone_cash` | +0.07% / −8.86% / +20.11% / −20.54% / 50% | −1.54% / +12.61% | +0.45% / +9.05% |
+| `book_clone_ourcoins` (hindsight list) | −0.00% / −5.77% / +6.32% / −28.26% / 46% | −0.01% / +7.41% | −0.01% / +5.30% |
 
 **Weak-market board** (`leaderboard_2.csv`: next 228 h from weak checkpoints like Oct 9):
 
@@ -130,13 +154,34 @@ The weak-market board scores **99 models**. **71 of them actually open shorts** 
 | `book_cashshort_pullback` | 3 | +2.76% | +3.18% | −8.35% | −15.67% | −3.50% | +6.56% |
 | `baitoey_ovl_brk_dual` | 1 | +2.94% | +3.63% | −8.35% | −15.67% | −3.27% | +6.73% |
 | `pol_mom_ss` | 47 | +0.58% | −0.39% | −5.94% | −6.55% | −1.18% | +1.89% |
-| `book_e20combo_*`, `book_e20guard_confirm` | PENDING (score2 runs in tmux `mm-book-e20q1..3`; rows added in a follow-up commit) | | | | | | |
+| `book_e20guard_confirm` | 47 | +0.49% | −2.88% | −11.75% | −15.11% | −9.92% | +6.01% |
+| `book_e20combo_brk_cash` | 41 | +1.05% | −2.88% | −11.75% | −13.38% | −9.18% | +6.49% |
+| `book_e20combo_alt_half_cash` | 30 | +0.50% | −2.57% | −9.62% | −13.62% | −7.27% | +5.27% |
+| `book_e20combo_alt_cash` | 31 | +0.58% | −1.09% | −10.38% | −12.14% | −4.31% | +4.08% |
+| `book_e20combo_alt_cash_pb` | 25 | +0.60% | −0.89% | −10.38% | −12.14% | −4.25% | +4.06% |
+| `book_e20combo_alt_trim` | 27 | +0.50% | −1.04% | −10.38% | −12.14% | −4.20% | +3.80% |
+| `book_e20clone_flip` | 53 | −0.36% | −1.59% | −8.67% | −15.11% | −3.28% | +0.98% |
+| `book_e20clone_cash` | 11 | +0.01% | −0.77% | −8.67% | −15.11% | −5.56% | +2.76% |
+| `book_clone_ourcoins` (hindsight list) | 84 | +0.16% | +0.00% | −4.88% | −14.38% | +0.81% | −0.67% |
+| `book_pooled_offsets` | 96 | +0.21% | −0.01% | −4.56% | −7.74% | +0.87% | +0.28% |
 
 **Reading:**
+- **On full history the clone-signal flip is respectable.** Median +0.47%, bad 10% −8.7%, against e20v45's +0.09% and
+  −12.1%. From weak markets like now, though, it gives up almost the whole rebound.
 - **On full history, every alt-overlay combo gives up upside.** Best-decile 14-day return falls from +23% to +15–19%
   for a 3–5-point better worst case.
 - **On the weak-market board the dual family leads every column.** Live, its long side lost as much as e20v45
   (−6.5%), and its shorts were blocked by the §2 bug.
+
+## 5b. The 26/33 clone (`book_pooled_offsets`) and its rule on our coins
+- **What it is.** A daily long/short trend rule on BNB, BTC, ETH, SOL and XRP: three EMA gaps and four returns,
+  volatility-scaled. It was fitted to match 26 of an a reference 33 trades. That is trade agreement, not a win rate.
+- **Why this round is no test.** Its coefficients were fitted on trades from Oct 5–9, inside this round. Applying them
+  to our coins over the same days is not an out-of-sample test. The board (historical checkpoints) and full history
+  are.
+- **On this branch,** one of its 22 checks fails: `test_exact_audited_coefficients_and_reference_hash` looks for its
+  parent file `src/models/book/book_pooled_trend.py`, which this branch does not carry. Every coefficient and
+  reference-hash check before that assertion passes; the model code is unchanged.
 
 ## 6. Before anything goes live (team decision)
 1. **Shorts have never been tested on the competition account.** The live runner launched with "shorts not needed". A small manual short order is needed first.
