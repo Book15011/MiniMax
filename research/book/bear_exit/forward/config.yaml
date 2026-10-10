@@ -1,0 +1,21 @@
+status: AWAITING_FUTURE_DATA
+start: 2026-10-11T00:00Z
+end: 2026-10-12T00:00Z
+models:
+- book_bear_guard
+- book_bear_cost_guard
+- book_bear_fast_exit
+- book_bear_trail_exit
+cash_control: true
+seed: 100000
+quote_max_age_seconds: 30
+original_fee: 0.001
+doubled_fee: 0.002
+normal_lag_minutes: 60
+stress_lag_minutes: 120
+quote_order_controls:
+- first
+- last
+strict_endpoint_batches: true
+no_activity_guard: true
+fixed_four_coin_membership: true
