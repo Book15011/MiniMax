@@ -199,7 +199,7 @@ execution:
 
 # Live bot (src/live/runner.py, deploy/README.md). Paper trading on the research server; live only on EC2.
 live:
-  model: pol_switch_vt_tl_e20v45       # launch model (2026-10-02; reports/review/20261002-e20v45-readiness.md)
+  model: book_e20combo_brk_cash       # LIVE from 2026-10-11 (team decision); before: pol_switch_vt_tl_e20v45 (launch model 2026-10-02)
   mode: live                    # paper | live. live = the round on EC2 (deploy/go_live_round.sh puts the competition key in)
   start_at: "2026-10-04 12:00"  # UTC = Oct 4 20:00 HKT, the round's start (Roostoo competition 538). Live mode: earlier bars recorded, never traded
   end_at: "2026-10-18 12:00"    # UTC = Oct 18 20:00 HKT, the round's end (the exchange liquidates). Live mode: from then on, record only
@@ -571,6 +571,30 @@ models:
     sleeves:
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
+  book_e20combo_brk_cash:        # LIVE from 2026-10-11 (team decision): e20v45 + Baitoey's breakdown exits + cash-only shorts in a weak BTC regime
+    # Book's model, feature/e20-shortguard bd5e454 (reports/review/20261010-e20v45-short-protection.md); dry run on the live code:
+    # Pol's reports/server-2026-10-11/switch_dryrun_brk_cash.md. Same e20v45 numbers through the anchor.
+    base: {vt: *pol_switch_vt_tl_e20v45, channel_days: 20, scan_days: 120}   # breakdown exits: below the 20-day low -> cash until above the 20-day mean
+    e20: *pol_switch_vt_tl_e20v45
+    btc_symbol: BTCUSDT
+    btc_ema_days: 20              # weak regime: BTC below its 20-day EMA ...
+    btc_ema_warmup_spans: 3
+    btc_return_hours: 168         # ... and its 7-day return below 0 ...
+    breadth_top_n: 30
+    breadth_min_coins: 20
+    breadth_hours: 48
+    breadth_max_positive: 0.4     # ... and at most 40% of the 30 most liquid coins up over 48 h
+    liquidity_hours: 168
+    volume_fill_hours: 12         # the short leg carries hourly volume over gaps of at most 12 h
+    short_lookback_days: [7, 14]
+    short_vol_days: 30
+    short_min_score: 0.0
+    short_k: 3                    # up to 3 shorts, never a coin held long
+    short_gross_cap: 0.25         # at most 25% short, from unused cash only (the long book is never trimmed)
+    short_coin_cap: 0.1
+    short_daily_vol: 0.01
+    pullback_prior_hours: 24      # pullback filter off in this model (kept for the shared code)
+    pullback_recent_hours: 4
   # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
   pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
     vt: *baitoey_vt_mom
