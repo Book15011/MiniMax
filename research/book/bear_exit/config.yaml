@@ -1,0 +1,24 @@
+output: /home/ubuntu/test/MiniMax/results/book/20261010-bear-exit-v1
+models: [book_bear_guard, book_bear_cost_guard, book_bear_fast_exit, book_bear_trail_exit]
+workers: 2
+hypotheses: 21
+profiles: [weak_archived, weak_fresh_btc]
+horizons: [216, 228, 240]
+primary_horizon: 228
+prefix_hours: 108
+costs:
+  original: {fee: 0.001, halfspread: 0.0005, lag_minutes: 60}
+  doubled: {fee: 0.002, halfspread: 0.001, lag_minutes: 60}
+  lag2h: {fee: 0.001, halfspread: 0.0005, lag_minutes: 120}
+replay: {seed: 100000.0, quote_max_age: 0, minute_max_age: 60, min_order: 1.0, cash_buffer: 0.001, order_spacing_seconds: 10.0}
+additional_params:
+  cost_lookback_hours: 6
+  cost_move_multiple: 1.5
+  estimated_fee: 0.001
+  estimated_halfspread: 0.0005
+  fast_exit_hours: 3
+  fast_return_hours: 2
+  rebound_window_hours: 12
+  rebound_sigma_hours: 6
+  rebound_sigma: 0.75
+  rebound_floor: 0.003
