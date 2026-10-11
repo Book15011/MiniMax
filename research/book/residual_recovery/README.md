@@ -26,7 +26,7 @@ An audit independently reconstructed41,364 model/horizon outcomes: zero return, 
 All 117 inherited runtime files and exact live/harness/scoring/validation configuration match the selected baseline.
 The prior seven-model forward worktree is unchanged. Full regression checks: 271 PASS in 194.23 seconds. The publication-only index-label failure is preserved; restoring the label changed no numeric result.
 
-| Model | Mean14d | Median | Bad10 | Worst | Mean drawdown | CS | Improvement pass |
+| Model | Mean (14 days) | Median | Bad 10% | Worst | Mean drawdown | CS | Improvement pass |
 |---|---:|---:|---:|---:|---:|---:|---|
 | book_e20combo_brk_cash | +3.732% | +0.283% | -11.522% | -26.049% | 10.770% | 0.15230 | baseline |
 | book_recovery_resid | +3.407% | -0.308% | -11.509% | -24.013% | 10.860% | 0.13889 | NO |
@@ -39,8 +39,8 @@ They also failed the fixed recent/weak/horizon checks. No rejected parameter was
 ## How to read the updated model table
 
 Remote shortcut: /home/ubuntu/test/MiniMax/results/scoring/leaderboard_recovery.md and .csv.
-The table adds these two models to the earlier127, retaining the same25 spaced BTC-only historical matches and Oct 11 01:00 HKT query.
-Rank is the lower of the7/8-day mean returns. It is a point estimate, not confidence or a live selection.
+The table adds these two models to the earlier127, retaining the same 25 spaced BTC-only historical matches and Oct 11 01:00 HKT query.
+Rank is the lower of the 7/8-day mean returns. It is a point estimate, not confidence or a live selection.
 CSV includes rank, model, horizon, mean, median, bad10, worst, drawdown, CS, confidence differences and diagnostic pass.
 CS is the daily-HKT floored 0.4 Sortino + 0.3 Sharpe + 0.3 Calmar convention. A high CS alone cannot pass the improvement rule.
 Study bad10 uses linear quantiles; old leaderboard_2 headline bad10 uses the empirical convention. Read each table own definition.
@@ -50,11 +50,11 @@ Short-imitation precision/recall/F1 measures resemblance to observed actions, no
 
 ## Updated market evidence and limits
 
-AtOct 11 18:00 HKT,20/29 live-supported coins rose48h; BTC was downabout 2.57% over7 days. The added cash-short trigger was OFF and e20 switch UP.
+At Oct 11 18:00 HKT, 20/29 live-supported coins rose over 48 hours; BTC was down about 2.57% over 7 days. The added cash-short trigger was OFF and e20 switch UP.
 This price observation is not a remaining-week forecast and did not reselect the frozen table cases.
 The research store has 10 ticker-only hours after Oct 11 00:00 UTC; their hourly quote volumes are reconstructed from rolling 24-hour totals.
 A first diagnostic used 65 configured harness symbols and mislabeled them supported; that attempt is preserved and corrected to the point-in-time 29-coin universe.
-Original strict competition coverage still fails at BCH: 29/30. Completeness of another universe does not repair it. Adaptive activation remainsOFF.
+Original strict competition coverage still fails at BCH: 29/30. Completeness of another universe does not repair it. Adaptive activation remains OFF.
 Actual EC2 feed health is UNVERIFIED; research-store limitations do not prove a live-feed defect.
 Actual same-holdings switch costs and runner endgame are not validated. No future evidence for these two candidates is claimed.
 
@@ -66,7 +66,7 @@ The latter abstract was reviewed after protocol freeze; no strategy rule changed
 These sources motivate a hypothesis; they do not validate this BTC proxy, estimator, trading clock, net profit or forecast.
 
 Evidence: /home/ubuntu/test/MiniMax/results/book/20261011-residual-recovery-v1.
-Combined129model diagnostic: /home/ubuntu/test/MiniMax/results/book/20261011-residual-current-context-v1.
+Combined 129-model diagnostic: /home/ubuntu/test/MiniMax/results/book/20261011-residual-current-context-v1.
 Reproduce from this remote worktree: .venv/bin/python -B -m research.book.residual_recovery.run.
 After tests/audit PASS, refresh this fixed cohort using .venv/bin/python -B -m research.book.residual_recovery.publish_review.
 The standard --score command updates the original primary board; it does not automatically refresh this separate diagnostic.

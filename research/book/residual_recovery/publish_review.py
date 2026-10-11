@@ -79,11 +79,11 @@ def main():
       "Query remains Oct11 01:00 HKT; 25 spaced BTC-only historical matches. This refresh adds two fixed research models",
       "without reselecting windows. Newer price-only context is saved separately; it does not change these cases.",
       "Rank = lower of 7/8-day average after-cost cash-start returns. Rank is a point estimate, not proof of an edge.",
-      "The uniform 95% lower differences account jointly for129 models and2 horizons with23 purged cases in14 quarters.",
-      "All history is spent. Strict broad coverage still fails at BCH29/30. Actual holdings and endgame replay are unverified.",
+      "The uniform 95% lower differences account jointly for 129 models and 2 horizons with 23 purged cases in 14 quarters.",
+      "All history is spent. Strict broad coverage still fails at BCH: 29/30. Actual holdings and endgame replay are unverified.",
       "The eight new recovery models have model-core results here; full original competition gate eligibility is UNVERIFIED.",
       "CS and drawdown are in the CSV. Short-imitation F1 is distinct from profitable-short accuracy; neither is inferred here.","",
-      "| Rank | Model | 7-day mean | 8-day mean | 7-day bad10 | 8-day bad10 | Lower difference7/8d | Diagnostic pass |",
+      "| Rank | Model | 7-day mean | 8-day mean | 7-day bad10 | 8-day bad10 | Lower difference (7/8 days) | Diagnostic pass |",
       "|---|---|---:|---:|---:|---:|---|---|"]
     fmt=lambda x:f"{100*x:+.2f}%"
     for rank,name in enumerate(ranking.index,1):
