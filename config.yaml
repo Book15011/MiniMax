@@ -697,6 +697,32 @@ models:
     min_complete: 0.9
     btc_symbol: BTCUSDT
     breadth: {liquidity_hours: 168, breadth_top_n: 30, breadth_min_coins: 20, breadth_hours: 48}
+  book_recovery_quality:  # RESEARCH ONLY: research/book/quality_recovery/PROTOCOL.md
+    parent: *book_recovery_parent
+    lookback_days: [7, 14]
+    formation_min_return: 0.0
+    momentum_pool: 12
+    vol_days: 30
+    min_complete: 0.9
+    k: 6
+    keep_rank: 12
+    blend_weight: 0.5
+    channel_days: 20
+    scan_days: 120
+    filter_params: *baitoey_vt_mom
+  book_recovery_quality_blend:  # RESEARCH ONLY: research/book/quality_recovery/PROTOCOL.md
+    parent: *book_recovery_parent
+    lookback_days: [7, 14]
+    formation_min_return: 0.0
+    momentum_pool: 12
+    vol_days: 30
+    min_complete: 0.9
+    k: 6
+    keep_rank: 12
+    blend_weight: 0.5
+    channel_days: 20
+    scan_days: 120
+    filter_params: *baitoey_vt_mom
   # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
   pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
     vt: *baitoey_vt_mom
