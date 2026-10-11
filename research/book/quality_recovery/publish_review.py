@@ -1,4 +1,4 @@
-"""Append the two frozen trials to the previous immutable 135-model diagnostic."""
+"""Append the two frozen trials to the previous immutable 133-model diagnostic."""
 from pathlib import Path
 import hashlib,json,os,tempfile
 from backtest.scoring.registry import locked
