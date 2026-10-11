@@ -655,6 +655,28 @@ models:
     channel_days: 20
     scan_days: 120
     filter_params: *baitoey_vt_mom
+  book_recovery_high:  # RESEARCH ONLY: research/book/high_recovery/PROTOCOL.md
+    parent: *book_recovery_parent
+    lookback_days: [7, 14]
+    vol_days: 30
+    min_complete: 0.9
+    k: 6
+    keep_rank: 12
+    blend_weight: 0.5
+    channel_days: 20
+    scan_days: 120
+    filter_params: *baitoey_vt_mom
+  book_recovery_high_blend:  # RESEARCH ONLY: research/book/high_recovery/PROTOCOL.md
+    parent: *book_recovery_parent
+    lookback_days: [7, 14]
+    vol_days: 30
+    min_complete: 0.9
+    k: 6
+    keep_rank: 12
+    blend_weight: 0.5
+    channel_days: 20
+    scan_days: 120
+    filter_params: *baitoey_vt_mom
   # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
   pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
     vt: *baitoey_vt_mom
