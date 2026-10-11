@@ -77,14 +77,15 @@ def main():
         decisions.append({"model":name,"lower_delta_168":lower[i,0],"lower_delta_192":lower[i,1],
                           "current_diag_pass":passed,"production_eligible":False})
     dec=pd.DataFrame(decisions)
-    ranking=table.pivot(index="model",columns="hours",values="mean").min(axis=1).sort_values(ascending=False)
+    ranking=table.pivot(index="model",columns="hours",values="mean").min(axis=1).sort_values(ascending=False,kind="stable")
     lines=["# Recovery model comparison — frozen BTC-only diagnostic","",
       "**No live recommendation. Adaptive scoring remains OFF.**","",
       "Prior guard cost/delay/calendar audit: /home/ubuntu/test/MiniMax/results/book/20261011-recovery-stress-v1/README.md",
       "Its failed reliability checks remain a veto; new rank positions do not override them.","",
       "Query remains Oct11 01:00 HKT; 25 spaced BTC-only historical matches. This refresh adds two fixed research models",
       "without reselecting windows. Newer price-only context is saved separately; it does not change these cases.",
-      "Rank = lower of 7/8-day average after-cost cash-start returns. Rank is a point estimate, not proof of an edge.",
+      "Rank = lower of 7/8-day average after-cost cash-start returns; exact ties are alphabetical by model name.",
+      "Rank is a point estimate, not proof of an edge. Equal-return rows do not establish superiority over one another.",
       "The uniform 95% lower differences account jointly for 135 models and 2 horizons with 23 purged cases in 14 quarters.",
       "All history is spent. Strict broad coverage still fails at BCH: 29/30. Actual holdings and endgame replay are unverified.",
       "The fourteen new recovery models have model-core results here; full original competition gate eligibility is UNVERIFIED.",
