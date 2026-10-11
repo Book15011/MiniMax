@@ -6,7 +6,7 @@ from src.models.book._residual_recovery import scores,adjust
 
 P={"beta_days":30,"lookback_days":[7,14],"vol_days":30,"min_complete":.9,"k":2,"keep_rank":3,"blend_weight":.5,
    "filter_params":{"early_exit":False,"no_chase":False,"volume_long_days":7,"volume_short_hours":24,
-     "exit_cooldown_hours":24,"exit_low_hours":24,"exit_volume_ratio":1.5},
+     "exit_cooldown_hours":24,"exit_low_hours":24,"exit_volume_ratio":1.5,"chase_return_hours":24,"chase_window_hours":72},
    "channel_days":20,"scan_days":120}
 def fixture():
     rng=np.random.default_rng(42);n=1056
