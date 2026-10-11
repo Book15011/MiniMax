@@ -1,0 +1,779 @@
+{
+  "start": "2026-10-12 00:00 UTC",
+  "end": "2026-10-15 00:00 UTC",
+  "names": [
+    "book_e20combo_brk_cash",
+    "book_recovery_quality",
+    "book_recovery_quality_blend"
+  ],
+  "params": {
+    "book_e20combo_brk_cash": {
+      "base": {
+        "vt": {
+          "prev": "own",
+          "switch": {
+            "coins": [
+              "BTCUSDT",
+              "ETHUSDT"
+            ],
+            "ema_days": 20,
+            "hysteresis": 0.03,
+            "state_days": 120,
+            "vol_days": 30,
+            "risk_budget": 0.25,
+            "out_of_trend_scale": 0.15
+          },
+          "sleeves": {
+            "baitoey_vt_mom": {
+              "when": "up",
+              "params": {
+                "lookback_days": [
+                  7,
+                  14
+                ],
+                "vol_days": 30,
+                "min_history_days": 30,
+                "k": 6,
+                "keep_rank": 12,
+                "weighting": "equal",
+                "target_daily_vol": 0.03,
+                "early_exit": true,
+                "exit_low_hours": 24,
+                "exit_volume_ratio": 1.5,
+                "exit_cooldown_hours": 24,
+                "volume_short_hours": 24,
+                "volume_long_days": 7,
+                "no_chase": false,
+                "chase_return_hours": 24,
+                "chase_return": 0.15,
+                "chase_volume_ratio": 3.0,
+                "chase_window_hours": 72,
+                "chase_pullback": 0.05
+              },
+              "override": {
+                "target_daily_vol": 0.045
+              }
+            },
+            "pol_trend_ls": {
+              "when": "down",
+              "params": {
+                "lookback_days": 21,
+                "threshold": 0.5,
+                "vol_days": 30,
+                "min_history_days": 30,
+                "min_coins": 8,
+                "top_n": 15,
+                "target_vol": 0.35
+              }
+            }
+          }
+        },
+        "channel_days": 20,
+        "scan_days": 120
+      },
+      "e20": {
+        "prev": "own",
+        "switch": {
+          "coins": [
+            "BTCUSDT",
+            "ETHUSDT"
+          ],
+          "ema_days": 20,
+          "hysteresis": 0.03,
+          "state_days": 120,
+          "vol_days": 30,
+          "risk_budget": 0.25,
+          "out_of_trend_scale": 0.15
+        },
+        "sleeves": {
+          "baitoey_vt_mom": {
+            "when": "up",
+            "params": {
+              "lookback_days": [
+                7,
+                14
+              ],
+              "vol_days": 30,
+              "min_history_days": 30,
+              "k": 6,
+              "keep_rank": 12,
+              "weighting": "equal",
+              "target_daily_vol": 0.03,
+              "early_exit": true,
+              "exit_low_hours": 24,
+              "exit_volume_ratio": 1.5,
+              "exit_cooldown_hours": 24,
+              "volume_short_hours": 24,
+              "volume_long_days": 7,
+              "no_chase": false,
+              "chase_return_hours": 24,
+              "chase_return": 0.15,
+              "chase_volume_ratio": 3.0,
+              "chase_window_hours": 72,
+              "chase_pullback": 0.05
+            },
+            "override": {
+              "target_daily_vol": 0.045
+            }
+          },
+          "pol_trend_ls": {
+            "when": "down",
+            "params": {
+              "lookback_days": 21,
+              "threshold": 0.5,
+              "vol_days": 30,
+              "min_history_days": 30,
+              "min_coins": 8,
+              "top_n": 15,
+              "target_vol": 0.35
+            }
+          }
+        }
+      },
+      "btc_symbol": "BTCUSDT",
+      "btc_ema_days": 20,
+      "btc_ema_warmup_spans": 3,
+      "btc_return_hours": 168,
+      "breadth_top_n": 30,
+      "breadth_min_coins": 20,
+      "breadth_hours": 48,
+      "breadth_max_positive": 0.4,
+      "liquidity_hours": 168,
+      "volume_fill_hours": 12,
+      "short_lookback_days": [
+        7,
+        14
+      ],
+      "short_vol_days": 30,
+      "short_min_score": 0.0,
+      "short_k": 3,
+      "short_gross_cap": 0.25,
+      "short_coin_cap": 0.1,
+      "short_daily_vol": 0.01,
+      "pullback_prior_hours": 24,
+      "pullback_recent_hours": 4
+    },
+    "book_recovery_quality": {
+      "parent": {
+        "base": {
+          "vt": {
+            "prev": "own",
+            "switch": {
+              "coins": [
+                "BTCUSDT",
+                "ETHUSDT"
+              ],
+              "ema_days": 20,
+              "hysteresis": 0.03,
+              "state_days": 120,
+              "vol_days": 30,
+              "risk_budget": 0.25,
+              "out_of_trend_scale": 0.15
+            },
+            "sleeves": {
+              "baitoey_vt_mom": {
+                "when": "up",
+                "params": {
+                  "lookback_days": [
+                    7,
+                    14
+                  ],
+                  "vol_days": 30,
+                  "min_history_days": 30,
+                  "k": 6,
+                  "keep_rank": 12,
+                  "weighting": "equal",
+                  "target_daily_vol": 0.03,
+                  "early_exit": true,
+                  "exit_low_hours": 24,
+                  "exit_volume_ratio": 1.5,
+                  "exit_cooldown_hours": 24,
+                  "volume_short_hours": 24,
+                  "volume_long_days": 7,
+                  "no_chase": false,
+                  "chase_return_hours": 24,
+                  "chase_return": 0.15,
+                  "chase_volume_ratio": 3.0,
+                  "chase_window_hours": 72,
+                  "chase_pullback": 0.05
+                },
+                "override": {
+                  "target_daily_vol": 0.045
+                }
+              },
+              "pol_trend_ls": {
+                "when": "down",
+                "params": {
+                  "lookback_days": 21,
+                  "threshold": 0.5,
+                  "vol_days": 30,
+                  "min_history_days": 30,
+                  "min_coins": 8,
+                  "top_n": 15,
+                  "target_vol": 0.35
+                }
+              }
+            }
+          },
+          "channel_days": 20,
+          "scan_days": 120
+        },
+        "e20": {
+          "prev": "own",
+          "switch": {
+            "coins": [
+              "BTCUSDT",
+              "ETHUSDT"
+            ],
+            "ema_days": 20,
+            "hysteresis": 0.03,
+            "state_days": 120,
+            "vol_days": 30,
+            "risk_budget": 0.25,
+            "out_of_trend_scale": 0.15
+          },
+          "sleeves": {
+            "baitoey_vt_mom": {
+              "when": "up",
+              "params": {
+                "lookback_days": [
+                  7,
+                  14
+                ],
+                "vol_days": 30,
+                "min_history_days": 30,
+                "k": 6,
+                "keep_rank": 12,
+                "weighting": "equal",
+                "target_daily_vol": 0.03,
+                "early_exit": true,
+                "exit_low_hours": 24,
+                "exit_volume_ratio": 1.5,
+                "exit_cooldown_hours": 24,
+                "volume_short_hours": 24,
+                "volume_long_days": 7,
+                "no_chase": false,
+                "chase_return_hours": 24,
+                "chase_return": 0.15,
+                "chase_volume_ratio": 3.0,
+                "chase_window_hours": 72,
+                "chase_pullback": 0.05
+              },
+              "override": {
+                "target_daily_vol": 0.045
+              }
+            },
+            "pol_trend_ls": {
+              "when": "down",
+              "params": {
+                "lookback_days": 21,
+                "threshold": 0.5,
+                "vol_days": 30,
+                "min_history_days": 30,
+                "min_coins": 8,
+                "top_n": 15,
+                "target_vol": 0.35
+              }
+            }
+          }
+        },
+        "btc_symbol": "BTCUSDT",
+        "btc_ema_days": 20,
+        "btc_ema_warmup_spans": 3,
+        "btc_return_hours": 168,
+        "breadth_top_n": 30,
+        "breadth_min_coins": 20,
+        "breadth_hours": 48,
+        "breadth_max_positive": 0.4,
+        "liquidity_hours": 168,
+        "volume_fill_hours": 12,
+        "short_lookback_days": [
+          7,
+          14
+        ],
+        "short_vol_days": 30,
+        "short_min_score": 0.0,
+        "short_k": 3,
+        "short_gross_cap": 0.25,
+        "short_coin_cap": 0.1,
+        "short_daily_vol": 0.01,
+        "pullback_prior_hours": 24,
+        "pullback_recent_hours": 4
+      },
+      "lookback_days": [
+        7,
+        14
+      ],
+      "formation_min_return": 0.0,
+      "momentum_pool": 12,
+      "vol_days": 30,
+      "min_complete": 0.9,
+      "k": 6,
+      "keep_rank": 12,
+      "blend_weight": 0.5,
+      "channel_days": 20,
+      "scan_days": 120,
+      "filter_params": {
+        "lookback_days": [
+          7,
+          14
+        ],
+        "vol_days": 30,
+        "min_history_days": 30,
+        "k": 6,
+        "keep_rank": 12,
+        "weighting": "equal",
+        "target_daily_vol": 0.03,
+        "early_exit": true,
+        "exit_low_hours": 24,
+        "exit_volume_ratio": 1.5,
+        "exit_cooldown_hours": 24,
+        "volume_short_hours": 24,
+        "volume_long_days": 7,
+        "no_chase": false,
+        "chase_return_hours": 24,
+        "chase_return": 0.15,
+        "chase_volume_ratio": 3.0,
+        "chase_window_hours": 72,
+        "chase_pullback": 0.05
+      }
+    },
+    "book_recovery_quality_blend": {
+      "parent": {
+        "base": {
+          "vt": {
+            "prev": "own",
+            "switch": {
+              "coins": [
+                "BTCUSDT",
+                "ETHUSDT"
+              ],
+              "ema_days": 20,
+              "hysteresis": 0.03,
+              "state_days": 120,
+              "vol_days": 30,
+              "risk_budget": 0.25,
+              "out_of_trend_scale": 0.15
+            },
+            "sleeves": {
+              "baitoey_vt_mom": {
+                "when": "up",
+                "params": {
+                  "lookback_days": [
+                    7,
+                    14
+                  ],
+                  "vol_days": 30,
+                  "min_history_days": 30,
+                  "k": 6,
+                  "keep_rank": 12,
+                  "weighting": "equal",
+                  "target_daily_vol": 0.03,
+                  "early_exit": true,
+                  "exit_low_hours": 24,
+                  "exit_volume_ratio": 1.5,
+                  "exit_cooldown_hours": 24,
+                  "volume_short_hours": 24,
+                  "volume_long_days": 7,
+                  "no_chase": false,
+                  "chase_return_hours": 24,
+                  "chase_return": 0.15,
+                  "chase_volume_ratio": 3.0,
+                  "chase_window_hours": 72,
+                  "chase_pullback": 0.05
+                },
+                "override": {
+                  "target_daily_vol": 0.045
+                }
+              },
+              "pol_trend_ls": {
+                "when": "down",
+                "params": {
+                  "lookback_days": 21,
+                  "threshold": 0.5,
+                  "vol_days": 30,
+                  "min_history_days": 30,
+                  "min_coins": 8,
+                  "top_n": 15,
+                  "target_vol": 0.35
+                }
+              }
+            }
+          },
+          "channel_days": 20,
+          "scan_days": 120
+        },
+        "e20": {
+          "prev": "own",
+          "switch": {
+            "coins": [
+              "BTCUSDT",
+              "ETHUSDT"
+            ],
+            "ema_days": 20,
+            "hysteresis": 0.03,
+            "state_days": 120,
+            "vol_days": 30,
+            "risk_budget": 0.25,
+            "out_of_trend_scale": 0.15
+          },
+          "sleeves": {
+            "baitoey_vt_mom": {
+              "when": "up",
+              "params": {
+                "lookback_days": [
+                  7,
+                  14
+                ],
+                "vol_days": 30,
+                "min_history_days": 30,
+                "k": 6,
+                "keep_rank": 12,
+                "weighting": "equal",
+                "target_daily_vol": 0.03,
+                "early_exit": true,
+                "exit_low_hours": 24,
+                "exit_volume_ratio": 1.5,
+                "exit_cooldown_hours": 24,
+                "volume_short_hours": 24,
+                "volume_long_days": 7,
+                "no_chase": false,
+                "chase_return_hours": 24,
+                "chase_return": 0.15,
+                "chase_volume_ratio": 3.0,
+                "chase_window_hours": 72,
+                "chase_pullback": 0.05
+              },
+              "override": {
+                "target_daily_vol": 0.045
+              }
+            },
+            "pol_trend_ls": {
+              "when": "down",
+              "params": {
+                "lookback_days": 21,
+                "threshold": 0.5,
+                "vol_days": 30,
+                "min_history_days": 30,
+                "min_coins": 8,
+                "top_n": 15,
+                "target_vol": 0.35
+              }
+            }
+          }
+        },
+        "btc_symbol": "BTCUSDT",
+        "btc_ema_days": 20,
+        "btc_ema_warmup_spans": 3,
+        "btc_return_hours": 168,
+        "breadth_top_n": 30,
+        "breadth_min_coins": 20,
+        "breadth_hours": 48,
+        "breadth_max_positive": 0.4,
+        "liquidity_hours": 168,
+        "volume_fill_hours": 12,
+        "short_lookback_days": [
+          7,
+          14
+        ],
+        "short_vol_days": 30,
+        "short_min_score": 0.0,
+        "short_k": 3,
+        "short_gross_cap": 0.25,
+        "short_coin_cap": 0.1,
+        "short_daily_vol": 0.01,
+        "pullback_prior_hours": 24,
+        "pullback_recent_hours": 4
+      },
+      "lookback_days": [
+        7,
+        14
+      ],
+      "formation_min_return": 0.0,
+      "momentum_pool": 12,
+      "vol_days": 30,
+      "min_complete": 0.9,
+      "k": 6,
+      "keep_rank": 12,
+      "blend_weight": 0.5,
+      "channel_days": 20,
+      "scan_days": 120,
+      "filter_params": {
+        "lookback_days": [
+          7,
+          14
+        ],
+        "vol_days": 30,
+        "min_history_days": 30,
+        "k": 6,
+        "keep_rank": 12,
+        "weighting": "equal",
+        "target_daily_vol": 0.03,
+        "early_exit": true,
+        "exit_low_hours": 24,
+        "exit_volume_ratio": 1.5,
+        "exit_cooldown_hours": 24,
+        "volume_short_hours": 24,
+        "volume_long_days": 7,
+        "no_chase": false,
+        "chase_return_hours": 24,
+        "chase_return": 0.15,
+        "chase_volume_ratio": 3.0,
+        "chase_window_hours": 72,
+        "chase_pullback": 0.05
+      }
+    }
+  },
+  "config_sha256": "aab719cde300951c1f63b0838b0e910909ae7415c35f9dd89569058adef3b507",
+  "source_sha256": {
+    "backtest/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "backtest/compare.py": "89d31fe0e1489901291d811fdd7046a5475eb2dec92055406a5f2cd2ec60e4d0",
+    "backtest/data.py": "b8aea6cb605452667c31ed0e5fab585246d737d3b648911b73e21cbb8466cc9e",
+    "backtest/engine.py": "02f922e1445a3633a7555085decdf386ab1603c56e36e1989b8ed74aee0aa2dd",
+    "backtest/evaluate.py": "a042b95704068f102eba8561a7aea65ead5063364026635228511d1e394d156b",
+    "backtest/metrics.py": "2c90164bf29d4c06798814eb96e3473cd37ce92d85f01aa09b4fdeffe99ccf92",
+    "backtest/report.py": "7f608befc40bb8b9d055d0563efab8b18af895469f81ad7f20b6666202493ff2",
+    "backtest/run.py": "b96dbf2bb0e8f710274874251b7e05a0598ae98bf8fed7ca3a85a1a7f400f132",
+    "backtest/scoring/__init__.py": "e10e039c784b8c8c5ecf36c3161b43024fa49c5de7a56b22c9b43d1ea215891f",
+    "backtest/scoring/__main__.py": "ae98120f95f1c1e4fbd3fcbd9f2348dc225895b9cd547b5e5cf205fe2be9f3cd",
+    "backtest/scoring/competition.py": "3e00fe43b7b54eaac3628f7b176be2fc78eb21275c3938104d191c0fe99ee690",
+    "backtest/scoring/evaluate.py": "6ecb9385867ffb69b7bafa1dabcd5de677f557e12a71242bbcac7d3da3bb7fa4",
+    "backtest/scoring/explain.py": "1c410f438447915f11ee2f44a1ca0a2ef7a49256f29d8bac12f02ae709ccb29c",
+    "backtest/scoring/leakage.py": "d68c93ff1336ee62ac31bcafb7359dbcc4511cc9c78421cb0236f8a4c6ef0001",
+    "backtest/scoring/metrics.py": "108e096222b879b079ab1476adf7ec2002298d433ef4baa5bbd63ba29518f847",
+    "backtest/scoring/registry.py": "acad189041d85b50823fe3bb809fbd78b3013019733cf7d6fc60c849ed9d4657",
+    "backtest/scoring/replay.py": "c708709586fc7351c212b7b398ded36100ae70cc4eda6dcce3e77ff81dcb343a",
+    "backtest/scoring/report.py": "20a84b00a8a68edbc374838fd5f7d34b46ea8bfbc40232bc174761f65f51ff5c",
+    "backtest/scoring/returnfirst.py": "6f4fe4c7f41dfe08ac549961073faf102eeee7ddeeffc181db2f738eb769503f",
+    "backtest/scoring/score.py": "5688e94a46f3d55ea5eff44583eeb0d084c77c69ba71c6b60c313b12059df1a4",
+    "backtest/scoring/selection.py": "7c70032966fedbfc05c33590bfc6cafe5c3a64f5e6c5f15023cfb2aeed10f72b",
+    "backtest/scoring/svg.py": "0ae2b39ac0472a236e518214b52780af75280017ba22aafd6744b3223a43399d",
+    "backtest/scoring/windows.py": "aa555d1f04a7937089123ca0cab4d8c0dc0c4dada76fa1fff86beab834675be0",
+    "src/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/api/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/api/client.py": "205cc1d7a624d7c48a9af277916e5aeed06827857db7705870b8e02d98914b65",
+    "src/api/rules.py": "c35ef65033df531fbe00537af62a5692c2daeae22c1b3d2c93d8d960f92fdbe0",
+    "src/config.py": "066f405d49c3b1f05871431048011a65d27a93daaac3541cde8631d112ff41ee",
+    "src/contracts.py": "f6b3d220be1c1256f48a5f48ea41b1358b15af6d4a460fc66b4260cf9e54cac6",
+    "src/data/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/data/binance_downloader.py": "1dc2f402c302370bf57d9cb9d2ee293a19dc4b5b9c1b9433e506df1c7422e2bf",
+    "src/data/external_copy.py": "5b1b6ac0cf98995f29648b0de0e822c63945980b3fcac51da910079ff7ac1f36",
+    "src/data/fred.py": "539549697a8626ec829c2de97499edd98599d060c8353d2f0700b29adb4f4369",
+    "src/data/futures.py": "2b0ae8e10457bf4bab7438461caf16ef90429b71a9a5d3e7e84a9632f15f9fda",
+    "src/data/integrity.py": "963fa16f5e59fc257e041307398d81bbd0abc2519f58d132ed6c5961ee73a1f6",
+    "src/data/loader.py": "141580ac442802bd979dd2e594ae3e8be1ec41bee67dc3eb60f9acbb68c5d1fc",
+    "src/data/panel.py": "1c44c8818ac6acff51af73693af5726576dc3e2aed034cef34c1ecc35a24e714",
+    "src/execution/__init__.py": "357ed0f9c17f977137f5b7e5f05015409fa96c8db5260eca822e74262fdde332",
+    "src/execution/paper.py": "cedca2e976c2a905af51703d01f5dbdf31a31fed687e9e8d7e4c1a7161b226cb",
+    "src/execution/planner.py": "2196f02a868a28b4842009b170167f683c5c2c5e6163c2354d4c518e398e38dc",
+    "src/live/__init__.py": "f591ea987f4cd06861b1f1498954a22d9537cf9d52ecf595f573758caee15d84",
+    "src/live/broker.py": "5db6ecf5fbd01a4489b2c4031b1baa17eafd0c43ca495bc26ebe20d4572aa6a9",
+    "src/live/feed.py": "d9f06b1a34bea8c9d8f90d38aca45f2626897933ed76dcb4983f4699114baa4e",
+    "src/live/fillcheck.py": "0c635bf0a4722984bb65b8f449f7c48b308bd2de8cebab25c446f0ca5f3eac54",
+    "src/live/runner.py": "80afa8b7dab20e1f3f628387a154221ba1b847fcb497469d5ec0603647a334ec",
+    "src/live/selfcheck.py": "5482279da26a5ef5fb3617d6aea464bdc5e76d0e73cec00099f5e3fc8e71ea26",
+    "src/models/__init__.py": "2117fff69b3f882198f2f400171086e311105f5c4c3407681f26adf612037b5d",
+    "src/models/_template.py": "7b0c383e1dcef7b57414e919902c20a0a1858987f3ed39d7a58b4d8361e64f90",
+    "src/models/baitoey/__init__.py": "ae9a67e4d1916ce8a42554548d1fb8632271100a19618201df017ebd71f93aa9",
+    "src/models/baitoey/_bar_signals.py": "a7d7c10ec3a017027e067fc4c256799b3f135148bda504e69de1d407317ac16f",
+    "src/models/baitoey/_overlays.py": "d81048737604d67e93f898fed1d8ba674507900086c95682475ec84d14a5276b",
+    "src/models/baitoey/_volume_signals.py": "3ce280c888c84df82c97b8b2bfc4cf77e348266f0ecd6ab906be6b72731debbf",
+    "src/models/baitoey/baitoey_breakout.py": "ec58db889a4680031e847f00bfae5858abdb5648e370fa89c50252acf1480669",
+    "src/models/baitoey/baitoey_mr_4h.py": "ebb62d80fa22651dd1435013996180ddc13f5caff26be6eb4d859428b1b66ef4",
+    "src/models/baitoey/baitoey_mr_bbrsi.py": "347a47e074aecfa61270d926618d4d4db9c1747c95a20378c94662df374ed552",
+    "src/models/baitoey/baitoey_ovl_altbtc_b_e20.py": "47ce4749b57d34c029a3e7fa6f96b4b03f43ca0ac323f5397e6ff02899440ebf",
+    "src/models/baitoey/baitoey_ovl_brk_dual.py": "cb59cd6c69c2454db75039846524a1d0f6d01d10df8c3dd5923e19e3986f466d",
+    "src/models/baitoey/baitoey_ovl_brk_e20.py": "1724b92485767a4cc9a169e46b50b3b4d2bc1c274b085e936c902df2096b1a1a",
+    "src/models/baitoey/baitoey_rot_dip.py": "93220300ea61531133d30bb2ae6537157045194eb3260c1bb764c21d99c2af7c",
+    "src/models/baitoey/baitoey_rot_max.py": "08e6ffb98868181ea6c7a6be0d8116d2653c537365ca8132b5289f8ef4b01c0f",
+    "src/models/baitoey/baitoey_switch_mr.py": "dd8408975489b6b60c861649b7751d7f92de8335f7cad1a4dd92ea56b46d71f4",
+    "src/models/baitoey/baitoey_tg_mom.py": "adf7aae1a933e4d392ad14f844a8a142cffebd6b0a561977b1034fb97c1400f5",
+    "src/models/baitoey/baitoey_vt_dual.py": "cbd11c3fcaa51f21a123f168bb437843c26168341b8ba8bc0a3f9a2097bec6ff",
+    "src/models/baitoey/baitoey_vt_mom.py": "0ebdbf484ee4c0e982e83e90a933e31e3b228ce7787e6e32b9a47acb67ae261c",
+    "src/models/baselines/__init__.py": "fbc6b2ba4d83c280c8cc1e0dd927ac8dec385f796ca4f56153df03ad41dc6b22",
+    "src/models/baselines/team_btc_hold.py": "2dd44e47d2e04089e87c883f3fdc647a616634a82f9aa2fc643a79fb5cf5c6f3",
+    "src/models/baselines/team_cash.py": "e683e725f493d23c31df65e42a5a27a3606923c28eded51dc4180f71379ad2d5",
+    "src/models/baselines/team_ew_daily.py": "7739c26b79f9082a05163832726957032a877cc1855740a6998bf124d01bf5c8",
+    "src/models/baselines/team_mom_ss25.py": "5542ef73fd0c9d2466f23a69be726dea2931621d8945342f80823e7d2f405164",
+    "src/models/baselines/team_rot_ew.py": "fdeefe784219c996e28aa1ea35f739620fe8df07162af715db2e865ec8322e62",
+    "src/models/baselines/team_rot_iv.py": "185bd683a895efe80ba52d096c08d473e266de47b4b1e67781c3eaf2f9c69b6e",
+    "src/models/baselines/team_trend_2.py": "9205ca5622f210e33250d2bfcc893da1951ba753693b8779de1a7b36dab9ff2d",
+    "src/models/book/__init__.py": "366c4678e4d657b7228d155f8075886cb153c172767ecced320f0a9cd192ea0b",
+    "src/models/book/_cashshort.py": "0e3d518c28255d9c8d027042ac41e7ee306d6aa1830b8282f957e194dc4aaaa2",
+    "src/models/book/_e20combo.py": "bca8145fd2b912988a62336adc7ca2ddd79b225c7659b0f4ccb85d990fe5b1bf",
+    "src/models/book/_high_recovery.py": "decac2db0cf6386027372963b3e0d64ad753b06fdfcd9201e86bd054c1eb98be",
+    "src/models/book/_quality_recovery.py": "0b7147385e01125617e91bec8573e1d7b0d2d34f135c8c167dae6938304fecfd",
+    "src/models/book/_rebound_recovery.py": "f83f513990be13c65c799b3a842bdfd237032abb7078f2db4d4a6f43572c40e9",
+    "src/models/book/_recovery.py": "9e064edeb0e905496f00dbee7bc497b660ef6c61850aa835c405ec38a0ee3e88",
+    "src/models/book/_recovery_selection.py": "e320e6e1a2d9285050d7b864a1b8111a3a3e488bfa83ff3ec11e6e84725eda59",
+    "src/models/book/_residual_recovery.py": "06023c548528f856e030474d98b54dde87c54f00d1a559061464091799844047",
+    "src/models/book/book_e20combo_brk_cash.py": "cf07ca5e4703c10ba5dfb510f0bf44ab35a79505c8d1b10e1224675984541c0d",
+    "src/models/book/book_recovery_abs.py": "ff1dbdaef1c8a59897788df1f5e8e75f8386bcfff44826b1abc259f3f7a30396",
+    "src/models/book/book_recovery_abs_iv.py": "77fb5050eab96a538595ec4ed703bf64c02ac76093845e888fc2042dea3653a1",
+    "src/models/book/book_recovery_allshort24.py": "bd82149d8bd0b76b035fccb938d534d7733b82c3e2c5e64a4d4b0bd0ca8887da",
+    "src/models/book/book_recovery_both.py": "a2f1037a1b46b0862e68f6f6a1f1db4a3bfb0edf32295b27331f22f8488cd919",
+    "src/models/book/book_recovery_high.py": "ff36bdeb3a3c9803440527e53157e88b38f7687f0d3bedb41b3393cb9f13857d",
+    "src/models/book/book_recovery_high_blend.py": "894d80b7b268e81ef8f737574b7395d5dd821c69e4ac83773b691a2f03bc8ac5",
+    "src/models/book/book_recovery_iv.py": "7210339451695edc67a62af72242e5d37d2e3d6124d4660bc023d7810b0bfc46",
+    "src/models/book/book_recovery_quality.py": "3946c29e7eaa49f99d9640f47ff1f717c43fd81420fffe4e90267761dfea9744",
+    "src/models/book/book_recovery_quality_blend.py": "0c34cfa9ab9525dac3cc79c5708c90771ce096a4ffc75709bf9f8642b7e8e5f6",
+    "src/models/book/book_recovery_rebound.py": "abc2c741c01ee4bb991f38f2131619e8aff231b44e55f29df7bc931592b10ce1",
+    "src/models/book/book_recovery_resid.py": "1adfd1458cf274fc728b09b1283bf21964a135c8320192e876b38ce8a3754a73",
+    "src/models/book/book_recovery_resid_blend.py": "6789b7dc16c517fb805bd47dc4f9e4ee198ed440693979e5a4c96cf7c8524638",
+    "src/models/book/book_recovery_short.py": "acb2cada8b21e21b1d26031f132885f3cd1ad167d17a6a101ccff4f3107888b0",
+    "src/models/book/book_recovery_vol.py": "8464ca1e858f8ebf20a5a5ad50c0a4df7066d0eb15667912a0ef450dbc268532",
+    "src/models/pol/__init__.py": "b61dd3796409637fed0bc5be6a673959ea17b42359b22f4dba0aeb7ffb9b6619",
+    "src/models/pol/_combo.py": "5f880b7e41aca68d59c54478303e0cf9c86b5a6a45e61d770d27a48d7b445bfc",
+    "src/models/pol/_volume.py": "97cd626f9b9853b8a99cfe405915da6ae55b6ae2f6c4ea18bf06502fe1fc8895",
+    "src/models/pol/pol_abl_partial.py": "dd0e1f166e89c986a280041388eb82911a2b52721d40d283c0cc1bf8d5e1b27b",
+    "src/models/pol/pol_abl_shock.py": "6949eb3ae094fe0759970fd3a3d8fd5eb2730648ce8fa09741bb5d0d4f91b775",
+    "src/models/pol/pol_abl_shock_e20v45.py": "638f3243b8067080a8ec1cdc7728ed78f333455aa01225e8e7854aea32a91376",
+    "src/models/pol/pol_abl_shock_vtv45.py": "6d19995afc72bd9531aa875601a32ab131425c284c02322ec4b584b6b2d9dfd3",
+    "src/models/pol/pol_combo_all.py": "7c7cea8133459d9a401a1f8d3b295a362cd313c83272cbc2b7e65eec1a931fac",
+    "src/models/pol/pol_combo_ms_tl.py": "ce2bdc853182fc7f84ad07d7bfda233ac5ff5eebad17013dfbe2457c021e9ad4",
+    "src/models/pol/pol_combo_rb.py": "30a650031e0c537086eafab614411b1ccf8ed5d8bb67d0c9ecdc66c06fa0cf8d",
+    "src/models/pol/pol_combo_rt.py": "31af85acf3394d5508430a78deed21a3017adb6f05f46ad45f6a2a42bf6b74e9",
+    "src/models/pol/pol_combo_rtt.py": "9fcc9d46607371a47af06372f9743f3b958cfee6b4686a896e6bbd02609de9ef",
+    "src/models/pol/pol_mom_ss.py": "2e1c630a67245e3c37632cbd3341a9729b34a01c775bb83c32b0d83d88acf3f5",
+    "src/models/pol/pol_mr_cap.py": "d2dd23773300ab0563070319312d8210e70d5d1b8a844806a78c61635118f35a",
+    "src/models/pol/pol_switch3.py": "7aeda51d761c111bde81b27c8b92c2d1c5b9efd897888aa232fa8cd0b80e38e5",
+    "src/models/pol/pol_switch3_cap.py": "f5344f29520387739d798a16f67d926d945b69734fa40ceaf95632a2f67ab08a",
+    "src/models/pol/pol_switch_rc.py": "3349caf17de9720000961e9c15a6561dfe4b19fdebbe8494cf337355dd1a40e6",
+    "src/models/pol/pol_switch_rmax_mr.py": "7bbe3dc7bc4928e844b888060f095aade1b384b37578d4cac5b6b315a841b9f2",
+    "src/models/pol/pol_switch_rmax_tl.py": "3f99c42486b9901a9fb56e5d47c45991f8fc3a5ca0301898c34464dd93e4a98a",
+    "src/models/pol/pol_switch_rot_mr.py": "300b7e244d2df82877ee295ee6056a57285487ddcfe0ea946a701b7703f9fcc2",
+    "src/models/pol/pol_switch_rt.py": "ab44a17ae020ffef90ea188044cf028736bc385d554c67225b8b017e934773bd",
+    "src/models/pol/pol_switch_vt_tl.py": "b8858f070dbc1c3250d94d2f3f388bcd601b3292c1aa18a797275145d4b30dbd",
+    "src/models/pol/pol_switch_vt_tl_e20v45.py": "8db812daef460447ceb554fc56fefe3d9ddea6246ef6f0c9402c1d5b1996baff",
+    "src/models/pol/pol_switch_vtm_tl.py": "0cf83364f221a2e209a41d3b14e03ab41f423289400c625119ce3d9d17be5f3a",
+    "src/models/pol/pol_trend_ls.py": "d95396c57e24231c2cc08cc7394278140f03e743525b8b52b7605eb0c9d4728d",
+    "src/models/pol/pol_vt_mvr.py": "afef61ec8a95eca71017855cbc8135f1f29678e7ce998cfd83971c06819c0209",
+    "src/risk/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/strategy/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/validation/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/validation/build.py": "9c74dc4669520cd28ce7ceb9645c2993d5297ff608fe79dac7a481df5a1a52e9",
+    "src/validation/crps.py": "3a5aee0daac8d2003e550ef06a733c547f05efacc6e83fcec673c7f5f163941e",
+    "src/validation/events.py": "51d8079f86090b902303cae855df606f6ab1bb68804f65f3cbbee1c34e4e0e1a",
+    "src/validation/features.py": "ae14f1cc50d38e71db5a081cc78184b68ff9edafa6b63bd58b1116b90fff60aa",
+    "src/validation/guard.py": "17f03885e6e042030858789ddbfd8d3be55d55bd8dbe4adde2b25e41a07d4000",
+    "src/validation/live_like.py": "4511156060c349adb79fd0dcfad244e982aadfc409d4c573069b0908a17450cb",
+    "src/validation/outcomes.py": "6f47338cf3f05bc6b4176a10bc632fa19c7fe0111fd46351d0ac85841b4c0d3b",
+    "src/validation/prelim_v2.py": "820bfeac55479319d2df07e9868fcab54605056e759374dbdabd09b811b25228",
+    "src/validation/report.py": "bb048b558f47ba6777d53ec5956d6219d9c78be9fa3e2259e7f1fe6a7c4f975d",
+    "src/validation/selection.py": "3187f49aa48f903149f57294f69dd438118170fbc55284528667ba22de1cd7c6",
+    "src/validation/sets.py": "2bddcbbf3cfd7d822f59d7e7fa3140a3326b25221da49e999cda0b77a748bf3a",
+    "src/validation/walkforward.py": "60c2930d74a008a650c7e471f189f81c280a0b238e5fe8ed65ea1cc035faba67"
+  },
+  "market_reader_sha256": "bb8694178e11e1f0103769e685a9b310154ce2038ae66313a4158a46656ce9bf",
+  "half_spread": {
+    "1000CHEEMSUSDT": 0.000918273645546395,
+    "AAVEUSDT": 3.221338143862032e-05,
+    "ADAUSDT": 0.00020189783969314911,
+    "ALGOUSDT": 0.0005,
+    "APEUSDT": 0.0005,
+    "APTUSDT": 6.042661187986524e-05,
+    "ARBUSDT": 0.0002485707183693487,
+    "ASTERUSDT": 6.99741095794479e-05,
+    "ATOMUSDT": 0.0005,
+    "AVAXUSDT": 4.5903144365445126e-05,
+    "AVNTUSDT": 0.0008084074373483906,
+    "AXSUSDT": 0.0005,
+    "BCHUSDT": 0.0005,
+    "BIOUSDT": 0.0004956220056170865,
+    "BMTUSDT": 0.0005396654074474543,
+    "BNBUSDT": 6.550375664112844e-06,
+    "BONKUSDT": 0.0014224751066856795,
+    "BTCUSDT": 5.956215972368226e-08,
+    "CAKEUSDT": 0.0001945146858588473,
+    "CFXUSDT": 0.00028040003738669263,
+    "CHZUSDT": 0.0005,
+    "COMPUSDT": 0.0005,
+    "CRVUSDT": 0.0002525252525252948,
+    "DOGEUSDT": 5.2907253584445916e-05,
+    "DOTUSDT": 0.0004268032437046052,
+    "EDENUSDT": 0.0004988360492185276,
+    "EGLDUSDT": 0.0005,
+    "EIGENUSDT": 0.0003951007506913828,
+    "ENAUSDT": 0.00019735543714227152,
+    "EOSUSDT": 0.0005,
+    "ETCUSDT": 0.0005,
+    "ETHUSDT": 1.8540870568441361e-06,
+    "FETUSDT": 0.00022187708009760147,
+    "FILUSDT": 4.768035092737758e-05,
+    "FLOKIUSDT": 0.0001853568118628028,
+    "FORMUSDT": 0.0005141388174806632,
+    "FTMUSDT": 0.0005,
+    "FTTUSDT~until-2022-11-15": 0.0005,
+    "FTTUSDT": 0.0005,
+    "GALAUSDT": 0.0005,
+    "GRTUSDT": 0.0005,
+    "HBARUSDT": 4.258037044926549e-05,
+    "HEMIUSDT": 0.0008298755186721653,
+    "ICPUSDT": 0.00015017269860337736,
+    "INJUSDT": 0.0005,
+    "KSMUSDT": 0.0005,
+    "LINEAUSDT": 0.0001720874204095909,
+    "LINKUSDT": 3.335223293203556e-05,
+    "LISTAUSDT": 0.0011764705882352463,
+    "LTCUSDT": 7.308338814591185e-05,
+    "LUNAUSDT~until-2022-05-13": 0.0005,
+    "LUNAUSDT": 0.0005,
+    "MANAUSDT": 0.0005,
+    "MATICUSDT": 0.0005,
+    "MIRAUSDT": 0.00019766752322592594,
+    "MKRUSDT": 0.0005,
+    "NEARUSDT": 0.00010594342621034493,
+    "NEOUSDT": 0.0005,
+    "ONDOUSDT": 0.00019394879751754166,
+    "OPENUSDT": 0.00038774718883294583,
+    "OPUSDT": 0.0005,
+    "PAXGUSDT": 1.2028034944109665e-06,
+    "PENDLEUSDT": 0.00021137180300145634,
+    "PENGUUSDT": 5.3166037535275675e-05,
+    "PEPEUSDT": 0.00118623962040331,
+    "PLUMEUSDT": 0.0002797202797202683,
+    "POLUSDT": 8.689607229749846e-05,
+    "PUMPUSDT": 0.00010178117048347407,
+    "RUNEUSDT": 0.0005,
+    "SANDUSDT": 0.0005,
+    "SEIUSDT": 6.687621213141176e-05,
+    "SHIBUSDT": 0.0008841732979663929,
+    "SNXUSDT": 0.0005,
+    "SOLUSDT": 4.199034222131059e-05,
+    "SOMIUSDT": 0.0005178663904712732,
+    "STOUSDT": 0.0011428571428570963,
+    "SUIUSDT": 4.4019896993436186e-05,
+    "SUSDT": 0.0002606882168925858,
+    "SUSHIUSDT": 0.0005,
+    "TAOUSDT": 0.00016374652038638593,
+    "THETAUSDT": 0.0005,
+    "TRUMPUSDT": 0.0002513194269916788,
+    "TRXUSDT": 0.0001493651979088708,
+    "TUTUSDT": 0.00043177892918823803,
+    "UNIUSDT": 5.721805801918076e-05,
+    "VETUSDT": 0.0005,
+    "VIRTUALUSDT": 6.121824303641811e-05,
+    "WIFUSDT": 0.0002125398512221397,
+    "WLDUSDT": 0.00010236462278635376,
+    "WLFIUSDT": 0.0008826125330979953,
+    "XLMUSDT": 0.00022060445621005235,
+    "XMRUSDT": 0.0005,
+    "XPLUSDT": 4.978344202716246e-05,
+    "XRPUSDT": 3.324578609660859e-05,
+    "XTZUSDT": 0.0005,
+    "ZECUSDT": 3.5625349573710295e-06,
+    "ZENUSDT": 0.00022276676319893916
+  },
+  "forward_evaluator_sha256": "edb4e38a58e17cea641f134559c0c1ec6fdc037dcaaf008a436acc2efb54d83d",
+  "source_commit": "1aaa3970a09bc41ef24a045f6ca11f19d20ffb2a",
+  "frozen_at_trusted_client_utc": "2026-10-11 12:09:46 UTC",
+  "outcome_selection": false,
+  "earlier_cohorts_edited": false,
+  "task_family_hypotheses": 12,
+  "single_future_path_is_not_statistical_certification": true,
+  "actual_account": false,
+  "frozen_at_trusted_utc": "2026-10-11 13:19:00 UTC",
+  "existing_cohorts_modified": false,
+  "new_hypotheses": 2,
+  "all_history_spent": true
+}
