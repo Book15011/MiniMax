@@ -677,6 +677,26 @@ models:
     channel_days: 20
     scan_days: 120
     filter_params: *baitoey_vt_mom
+  book_recovery_allshort24:  # RESEARCH ONLY: research/book/rebound_recovery/PROTOCOL.md
+    parent: *book_recovery_parent
+    confirm_hours: 24
+    rebound_hours: 48
+    breadth_majority: 0.5
+    volume_fill_hours: 12
+    vol_days: 30
+    min_complete: 0.9
+    btc_symbol: BTCUSDT
+    breadth: {liquidity_hours: 168, breadth_top_n: 30, breadth_min_coins: 20, breadth_hours: 48}
+  book_recovery_rebound:  # RESEARCH ONLY: research/book/rebound_recovery/PROTOCOL.md
+    parent: *book_recovery_parent
+    confirm_hours: 24
+    rebound_hours: 48
+    breadth_majority: 0.5
+    volume_fill_hours: 12
+    vol_days: 30
+    min_complete: 0.9
+    btc_symbol: BTCUSDT
+    breadth: {liquidity_hours: 168, breadth_top_n: 30, breadth_min_coins: 20, breadth_hours: 48}
   # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
   pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
     vt: *baitoey_vt_mom
