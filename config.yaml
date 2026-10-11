@@ -613,6 +613,24 @@ models:
     slow_days: 30
     min_complete: 0.9
     short_confirm_hours: 24
+  book_recovery_abs:  # RESEARCH ONLY: research/book/recovery_selection/PROTOCOL.md
+    parent: *book_recovery_parent
+    lookback_days: [7, 14]
+    vol_days: 30
+    coin_cap: 0.25
+    min_complete: 0.9
+  book_recovery_iv:  # RESEARCH ONLY: research/book/recovery_selection/PROTOCOL.md
+    parent: *book_recovery_parent
+    lookback_days: [7, 14]
+    vol_days: 30
+    coin_cap: 0.25
+    min_complete: 0.9
+  book_recovery_abs_iv:  # RESEARCH ONLY: research/book/recovery_selection/PROTOCOL.md
+    parent: *book_recovery_parent
+    lookback_days: [7, 14]
+    vol_days: 30
+    coin_cap: 0.25
+    min_complete: 0.9
   # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
   pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
     vt: *baitoey_vt_mom
