@@ -1,14 +1,21 @@
 """Report for research/baitoey/prereg/20261012-short-models-rest-of-round.md (independent rest-of-round test)."""
 import sys; sys.path.insert(0, "/home/ubuntu/test/MiniMax/.worktrees/baitoey-mom-ss")
-import json, os
+import argparse, json, os
 import numpy as np, pandas as pd
 from backtest.data import load_market
 from src.config import load_config
 
 ROOT = "/home/ubuntu/test/MiniMax/"; CACHE = ROOT + "results/scoring/cache/"
-OUT = ROOT + ".worktrees/baitoey-mom-ss/research/baitoey/results/20261012-short-rest-of-round/"
-LIVE, CASH, BTCH = "pol_switch_vt_tl_e20v45", "team_cash", "team_btc_hold"
-D0, HE, L0, BTC0, BAND, COST, SEED, NB = 186, 336, -0.0284, -0.0153, 0.03, 0.002, 20261012, 10000
+ap = argparse.ArgumentParser()
+ap.add_argument("--base", default="pol_switch_vt_tl_e20v45")
+ap.add_argument("--l0", type=float, default=-0.0284)
+ap.add_argument("--out", default="20261012-short-rest-of-round")
+ap.add_argument("--prereg", default="research/baitoey/prereg/20261012-short-models-rest-of-round.md` (3c5bdd8)")
+A = ap.parse_args()
+OUT = ROOT + ".worktrees/baitoey-mom-ss/research/baitoey/results/" + A.out + "/"
+E20 = "pol_switch_vt_tl_e20v45"
+LIVE, CASH, BTCH = A.base, "team_cash", "team_btc_hold"
+D0, HE, L0, BTC0, BAND, COST, SEED, NB = 186, 336, A.l0, -0.0153, 0.03, 0.002, 20261012, 10000
 RANKED = ["book_short_shock_fade", "book_short_volume_fade", "book_short_range_fail", "book_short_ridge6", "book_bear_pullback",
           "book_short_analogue12", "book_bear_breakdown", "book_short_analogue6", "book_bear_cost_guard", "book_bear_guard",
           "book_bear_trend_control", "book_bear_trail_exit", "book_bear_fast_exit"]
@@ -53,7 +60,7 @@ for n in names:
     info[n] = {"shorts": bool((N < -1e-3).any())}
 
 def group(n):
-    if n in (LIVE, CASH, BTCH): return "reference"
+    if n in (LIVE, E20, CASH, BTCH): return "reference"
     if n in RANKED: return "A ranked short"
     if "e20" in n: return "C e20v45 + add-on"
     return "B short or long/short" if info[n].get("shorts") else "D other"
@@ -94,30 +101,30 @@ P.to_csv(OUT + "primary.csv", float_format="%.6f"); S2.to_csv(OUT + "all_similar
 pc = lambda v: "-" if pd.isna(v) else f"{100*v:+.2f}%"
 pp = lambda v: f"{100*v:.0f}%"
 def table(T, rows, extra_sec=None):
-    L = ["| Model | Group | Rest of round: mean / median / p10 | vs e20v45: mean d (90% low) | p (one-sided) | Finish >= 0% | Median finish | BTC falls / flat / rises (median R) | HEADLINE | Verdict |",
+    L = ["| Model | Group | Rest of round: mean / median / p10 | vs baseline: mean d (90% low) | p (one-sided) | Finish >= 0% | Median finish | BTC falls / flat / rises (median R) | HEADLINE | Verdict |",
          "|---|---|---|---|---|---|---|---|---|---|"]
     for n in rows:
-        r = T.loc[n]; v = "current" if n == LIVE else ("**better**" if r.better else ("promising" if r.promising else "no"))
+        r = T.loc[n]; v = "baseline" if n == LIVE else ("**better**" if r.better else ("promising" if r.promising else "no"))
         L.append(f"| {n} | {r.group} | {pc(r.mean_R)} / {pc(r.median_R)} / {pc(r.p10_R)} | {pc(r.mean_d)} ({pc(r.d_lo90)}) | {r.p_one_sided:.3f} | "
                  f"{pp(r.finish_ge0)} | {pc(r.finish_med)} | {pc(r.R_btc_down)} / {pc(r.R_btc_flat)} / {pc(r.R_btc_up)} | {r.headline:.3f} | {v} |")
     return L
 
-L = ["# Short models against e20v45 over the rest of this round: independent test", "",
-     f"Pre-registration: `research/baitoey/prereg/20261012-short-models-rest-of-round.md` (3c5bdd8). Start: round hour {D0} (2026-10-12 06:00 UTC), "
-     f"e20v45 at {pc(L0)} on Book's live-price replay (EC2 account UNVERIFIED), BTC {pc(BTC0)} since the round start, 150 hours left.", "",
+L = [f"# Short models against {LIVE} over the rest of this round: independent test", "",
+     f"Pre-registration: `{A.prereg}. Baseline: `{LIVE}`. Start: round hour {D0} (2026-10-12 06:00 UTC), "
+     f"account at {pc(L0)}, BTC {pc(BTC0)} since the round start, 150 hours left.", "",
      f"- Similar past rounds: **{int(similar.sum())}** of {len(st)}, in {nm_s} calendar months.",
      f"- Primary sample (rest of round does not overlap Book's 50 weak-market cases): **{int(primary.sum())}** rounds in {nm_p} months"
      + (" (fewer than 40, so the pre-registered fallback to all similar rounds applies)" if fallback else "") + ".",
-     f"- Models tested against e20v45: **{k}**; Bonferroni threshold p <= {0.10/k:.4f}. Excluded (reference log, AGENTS rule 7 question): {len(excluded)}.",
-     f"- Switching cost 0.20% for every model except e20v45. Final account = (1 {pc(L0)})(1 + R) - 1.", ""]
+     f"- Models tested against the baseline: **{k}**; Bonferroni threshold p <= {0.10/k:.4f}. Excluded (reference log, AGENTS rule 7 question): {len(excluded)}.",
+     f"- Switching cost 0.20% for every model except the baseline. Final account = (1 {pc(L0)})(1 + R) - 1.", ""]
 better = [n for n in P.index if P.loc[n, "better"]]; prom = [n for n in P.index if P.loc[n, "promising"]]
-L += ["## Verdict (primary sample)", "", f"- Better than e20v45: **{', '.join(better) if better else 'none'}**.",
+L += ["## Verdict (primary sample)", "", f"- Better than {LIVE}: **{', '.join(better) if better else 'none'}**.",
       f"- Promising, not proven: {', '.join(prom) if prom else 'none'}.", ""]
 L += ["## A. Book's 13 ranked short models", ""] + table(P, [LIVE] + [n for n in RANKED if n in P.index]) + [""]
 for g in ["C e20v45 + add-on", "B short or long/short", "D other"]:
     rows = P[P.group == g].sort_values("mean_d", ascending=False)
     L += [f"## {g} (top 10 of {len(rows)} by mean d)", ""] + table(P, [LIVE] + list(rows.index[:10])) + [""]
-L += ["## References", ""] + table(P, [LIVE, CASH, BTCH]) + [""]
+L += ["## References", ""] + table(P, list(dict.fromkeys([LIVE, E20, CASH, BTCH]))) + [""]
 L += ["## Top 10 overall by mean d", ""] + table(P, [LIVE] + list(P.drop(LIVE).sort_values("mean_d", ascending=False).index[:10])) + [""]
 L += ["## Context: all similar rounds (secondary sample)", "",
       f"Better: {', '.join(n for n in S2.index if S2.loc[n, 'better']) or 'none'}. Promising: {', '.join(n for n in S2.index if S2.loc[n, 'promising']) or 'none'}.", ""]
