@@ -1,7 +1,7 @@
 # MiniMax: rules for agents and teammates
 
 Every agent (Claude Code, Codex/ChatGPT, Copilot) reads this file at the start of every session and follows it.
-It overrides tool defaults. Change it only through a reviewed merge (§4). Last updated 2026-09-30.
+It overrides tool defaults. Change it only through a reviewed merge (§4). Last updated 2026-10-08.
 
 **Start every agent session with:** `ssh metallurgy-server 'git -C /home/ubuntu/test/MiniMax show main:AGENTS.md'`
 
@@ -27,9 +27,17 @@ It overrides tool defaults. Change it only through a reviewed merge (§4). Last 
    - Never rewrite or delete someone else's branch.
    - Never commit data, logs, secrets, or files over 5 MB.
 6. **Respect the competition rules in code.**
-   - Directional strategies only: no market-making, arbitrage, pair trading or HFT.
+   - Directional strategies, plus one exception agreed by the team: the **tick-scalping sleeve**
+     (`src/live/sleeve.py`, off unless `live.sleeve.enabled`).
+     - **What it does:** a limit buy at the best bid, then a limit sell one price step higher, one side at a time per
+       pair, on pairs where one step is more than two maker fees.
+     - **Why it is allowed:** the organisers stated publicly on 2026-10-05 that tick scalping "is not prohibited and
+       won't be disqualified" (verbatim: `reports/review/20261005-organiser-statement.md`). The same statement says
+       judges won't value it as a strategy.
+     - **Still forbidden:** arbitrage (including trading on another venue's price before Roostoo's catches up),
+       pair trading, HFT, and two-sided market-making (a resting buy and a resting sell in the same pair at once).
    - Gross exposure ≤ 100% of equity.
-   - At most 20 Roostoo calls per minute per process.
+   - At most 20 Roostoo calls per minute per process, and at most 30 a minute across all processes on one key.
    - Order requests are never retried automatically.
 7. **Keep other teams out of our work.** Describe strategies by what they do. Never name other teams, and never copy their code, anywhere (code, commits, docs, prompts).
 8. **Don't guess.** Mark an unverified fact `UNVERIFIED` in code or docs and say so in your report.
@@ -112,7 +120,7 @@ Shared contracts: `src/contracts.py`. Change them only with all three members re
 | Fees | 0.10% market (taker), 0.05% limit (maker); shorts 0.10% on open and close | Luma, API docs |
 | Rate limit | 30 calls/min per account, queries included | FAQ Q22 |
 | Activity | ≥ 10 active days (deck) or 8 (Luma). **Plan for all 14.** An active day = ≥ 1 strategy trade | Deck, organizers |
-| Allowed | Directional long, sell, short, close. No leverage, HFT, market-making or arbitrage | Luma, deck |
+| Allowed | Directional long, sell, short, close; one-sided tick scalping (organisers, 2026-10-05). No leverage, HFT, two-sided market-making or arbitrage | Luma, deck, organisers' statement |
 | Keys | Test key during prep; competition key only from the live start | Organizer email |
 | Scoring | Top 20 by return per region, then 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar; formulas published on Finale Day | Luma, deck |
 | Repo | Markdown-only README explaining strategy, backtests, engine, fees and risk. Target **Oct 10**, deadline Oct 14 | Organizer email, deck |
