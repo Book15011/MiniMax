@@ -213,6 +213,42 @@ live:
     enabled: true               # ON from 2026-10-03 (Pol): +0.040 [+0.017, +0.063] on the score, on a plateau; false turns it off
     from_day: 10                # days after the round's first hour
     lock_return: 0.03           # once equity is this far above the round's starting equity: sell everything, hold cash to the end
+  sleeve:                       # EXPERIMENTAL tick-scalping sleeve (src/live/sleeve.py). OFF: it needs the team's go and the
+    enabled: false              # AGENTS.md 2.6 amendment. It runs as a thread of the hourly bot (one process per instance)
+    mode: paper                 # paper: no orders, fills simulated on the live quotes | live: trades; the model then keeps
+                                # only its share of the account (runner: sleeve_split)
+    capital_usd: 60000          # the sleeve's USD; the model keeps the rest of the account
+    lots_usd: {"BONK/USD": 41300, "STO/USD": 12500, "PEPE/USD": 6200}   # one lot per coin
+    stop_steps: 2               # stop: bid 2 price steps under the entry -> market sell
+    trail_steps: 2              # a resting buy trails to bid - 1 step once the bid is 2 steps above it
+    pause_after_stops: 3        # 3 stops within pause_s -> no trading on that coin for pause_s
+    pause_s: 3600
+    loop_s: 6                   # quote poll; 30 s inside runner_window
+    calls_per_minute: 12        # research-server paper runs only; inside the bot the process shares execution.calls_per_minute
+    runner_window: [0, 5]       # minutes of every hour left to the hourly bot (it starts at :00:45, trades by ~:03:30): no new sleeve orders, stops still run
+    daily_loss_limit: 0.03      # sleeve value 3% under the HKT day's start -> no new buys until the next day
+    total_loss_limit: 0.08      # 8% under its capital -> flatten and stop
+    error_kill_minutes: 60      # API errors back off (30 s doubling to 5 min); only this long a continuous failure stops it
+    min_check_s: 6              # an order is checked at most this often per pair (every tick; plus a 60 s sweep). Replay:
+                                # +15.6% vs +12.1% at 12 s over 46 h; the bot's limiter caps the process at 20 calls/min
+    reconcile_s: 300            # live: the wallet's coins of the sleeve's pairs against its books
+    breaker_trips: 30           # edge breaker: when the last 30 trips lost money in total with a win rate under
+    breaker_win: 0.60           # 60% (normal trading never went under 67% over 30 trips; a broken fill rule gives 40-55%),
+    breaker_pause_s: 7200       # the coin pauses 2 h (a false alarm costs little)
+    min_step_frac: 0.0015       # no new buys while one price step is under 0.15% of the price (a win must beat the fees)
+    probe:                      # live only: before full size, trade probe.pair alone with a small lot. A buy that fills with
+      enabled: true             # the bid never under its price passes; one still open after the bid sat at its price for
+      pair: STO/USD             # wait_s fails. More than max_failed fails in the first `buys` counted -> flatten and stop for
+      lot_usd: 5000             # good (the edge rests on those buys filling: Roostoo's measured rule, no queue)
+      buys: 5
+      max_failed: 2
+      wait_s: 20
+    flatten_before_end_s: 600   # flatten 10 minutes before live.end_at
+    respect_lock: false         # true: the end-of-round lock-in also stops the sleeve (its steady gains count toward the
+                                # top-20 return gate and its risk ratios, so it keeps going by default)
+    state_file: sleeve.json     # in live.state_dir; the hourly bot reads cash_free from it (paper: sleeve-paper.json)
+    paper_sell_rule: mid        # paper fills: buy when bid <= P, sell when mid >= S (Roostoo's measured rule)
+    recorder_glob: results/book/scalp/quotes/2026*.csv   # research server: paper quotes without extra API calls
   order_spacing_s: 3            # pause between orders. Organizers: no cap on trades per minute, only 30 API calls/min (we use <= 20)
   paper_equity: 100000
   binance_rest: https://api.binance.com/api/v3/klines   # blocked on the research server; then the archive

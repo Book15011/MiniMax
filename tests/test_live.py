@@ -191,6 +191,7 @@ def make_runner(tmp_path, model: str, store: feed.Store, mode="paper", start_at=
     store.save(tmp_path)
     cfg = copy.deepcopy(CFG)
     cfg["live"].update(state_dir=str(tmp_path), start_at=start_at)
+    cfg["live"]["sleeve"] = {**cfg["live"].get("sleeve", {}), "enabled": False}   # the hourly model alone, whatever the config
     client = FakeClient({"BTC/USD": 100.0, "ETH/USD": 10.0})
     st = tmp_path / "state.json"
     h = Holdings(100_000.0)

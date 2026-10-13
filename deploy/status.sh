@@ -44,6 +44,15 @@ trades = [e for e in ev if e["event"] in ("rebalance", "guard", "keep_alive", "e
 if trades:
     t = trades[-1]
     print(f"trade     {t['bar'][:16]} UTC {t['event']}: " + ", ".join(sorted({f['status'] for f in t['fills']})))
+for name in ("sleeve.json", "sleeve-paper.json"):              # the tick-scalping sleeve, if it has run (live.sleeve)
+    p = d / name
+    if p.exists():
+        sl = json.loads(p.read_text())
+        age = (now.timestamp() - float(sl["ts"])) / 60
+        trips = sum(c["trips"] for c in sl["coins"].values())
+        wins = sum(c["wins"] for c in sl["coins"].values())
+        print(f"sleeve    {sl['mode']}: value ${sl['value']:,.2f} of ${sl['capital']:,.2f} ({sl['value'] / sl['capital'] - 1:+.2%}), "
+              f"trips {trips} ({wins} won), state {age:.0f} min old" + (f"; STOPPED: {sl['stopped']}" if sl.get("stopped") else ""))
 err = [e for e in ev if e["event"] == "error" and now - datetime.fromisoformat(e["ts"]) < timedelta(hours=24)]
 print(f"errors    {len(err)} in the last 24 h" + (f"; latest: {err[-1]['error'][:160]}" if err else ""))
 EOF

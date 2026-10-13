@@ -91,6 +91,29 @@ Code: `src/models/pol/pol_switch_vt_tl_e20v45.py` (the switch), `src/models/bait
 The replays send every order through the live code, with Roostoo's real pair rules, spreads and fees: 0 errors,
 0 rejected orders, a trade on every day.
 
+## Execution sleeve (EXPERIMENTAL, off unless enabled)
+
+`src/live/sleeve.py` can run a small tick-scalping sleeve beside the main strategy, as a thread of the same bot
+(`live.sleeve` in `config.yaml`). It is off in this configuration.
+
+**What it does.** On the three Roostoo pairs where one price step is more than two maker fees (BONK, STO and PEPE,
+about 0.25% a step), it:
+- posts a limit buy at the best bid;
+- sells one step higher;
+- after a win, buys back one step lower;
+- stops out at −2 steps.
+
+**Risk limits:**
+- one lot per coin;
+- a daily loss limit and a total loss limit;
+- an edge breaker;
+- it shares the bot's API ceiling.
+
+**Our own assessment.** It earns the one-step spread that Roostoo's simulator offers because resting orders fill with
+no queue. The organisers ruled that this is allowed, but that it is not a strategy that would hold up on a real order
+book. So it is **not** our strategy. The strategy we present is `pol_switch_vt_tl_e20v45` above. If the sleeve ever
+runs, its trades are logged separately (`data/live/logs/sleeve/`) so the two can be judged apart.
+
 ## Known limitations and assumptions
 
 - **Late at turning points.** The switch follows a 20-day average with a 3% band, so it changes state days
