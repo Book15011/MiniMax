@@ -275,7 +275,7 @@ def test_runner_split_keeps_the_sleeves_cash_and_coins_out_of_the_model():
     assert m.usd_free == -15_000.0 and "BONK/USD" not in m.spot and m.spot["BTC/USD"] == 1.0
 
 
-def test_runner_sizes_the_model_on_its_share_and_redecides_when_the_sleeve_changes(tmp_path):
+def test_runner_sizes_the_model_on_its_share_and_resizes_when_the_sleeve_changes(tmp_path):
     start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
     r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120))
     r.lv["sleeve"] = {**r.lv["sleeve"], "enabled": True, "mode": "live", "capital_usd": 30_000.0, "lots_usd": {PAIR: 30_000.0}}
@@ -283,10 +283,31 @@ def test_runner_sizes_the_model_on_its_share_and_redecides_when_the_sleeve_chang
     r.process(start)
     btc = r.broker.h.spot["BTC/USD"] * 100.0
     assert 68_000 < btc < 70_001 and r.broker.h.usd_free > 29_900      # the model invested its 70k, not the sleeve's 30k
-    r.lv["sleeve"]["enabled"] = False                                     # the sleeve is switched off: decide again now
-    r.process(start + pd.Timedelta(hours=1))
-    assert r.state["last_decision"] == str(start + pd.Timedelta(hours=1))
+    r.lv["sleeve"]["enabled"] = False                                     # the sleeve is switched off at 17:00: no new
+    r.process(start + pd.Timedelta(hours=1))                              # decision, the 16:00 weights on the whole account
+    assert r.state["last_decision"] == str(start)
     assert r.broker.h.spot["BTC/USD"] * 100.0 > 97_000
+
+
+def test_a_sleeve_change_off_schedule_never_calls_the_model(tmp_path):
+    # e20v45 reads BTC's trend on 6-hour points counted from the hour it is called: off its 16:00 schedule it can flip
+    # (Oct 10, 18:00 UTC). A change of the sleeve's capital must resize the last decision, not call the model again.
+    start = pd.Timestamp("2026-10-03 16:00", tz="UTC")
+    r = make_runner(tmp_path, "team_btc_hold", flat_store(start, 120))
+    calls = []
+    inner = r.model.targets
+    r.model = type("Spy", (), {"spec": r.model.spec, "targets": lambda self, v: (calls.append(v.t), inner(v))[1]})()
+    r.process(start)                                                      # 16:00: the normal decision, no sleeve
+    assert calls == [start] and r.broker.h.spot["BTC/USD"] * 100.0 > 97_000
+    r.lv["sleeve"] = {**r.lv["sleeve"], "enabled": True, "mode": "live", "capital_usd": 30_000.0, "lots_usd": {PAIR: 30_000.0}}
+    (tmp_path / "sleeve.json").write_text(json.dumps({"cash_free": 30_000.0}))
+    r.process(start + pd.Timedelta(hours=2))                              # the sleeve starts at 18:00
+    assert calls == [start] and r.state["last_decision"] == str(start)  # not called off schedule
+    assert 68_000 < r.broker.h.spot["BTC/USD"] * 100.0 < 70_001 and r.broker.h.usd_free > 29_900   # resized: cash freed
+    logs = [json.loads(x) for f in (tmp_path / "logs").glob("2*.jsonl") for x in f.read_text().splitlines()]
+    assert any(e["event"] == "sleeve_resize" for e in logs) and not any(e["event"] == "decision" and e["bar"].startswith("2026-10-03 18") for e in logs)
+    r.process(start + pd.Timedelta(hours=24))                             # the next 16:00: a normal decision again
+    assert calls == [start, start + pd.Timedelta(hours=24)]
 
 
 def test_a_sleeve_stopped_for_good_and_flat_gives_its_cash_back(tmp_path):

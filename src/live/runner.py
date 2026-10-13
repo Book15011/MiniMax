@@ -281,10 +281,11 @@ class Runner:
         eq_all = equity(h_all, quotes)                       # the whole account: the round's return and the lock-in
         eq = equity(h, quotes)                               # the model's share: what its targets are sized on
         cap = self.sleeve_capital()
-        if float(self.state.get("sleeve_capital", 0.0)) != cap:     # the sleeve's share changed: decide again now on
-            self.state["sleeve_capital"] = cap                       # the model's new equity, trading every difference
-            self.state["last_decision"] = None
-            self.emit("sleeve", bar=H, capital=cap, model_equity=eq, account_equity=eq_all)
+        resize = False
+        if float(self.state.get("sleeve_capital", 0.0)) != cap:     # the sleeve's share changed: keep the model's last
+            self.state["sleeve_capital"] = cap                       # decision and resize it to the model's new equity
+            resize = True                                            # (below). Calling the model off its 16:00 schedule
+            self.emit("sleeve", bar=H, capital=cap, model_equity=eq, account_equity=eq_all)   # can flip e20v45's trend
         grid = self.h["grid_hour_utc"]
         if self.start_at is not None and H < self.start_at:  # before the round: record data, never trade
             self.emit("snapshot", bar=H, equity=eq_all, waiting_until=self.start_at)
@@ -320,7 +321,11 @@ class Runner:
                                         if s in self.pairs and self.pairs[s] not in sleeve_pairs})
             self.emit("decision", bar=H, universe=uni, universe_as_of=g, equity=eq, first=first,
                       targets=self.state["standing"])
-            self.trade("rebalance", H, self.state["standing"], h, quotes, self.model.spec.band, exact=first)
+            self.trade("rebalance", H, self.state["standing"], h, quotes, self.model.spec.band, exact=first or resize)
+        elif resize:                                               # off-schedule: the last decision's weights on the new
+            sleeve_pairs = self.sleeve_reserve()[0]                  # equity, trading every difference
+            self.state["standing"] = {k: x for k, x in self.state["standing"].items() if k not in sleeve_pairs}
+            self.trade("sleeve_resize", H, self.state["standing"], h, quotes, 0.0, exact=True)
         start = day_start(H, grid)
         into_day = int((H - start) / HOUR)
         no_trade = str(start) not in self.state["active_days"]                   # none yet in this HKT day

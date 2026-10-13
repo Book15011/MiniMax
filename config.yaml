@@ -213,9 +213,9 @@ live:
     enabled: true               # ON from 2026-10-03 (Pol): +0.040 [+0.017, +0.063] on the score, on a plateau; false turns it off
     from_day: 10                # days after the round's first hour
     lock_return: 0.03           # once equity is this far above the round's starting equity: sell everything, hold cash to the end
-  sleeve:                       # EXPERIMENTAL tick-scalping sleeve (src/live/sleeve.py). OFF: it needs the team's go and the
-    enabled: false              # AGENTS.md 2.6 amendment. It runs as a thread of the hourly bot (one process per instance)
-    mode: paper                 # paper: no orders, fills simulated on the live quotes | live: trades; the model then keeps
+  sleeve:                       # EXPERIMENTAL tick-scalping sleeve (src/live/sleeve.py). LIVE from 2026-10-13 (team decision;
+    enabled: true               # AGENTS.md 2.6 amendment merged here). It runs as a thread of the hourly bot (one process per instance)
+    mode: live                  # paper: no orders, fills simulated on the live quotes | live: trades; the model then keeps
                                 # only its share of the account (runner: sleeve_split)
     capital_usd: 60000          # the sleeve's USD; the model keeps the rest of the account
     lots_usd: {"BONK/USD": 41300, "STO/USD": 12500, "PEPE/USD": 6200}   # one lot per coin
