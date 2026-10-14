@@ -217,8 +217,8 @@ live:
     enabled: true               # AGENTS.md 2.6 amendment merged here). It runs as a thread of the hourly bot (one process per instance)
     mode: live                  # paper: no orders, fills simulated on the live quotes | live: trades; the model then keeps
                                 # only its share of the account (runner: sleeve_split)
-    capital_usd: 60000          # the sleeve's USD; the model keeps the rest of the account
-    lots_usd: {"BONK/USD": 41300, "STO/USD": 12500, "PEPE/USD": 6200}   # one lot per coin
+    capital_usd: 5000           # the sleeve's USD; the model keeps the rest of the account
+    lots_usd: {"STO/USD": 5000}   # one lot per coin
     stop_steps: 2               # stop: bid 2 price steps under the entry -> market sell
     trail_steps: 2              # a resting buy trails to bid - 1 step once the bid is 2 steps above it
     pause_after_stops: 3        # 3 stops within pause_s -> no trading on that coin for pause_s
