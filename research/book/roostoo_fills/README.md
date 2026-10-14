@@ -55,3 +55,4 @@ after the bid ticked down, or only after it ticked up. Oct 8-13, live lots.
 Why: the whole profit of a tick scalp is one tick, the spread. A market buy pays that tick at entry (it fills at the
 ask) plus a 0.1% fee, so a win needs the price to rise two more ticks before it falls. At the tick level that is
 close to a coin flip, and no timing filter changed it.
+
