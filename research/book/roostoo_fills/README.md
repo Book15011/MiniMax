@@ -38,3 +38,20 @@ No version has an edge: the buy fills mostly when the price is already falling, 
 - The backtest above and the sweep below ran on a research branch, on our recorded quotes.
 
 Still running when this was written: the experiment's buy-one-step-below and buy-at-the-bid-for-8-minutes steps.
+
+## Market buys instead of limit buys (all 36 variants lose)
+
+A market buy at the shown ask, then a resting sell at entry + 1/2/3 steps (fills when the bid
+reaches it); stop 2/4/8 steps or none (a coin still held at the end is valued at the last bid); buy any time, only
+after the bid ticked down, or only after it ticked up. Oct 8-13, live lots.
+
+| Version | Win | Per day |
+|---|---|---|
+| Best: buy after a down-tick, sell at +3, no stop | 73% | -1.3% |
+| Buy any time, sell at +1, no stop | 83% | -1.4% |
+| Buy after a down-tick, sell at +2, stop 8 | 72% | -5.1% |
+| The plain loop with a market buy (sell at +1, stop 2) | 30% | -29% |
+
+Why: the whole profit of a tick scalp is one tick, the spread. A market buy pays that tick at entry (it fills at the
+ask) plus a 0.1% fee, so a win needs the price to rise two more ticks before it falls. At the tick level that is
+close to a coin flip, and no timing filter changed it.
