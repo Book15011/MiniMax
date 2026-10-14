@@ -403,3 +403,48 @@ def test_probe_fails_and_stops_for_good_when_buys_at_the_bid_do_not_fill(tmp_pat
 def test_no_probe_in_paper_mode(tmp_path):
     sl, s, ex = make_sleeve(tmp_path, [100.0] * 3, **probe_cfg())
     assert sl.probe["status"] == "off"
+
+
+# ---------------- Oct 13: the first live probe buy was cancelled unfilled, but its order detail reported a full fill
+
+class PhantomCancel(PaperExchange):
+    """The cancel goes through (nothing filled, the lock comes back), but the order detail reports the whole quantity."""
+
+    def cancel(self, pair, order_id):
+        o = self.open.get(order_id)
+        ok = super().cancel(pair, order_id)
+        if ok and o:
+            self.done[order_id] = Fill("CANCELED", o["price"], o["qty"], o["qty"] * (1 - 0.0005), -o["qty"] * o["price"],
+                                       order_id, "MAKER", o["side"])
+        return ok
+
+
+def test_a_cancelled_buy_reported_as_filled_books_only_what_the_wallet_received(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [102.0, 102.0, 102.0, 104.0, 104.0], ex_cls=PhantomCancel, min_check_s=0)
+    sl.coins[PAIR].next_px = 101.0                                       # rests below the bid of 102: never fills
+    run(sl, s, 4)                                                        # the bid moves to 104: trail, cancel
+    c = sl.coins[PAIR]
+    ev = events(tmp_path)
+    assert any(e["event"] == "fill_unconfirmed" for e in ev)
+    assert c.qty == 0.0 and abs(sl.value(s.quotes([PAIR])) - 1000.0) < 1e-6 and not sl.stopped   # no phantom loss
+
+
+def test_coins_the_books_paid_for_but_the_wallet_lacks_are_refunded(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 3, min_check_s=0)
+    c = sl.coins[PAIR]
+    c.phase, c.qty, c.entry, c.cost = "HOLDING", 9.995, 100.0, 1000.0    # books: a lot bought; wallet: nothing
+    sl.cash -= 1000.0
+    sl._reconcile_pair(c, "test")
+    assert c.qty == 0.0 and c.phase == "BUYING" and abs(sl.cash - 1000.0) < 1e-9
+    assert any(e["event"] == "reconcile_refund" and abs(e["usd"] - 1000.0) < 1e-9 for e in events(tmp_path))
+
+
+def test_a_new_run_id_starts_fresh_and_keeps_the_old_state(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 3, mode="live", run_id="a")
+    sl.stopped, sl.cash = "total_loss", 900.0
+    sl.save(s.quotes([PAIR]))
+    again, *_ = make_sleeve(tmp_path, [100.0] * 3, mode="live", run_id="a")
+    assert again.stopped == "total_loss"                                 # same run: the stop holds
+    fresh, *_ = make_sleeve(tmp_path, [100.0] * 3, mode="live", run_id="b", lot=2000.0)
+    assert fresh.stopped is None and fresh.cash == 2000.0 and fresh.capital == 2000.0
+    assert (tmp_path / "sleeve-before-b.json").exists() and fresh._changes["fresh_run"] == "b"

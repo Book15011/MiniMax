@@ -50,6 +50,7 @@ Safety and robustness:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import glob as globmod
 import json
 import logging
@@ -400,6 +401,12 @@ class Sleeve:
         self.start_at = pd.Timestamp(lv["start_at"]).tz_localize("UTC").timestamp() if lv.get("start_at") and mode == "live" else None
         self.end_at = pd.Timestamp(lv["end_at"]).tz_localize("UTC").timestamp() if lv.get("end_at") else None
         st = json.loads(self.state_path.read_text()) if self.state_path.exists() else None
+        self.run_id = str(sc.get("run_id") or "")
+        self._archived = None
+        if st and self.run_id and str(st.get("run_id") or "") != self.run_id:   # a committed new run: start fresh, keep the
+            old = self.state_path.with_name(f"{self.state_path.stem}-before-{self.run_id}.json")   # old state beside it
+            self.state_path.replace(old)
+            self._archived, st = old.name, None
         if st and st.get("mode") != mode:
             raise SystemExit(f"{self.state_path} is for {st.get('mode')} mode; move it away to start {mode} fresh")
         lots = {k: float(v) for k, v in sc["lots_usd"].items()}
@@ -422,7 +429,7 @@ class Sleeve:
                 self.coins[p] = Coin(p, lot)
         for p in [p for p in self.coins if p not in lots]:
             self.coins[p].lot_usd = 0.0                         # dropped from the config: no new buys; exits still run
-        self._changes = {}
+        self._changes = {"fresh_run": self.run_id, "archived": self._archived} if self._archived else {}
         if st and abs(cap - self.capital) > 1e-6:
             delta = cap - self.capital
             self.cash += delta
@@ -524,7 +531,7 @@ class Sleeve:
         return all(c.order_id is None and c.qty * (c.entry or c.order_px or 1.0) < 1.0 for c in self.coins.values())
 
     def save(self, quotes: dict | None = None) -> None:
-        st = {"mode": self.mode, "ts": self.clock(), "capital": self.capital, "cash": self.cash, "cash_free": self.cash_free(),
+        st = {"mode": self.mode, "run_id": self.run_id, "ts": self.clock(), "capital": self.capital, "cash": self.cash, "cash_free": self.cash_free(),
               "value": self.value(quotes or {}), "day": self.day, "day_start_value": self.day_start_value,
               "stopped": self.stopped, "flat": self.flat(), "pairs": sorted(self.coins), "probe": self.probe,
               "coins": {k: asdict(v) for k, v in self.coins.items()}}
@@ -583,11 +590,26 @@ class Sleeve:
             after_win(c, sell_px, step)
         c.order_qty = 0.0
 
+    def _confirmed(self, c: Coin, f: Fill) -> Fill:
+        """A buy's reported fill, cut to what the wallet received. Roostoo's order detail is not enough: on Oct 13 a
+        cancelled probe buy reported its whole quantity filled while the wallet held none of the coin, and the
+        phantom $5k stopped the sleeve on its loss limit."""
+        if f.qty <= 0:
+            return f
+        want = f.coin_change if f.coin_change > 0 else f.qty * (1 - MAKER)
+        got = max(0.0, self.ex.balances().get(c.pair.split("/")[0], 0.0) - c.qty)
+        if want <= 0 or got >= want * 0.999:
+            return f
+        k = got / want
+        self.emit("fill_unconfirmed", pair=c.pair, id=f.order_id, status=f.status, reported=f.qty, wallet_new=got)
+        return dataclasses.replace(f, qty=f.qty * k, coin_change=f.coin_change * k, usd_change=f.usd_change * k)
+
     def _apply(self, c: Coin, f: Fill, t: float, bid: float | None = None) -> None:
         """Book a final order state: FILLED or CANCELED (with whatever filled before the cancel)."""
         if f.status not in ("FILLED", "CANCELED"):
             return
         if c.phase == "BUYING":
+            f = self._confirmed(c, f)
             if f.qty > 0:
                 self._bought(c, f, t)
             else:
@@ -639,6 +661,11 @@ class Sleeve:
                 c.entry, c.cost = ref, held * ref
                 self.cash -= c.cost
                 c.phase = "HOLDING"
+            elif held < c.qty and c.qty > 0:                      # coins the books paid for are not there (a buy booked
+                back = c.cost * (c.qty - held) / c.qty if c.cost else 0.0   # from a wrong report): their cost comes back
+                self.cash += back
+                c.cost -= back
+                self.emit("reconcile_refund", pair=c.pair, usd=back)
             c.qty = held
             if c.qty * ref < 1.0 and c.phase == "HOLDING" and c.order_id is None:
                 c.phase, c.entry, c.cost = "BUYING", None, 0.0
