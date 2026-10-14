@@ -217,6 +217,8 @@ live:
     enabled: true               # AGENTS.md 2.6 amendment merged here). It runs as a thread of the hourly bot (one process per instance)
     mode: live                  # paper: no orders, fills simulated on the live quotes | live: trades; the model then keeps
                                 # only its share of the account (runner: sleeve_split)
+    run_id: 2026-10-14-retest   # a new value starts the sleeve fresh (the old state is kept as sleeve-before-<run_id>.json):
+                                # Oct 13's run stopped on a phantom fill (a cancelled buy reported as filled), fixed here
     capital_usd: 5000           # the sleeve's USD; the model keeps the rest of the account
     lots_usd: {"STO/USD": 5000}   # one lot per coin
     stop_steps: 2               # stop: bid 2 price steps under the entry -> market sell

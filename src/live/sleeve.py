@@ -400,6 +400,12 @@ class Sleeve:
         self.start_at = pd.Timestamp(lv["start_at"]).tz_localize("UTC").timestamp() if lv.get("start_at") and mode == "live" else None
         self.end_at = pd.Timestamp(lv["end_at"]).tz_localize("UTC").timestamp() if lv.get("end_at") else None
         st = json.loads(self.state_path.read_text()) if self.state_path.exists() else None
+        self.run_id = str(sc.get("run_id") or "")
+        self._archived = None
+        if st and self.run_id and str(st.get("run_id") or "") != self.run_id:   # a committed new run: start fresh, keep the
+            old = self.state_path.with_name(f"{self.state_path.stem}-before-{self.run_id}.json")   # old state beside it
+            self.state_path.replace(old)
+            self._archived, st = old.name, None
         if st and st.get("mode") != mode:
             raise SystemExit(f"{self.state_path} is for {st.get('mode')} mode; move it away to start {mode} fresh")
         lots = {k: float(v) for k, v in sc["lots_usd"].items()}
@@ -422,7 +428,7 @@ class Sleeve:
                 self.coins[p] = Coin(p, lot)
         for p in [p for p in self.coins if p not in lots]:
             self.coins[p].lot_usd = 0.0                         # dropped from the config: no new buys; exits still run
-        self._changes = {}
+        self._changes = {"fresh_run": self.run_id, "archived": self._archived} if self._archived else {}
         if st and abs(cap - self.capital) > 1e-6:
             delta = cap - self.capital
             self.cash += delta
@@ -524,7 +530,7 @@ class Sleeve:
         return all(c.order_id is None and c.qty * (c.entry or c.order_px or 1.0) < 1.0 for c in self.coins.values())
 
     def save(self, quotes: dict | None = None) -> None:
-        st = {"mode": self.mode, "ts": self.clock(), "capital": self.capital, "cash": self.cash, "cash_free": self.cash_free(),
+        st = {"mode": self.mode, "run_id": self.run_id, "ts": self.clock(), "capital": self.capital, "cash": self.cash, "cash_free": self.cash_free(),
               "value": self.value(quotes or {}), "day": self.day, "day_start_value": self.day_start_value,
               "stopped": self.stopped, "flat": self.flat(), "pairs": sorted(self.coins), "probe": self.probe,
               "coins": {k: asdict(v) for k, v in self.coins.items()}}

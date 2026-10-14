@@ -436,3 +436,14 @@ def test_reconcile_gives_back_the_cost_of_coins_the_wallet_does_not_hold(tmp_pat
     sl._reconcile_pair(c, "test")                                       # the paper wallet holds no BONK
     assert abs(sl.cash - 1000.0) < 1e-9 and c.qty == 0.0 and c.phase == "BUYING" and c.cost == 0.0
     assert abs(sl.value(s.quotes([PAIR])) - 1000.0) < 1e-9 and not sl.stopped
+
+
+def test_a_new_run_id_starts_fresh_and_keeps_the_old_state(tmp_path):   # from Pol's 4518fe0
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 3, mode="live", run_id="a")
+    sl.stopped, sl.cash = "total_loss", 900.0
+    sl.save(s.quotes([PAIR]))
+    again, *_ = make_sleeve(tmp_path, [100.0] * 3, mode="live", run_id="a")
+    assert again.stopped == "total_loss"                                 # same run: the stop holds
+    fresh, *_ = make_sleeve(tmp_path, [100.0] * 3, mode="live", run_id="b", lot=2000.0)
+    assert fresh.stopped is None and fresh.cash == 2000.0 and fresh.capital == 2000.0
+    assert (tmp_path / "sleeve-before-b.json").exists() and fresh._changes["fresh_run"] == "b"
