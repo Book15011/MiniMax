@@ -55,7 +55,7 @@ import json
 import logging
 import subprocess
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -588,6 +588,8 @@ class Sleeve:
         if f.status not in ("FILLED", "CANCELED"):
             return
         if c.phase == "BUYING":
+            if f.qty > 0 and f.status == "CANCELED":
+                f = self._wallet_checked(c, f)
             if f.qty > 0:
                 self._bought(c, f, t)
             else:
@@ -598,6 +600,22 @@ class Sleeve:
                 self._sold(c, f, "target", t, bid)
             else:
                 c.order_id, c.order_px, c.order_qty = None, None, 0.0
+
+    def _wallet_checked(self, c: Coin, f: Fill) -> Fill:
+        """A cancelled buy that reports coins filled is booked only as far as the wallet holds them beyond the books.
+        On 2026-10-13 Roostoo reported a cancelled, never-filled probe buy with its whole quantity filled: booking it
+        took $5k the sleeve never spent out of its cash and tripped the total-loss stop."""
+        reported = f.coin_change if f.coin_change > 0 else f.qty * (1 - MAKER)
+        held = self.ex.balances().get(c.pair.split("/")[0], 0.0)
+        got = max(0.0, min(reported, held - c.qty))
+        if got >= reported * (1 - 1e-6):
+            return f
+        self.emit("fill_not_in_wallet", pair=c.pair, id=f.order_id, reported=reported, wallet=held, books=c.qty,
+                  booked=got)
+        if got * (f.price or c.order_px or 0.0) < 1.0:
+            return replace(f, qty=0.0, coin_change=0.0, usd_change=0.0)
+        k = got / reported
+        return replace(f, qty=f.qty * k, coin_change=got, usd_change=f.usd_change * k)
 
     def _cancel(self, c: Coin, t: float) -> None:
         """Cancel the resting order and book its final state (a fill, a partial fill, or nothing)."""
@@ -639,6 +657,11 @@ class Sleeve:
                 c.entry, c.cost = ref, held * ref
                 self.cash -= c.cost
                 c.phase = "HOLDING"
+            elif held < c.qty and c.qty > 0:                      # the books hold coins the wallet does not (a fill
+                back = c.cost * (c.qty - held) / c.qty           # that never happened, or an exit the books missed):
+                self.cash += back                                 # their cost goes back to the cash, so a bookkeeping
+                c.cost -= back                                    # gap is never counted as a loss
+                self.emit("reconcile_cash", pair=c.pair, refunded=round(back, 6))
             c.qty = held
             if c.qty * ref < 1.0 and c.phase == "HOLDING" and c.order_id is None:
                 c.phase, c.entry, c.cost = "BUYING", None, 0.0

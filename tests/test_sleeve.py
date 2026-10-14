@@ -403,3 +403,36 @@ def test_probe_fails_and_stops_for_good_when_buys_at_the_bid_do_not_fill(tmp_pat
 def test_no_probe_in_paper_mode(tmp_path):
     sl, s, ex = make_sleeve(tmp_path, [100.0] * 3, **probe_cfg())
     assert sl.probe["status"] == "off"
+
+
+# ---------------- bookkeeping fixes after the first live run (2026-10-13)
+
+class PhantomCancel(Queued):
+    """Roostoo on 2026-10-13: a resting buy that never filled came back CANCELED with its whole quantity filled."""
+
+    def cancel(self, pair, order_id):
+        o = self.open.get(order_id)
+        ok = super().cancel(pair, order_id)
+        if ok and o and o["side"] == "BUY":
+            self.done[order_id] = Fill("CANCELED", o["price"], o["qty"], o["qty"], -o["qty"] * o["price"], order_id,
+                                       "MAKER", "BUY")
+        return ok
+
+
+def test_a_cancelled_buy_reported_filled_but_not_in_the_wallet_is_not_booked(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 40, ex_cls=PhantomCancel, mode="live", min_check_s=0, **probe_cfg())
+    run(sl, s, 40)
+    ev = events(tmp_path)
+    assert any(e["event"] == "fill_not_in_wallet" for e in ev) and not any(e["event"] == "fill" for e in ev)
+    assert sl.probe["status"] == "failed" and sl.stopped == "fill_rule"     # the probe decides, not a phantom loss
+    assert sl.coins[PAIR].qty == 0.0 and abs(sl.value(s.quotes([PAIR])) - 1000.0) < 1e-6
+
+
+def test_reconcile_gives_back_the_cost_of_coins_the_wallet_does_not_hold(tmp_path):
+    sl, s, ex = make_sleeve(tmp_path, [100.0] * 3, mode="live")
+    c = sl.coins[PAIR]
+    c.phase, c.qty, c.entry, c.cost = "HOLDING", 10.0, 100.0, 1000.0
+    sl.cash = 0.0
+    sl._reconcile_pair(c, "test")                                       # the paper wallet holds no BONK
+    assert abs(sl.cash - 1000.0) < 1e-9 and c.qty == 0.0 and c.phase == "BUYING" and c.cost == 0.0
+    assert abs(sl.value(s.quotes([PAIR])) - 1000.0) < 1e-9 and not sl.stopped
