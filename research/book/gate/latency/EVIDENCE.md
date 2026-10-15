@@ -45,3 +45,5 @@ New PEPE maker research bfdd185 is a conditional comparator; its strict-through 
 No candidate is production eligible. The earlier target, BCH coverage failure and adaptive-scoring failure are unchanged. This finite latency test is complete; the broader recovery/top20 goal has not been achieved.
 
 Raw evidence and final manifest: /home/ubuntu/test/MiniMax/results/book/20261015-latency-gate-v1.
+
+

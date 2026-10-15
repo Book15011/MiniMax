@@ -25,3 +25,5 @@ collect and stream are bounded public-only recorders and refuse to overwrite exi
 The existing --score command does not update this separate board automatically. Run publish only after its required evidence passes. Do not reuse or extend a short test as though it were a fresh 72-hour holdout. Declare new hypotheses and parameters before new outcomes.
 
 The current live model, holdings, bot processes, old leaderboards and main branch were not changed.
+
+
