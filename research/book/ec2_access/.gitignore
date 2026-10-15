@@ -1,0 +1,8 @@
+session.json
+plugin_dl/
+venv/
+__pycache__/
+*.b64
+*.bundle
+run_*.sh
+read_*.sh

@@ -1,0 +1,3 @@
+hostname
+uptime
+date -u
