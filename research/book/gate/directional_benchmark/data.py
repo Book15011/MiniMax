@@ -1,7 +1,8 @@
 """Public, checksum-verified minute features and recorded quote inputs; no signed APIs."""
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-import io,zipfile,hashlib,json,time
+import io,zipfile,hashlib,json,time,ssl
+from research.book.gate.fast_exec.public_auth import PublicAuth
 import numpy as np,pandas as pd,requests,yaml
 HERE=Path(__file__).parent;PROJECT=Path("/home/ubuntu/test/MiniMax")
 OUT=PROJECT/"results/book/20261015-directional-benchmark-v1"
@@ -40,10 +41,10 @@ def fetch(item):
     url=f"https://data.binance.vision/data/spot/daily/klines/{coin}USDT/1m/{name}"
     try:
         if not checksum.exists():
-            r=requests.get(url+".CHECKSUM",timeout=(5,25));r.raise_for_status();checksum.write_bytes(r.content)
+            r=requests.get(url+".CHECKSUM",auth=PublicAuth(),verify=ssl.get_default_verify_paths().cafile,timeout=(5,25));r.raise_for_status();checksum.write_bytes(r.content)
         expected=checksum.read_text().split()[0]
         if not file.exists():
-            r=requests.get(url,timeout=(5,30));r.raise_for_status();part=file.with_suffix(".part");part.write_bytes(r.content)
+            r=requests.get(url,auth=PublicAuth(),verify=ssl.get_default_verify_paths().cafile,timeout=(5,30));r.raise_for_status();part=file.with_suffix(".part");part.write_bytes(r.content)
             assert sha(part)==expected;part.replace(file)
         assert sha(file)==expected
         return {"coin":coin,"day":day,"path":str(file),"sha256":expected,"status":"PASS"}
