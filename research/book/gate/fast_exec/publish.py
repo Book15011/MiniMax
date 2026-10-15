@@ -3,6 +3,10 @@ from pathlib import Path
 import json,hashlib
 from .driver import OUT,HERE
 def main():
+    native_results=Path("/home/ubuntu/test/MiniMax/results/book/20261015-fast-execution-native-v2/audit_summary.json")
+    if native_results.exists():
+        from .native.publish import main as native_publish
+        return native_publish()
     root=Path('/home/ubuntu/test/MiniMax');board=root/'results/scoring/leaderboard_fast_execution.md'
     if board.exists() and not board.read_text().startswith('# Book execution timing research'):raise ValueError('Existing board is not ours')
     keep={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in board.parent.glob('leaderboard*') if p.is_file() and p!=board}

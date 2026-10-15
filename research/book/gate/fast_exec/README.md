@@ -1,5 +1,7 @@
 # Book low-latency research
 
+Current standalone native results (15October2026): see [native/RESULTS.md](native/RESULTS.md) and [native/EC2_HANDOFF.md](native/EC2_HANDOFF.md). The C++ public service is now built; live gateway/EC2 fills and50-hour profitability remain unverified. The older supervisor results below are preserved history.
+
 Read CPP_EXECUTION_PLAN.md for the full C++ architecture and staged simulation/EC2/small-live plan. RESEARCH.md gives measured results and the audit of the supplied EC2 benchmark. Actual subsecond filled orders are not yet verified.
 
 Built: exact C++17 sizing, risk, rate/state and independent timing permission; a thin public-only supervisor; native persistent HTTP1/HTTP2 comparisons; event-triggered shadow prototype; timing/fault admission simulator. The standalone C++ feed/order service and live pilot are subsequent stages, not completed features.

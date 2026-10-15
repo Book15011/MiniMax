@@ -1,5 +1,7 @@
 # Book: full C++ latency service plan
 
+Latest implementation update: standalone C++ public feed/decision/permission/HTTP mock service now builds using installed libcurl/json-c/OpenSSL public ABIs. See native/RESULTS.md and native/ABI_SOURCES.md. Live gateway/shared account/restart integration and actual EC2 fills remain pending; the earlier prototype/dependency status below is historical.
+
 Goal: correct, simple execution with a measured feed-receipt-to-confirmed-FILLED time below1,000ms. Detect and reject stale opportunities before submission. Network completion cannot be guaranteed; no timeout or acknowledgment is called a fill.
 
 ## Architecture
