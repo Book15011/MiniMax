@@ -124,6 +124,22 @@ static void shadow(const Config& cfg,const fs::path& output,int seconds){
  add(summary.get(),"production_eligible",false);add(summary.get(),"status",std::string(audit.ok()&&books>0?"PUBLIC_SHADOW_COMPLETED_LIVE_GATE_CLOSED":"SHADOW_FAILED"));
  save(output/"summary.json",summary.get());std::cout<<dump(summary.get())<<'\n';
 }
+static void mock_order(const Config& config,const std::string& url){
+ if(!Http::loopback(url))throw std::invalid_argument("mock order is loopback only");
+ std::string line;if(!std::getline(std::cin,line))throw std::invalid_argument("mock order input");auto request=parse_json(line);
+ Protocol engine(config);add(request.get(),"cmd",std::string("prepare"));auto prepared=engine.process(request.get());
+ auto begun=engine.order.begin(request.get());
+ if(!b(begun.get(),"accepted")){std::cout<<dump(begun.get())<<'\n';return;}
+ I allowed=n(request.get(),"expiry_ms")-n(request.get(),"now_ms");Http http(true);auto reply=http.post_fixture(url,s(prepared.get(),"body"),allowed);
+ J result=object();
+ try{
+  if(reply.code||reply.status!=200)throw std::runtime_error("unconfirmed transport");
+  auto response=parse_json(reply.data);result=engine.order.ack(response.get());
+ }catch(const std::exception&){result=engine.order.timeout(request.get());}
+ add(result.get(),"curl_code",I(reply.code));add(result.get(),"http_status",I(reply.status));add(result.get(),"elapsed_ns",reply.end-reply.begin);
+ add(result.get(),"deadline_breached",reply.end-reply.begin>=allowed*1000000);add(result.get(),"actual_competition_fill",false);
+ std::cout<<dump(result.get())<<'\n';
+}
 int main(int argc,char** argv){
  if(curl_global_init(3))return 2;
  try{
@@ -132,6 +148,7 @@ int main(int argc,char** argv){
   if(mode=="protocol")protocol(config);
   else if(mode=="cpu"&&argc==5)cpu(config,argv[3],std::stoi(argv[4]));
   else if(mode=="shadow"&&argc==5)shadow(config,argv[3],std::stoi(argv[4]));
+  else if(mode=="order-fixture"&&argc==4)mock_order(config,argv[3]);
   else if(mode=="http-fixture"&&argc==4){
    if(!Http::loopback(argv[3]))throw std::invalid_argument("fixture is loopback only");Http h(true);auto x=h.get(argv[3],true);
    auto r=object();add(r.get(),"curl_code",I(x.code));add(r.get(),"http_status",I(x.status));add(r.get(),"elapsed_ns",x.end-x.begin);add(r.get(),"body",x.data);std::cout<<dump(r.get())<<'\n';

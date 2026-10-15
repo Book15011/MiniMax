@@ -45,6 +45,12 @@ class Http {
   r.code=curl_easy_perform(h);r.end=mono();r.status=info<long>(0x200002);r.data=body;
   if(overflow)r.code=23;return r;
  }
+ Reply post_fixture(const std::string& url,const std::string& form,I timeout_ms){
+  if(!loopback(url)||form.size()>4096||timeout_ms<=0||timeout_ms>1000)throw std::invalid_argument("mock order allowlist/deadline");
+  body.clear();overflow=false;set(10002,url.c_str());set(47,1L);set(10015,form.c_str());set(60,static_cast<long>(form.size()));set(155,static_cast<long>(timeout_ms));
+  Reply r;r.begin=mono();r.wall=unixms();r.code=curl_easy_perform(h);r.end=mono();r.status=info<long>(0x200002);r.data=body;
+  if(overflow)r.code=23;return r;
+ }
  void connect(const std::string& url){set(10002,url.c_str());set(141,1L);int c=curl_easy_perform(h);if(c)throw std::runtime_error("feed_connect_"+std::to_string(c));}
  bool wait(short events,I deadline){
   I left=(deadline-mono())/1000000;if(left<=0)return false;

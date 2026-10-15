@@ -13,6 +13,7 @@ Modes:
 - protocol CONFIG: line-delimited JSON simulation/replay. size, prepare (dummy HMAC), book, decision, quota, begin, timeout, ack. Nothing is sent to Roostoo.
 - cpu CONFIG NEW_OUT ITERATIONS: complete native preparation microbenchmark with explicit synthetic timing/account inputs; no fill/network inference.
 - shadow CONFIG NEW_OUT SECONDS: concurrent public WS plus paced GET snapshots, monotonic timing and bounded asynchronous JSONL audit; 60..1800seconds. The execution gate stays closed without verified actual order statistics.
+- order-fixture CONFIG http://127.0.0.1:PORT/fixture: one dummy order POST to a local simulator with an expiring 1..1000ms timeout, cumulative state validation and no resend; never a competition API.
 - http-fixture / ws-fixture CONFIG http://127.0.0.1:PORT/fixture: local transport tests only.
 
 One feed thread, one paced public-quote thread and one audit writer. The feed does not wait for health probes. Model update IDs, message sizes, burst episodes, deadlines, exact money and cumulative fills are validated. Unknown order outcomes block another begin; retries are absent. The simulated process limiter reserves3 calls for exits; account usage must be supplied by the eventual authoritative coordinator. It is NOT a cross-process/account coordinator.

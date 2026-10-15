@@ -46,17 +46,21 @@ struct OrderState {
 };
 struct Book {std::string symbol;I bid=0,ask=0,bidq=0,askq=0,id=0,received=0;};
 struct Detector {
- struct History {std::deque<std::pair<I,I>> values;I id=0,last=-1;bool active=false;};
+ struct History {std::deque<std::pair<I,I>> values;I id=0,last=-1;std::pair<I,I> reference{0,0};bool active=false;};
  std::unordered_map<std::string,History> history;
  bool update(const Book& x,const Config& cfg){
   auto& h=history[x.symbol];
   if(x.id<=h.id||x.received<h.last)return false;
   h.id=x.id;h.last=x.received;
   auto& v=h.values;
-  while(!v.empty()&&x.received-v.front().first>cfg.get("burst_max_reference_age_ms")*1000000)v.pop_front();
-  I reference=0;
-  for(const auto& a:v){if(x.received-a.first>=cfg.get("burst_horizon_ms")*1000000)reference=a.second;else break;}
-  if(v.size()>=100000){v.clear();h.active=false;return false;}v.push_back({x.received,x.bid});
+  // Retain the latest point at/before the horizon; each tick is visited once.
+  while(!v.empty()&&x.received-v.front().first>=cfg.get("burst_horizon_ms")*1000000){
+   h.reference=v.front();v.pop_front();
+  }
+  I reference=h.reference.second;
+  if(x.received-h.reference.first>cfg.get("burst_max_reference_age_ms")*1000000)reference=0;
+  if(v.size()>=100000){v.clear();h.reference={0,0};h.active=false;return false;}
+  v.push_back({x.received,x.bid});
   bool on=reference>0&&static_cast<__int128>(x.bid-reference)*10000>=static_cast<__int128>(reference)*cfg.get("burst_min_bps");
   bool signal=on&&!h.active;h.active=on;return signal;
  }
@@ -122,7 +126,7 @@ struct Protocol {
    auto r=object();add(r.get(),"accepted",ok);return r;
   }
   if(cmd=="book"){
-   auto r=object();try{I stamp=n(p,"now_ms");if(stamp<0||stamp>9223372036854LL)throw std::invalid_argument("timestamp");Book x=decode_book(field(p,"packet"),stamp*1000000,cfg);
+   auto r=object();try{json_object* precise=nullptr;I stamp=0;if(json_object_object_get_ex(p,"now_ns",&precise)){stamp=n(p,"now_ns");if(stamp<0)throw std::invalid_argument("timestamp");}else{stamp=n(p,"now_ms");if(stamp<0||stamp>9223372036854LL)throw std::invalid_argument("timestamp");stamp*=1000000;}Book x=decode_book(field(p,"packet"),stamp,cfg);
     if(x.id<=last[x.symbol]){add(r.get(),"valid",false);return r;}last[x.symbol]=x.id;
     bool signal=detector.update(x,cfg);add(r.get(),"valid",true);add(r.get(),"signal",signal);add(r.get(),"symbol",x.symbol);
    }catch(const std::invalid_argument&){add(r.get(),"valid",false);}return r;

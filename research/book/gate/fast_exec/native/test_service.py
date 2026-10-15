@@ -159,3 +159,49 @@ def test_account_counter_overflow_and_extreme_times_fail_closed():
     assert "error" in call([{"cmd":"quota","now_ms":0,"account_used":2147483647,"exit":True}])[0]
     row={"cmd":"book","now_ms":9223372036854775807,"packet":{"s":"AVNTUSDT","u":1,"b":"1","a":"1","B":"1","A":"1"}}
     assert not call([row])[0]["valid"]
+
+def test_optimized_detector_matches_independent_reference():
+    import random
+    from research.book.gate.fast_exec.signal import BurstDetector
+    rng=random.Random(17);reference=BurstDetector();now=0;rows=[];expected=[]
+    for i in range(5000):
+        now+=rng.choice([1,10,50,100,501,1001,4001]);price=100000000+rng.randrange(1000000)
+        symbol=["AVNTUSDT","CRVUSDT"][i%2]
+        rows.append({"cmd":"book","now_ns":now*1000000+17,"now_ms":now,"packet":{"s":symbol,"u":i+1,"b":f"{price/100000000:.8f}","a":f"{price/100000000:.8f}","B":"10","A":"10"}})
+        expected.append(reference.update(symbol,i+1,now*1000000+17,price) is not None)
+    result=call(rows)
+    assert [r["signal"] for r in result]==expected
+
+@pytest.mark.parametrize("status,filled,success,http,expected",[
+ ("FILLED","2",True,200,"FILLED"),("PENDING","0",True,200,"PENDING"),
+ ("PARTIAL","1",True,200,"PARTIAL"),("CANCELED","1",True,200,"CANCELED"),
+ ("REJECTED","0",True,200,"REJECTED"),("FILLED","1",True,200,"UNKNOWN"),
+ ("FILLED","2",False,200,"UNKNOWN"),("FILLED","2",True,500,"UNKNOWN")])
+def test_native_mock_order_transport(status,filled,success,http,expected):
+    bodies=[]
+    def handler(c):
+        data=b""
+        while b"\r\n\r\n" not in data:data+=c.recv(1024)
+        headers,body=data.split(b"\r\n\r\n",1)
+        length=int([x.split(b":",1)[1] for x in headers.split(b"\r\n") if x.lower().startswith(b"content-length:")][0])
+        while len(body)<length:body+=c.recv(length-len(body))
+        bodies.append(body.decode());assert headers.startswith(b"POST /fixture")
+        response=json.dumps({"id":"a","status":status,"filled":filled,"success":success}).encode()
+        c.sendall(f"HTTP/1.1 {http} TEST\r\nContent-Length: {len(response)}\r\nConnection: close\r\n\r\n".encode()+response)
+    f=Fixture(handler)
+    row={"id":"a","pair":"AVNT/USD","quantity":"2.00000000","now_ms":100,"expiry_ms":900,"timestamp":"1792000000000"}
+    p=subprocess.run([str(BIN),"order-fixture",str(CFG),f"http://127.0.0.1:{f.port}/fixture"],input=json.dumps(row)+"\n",text=True,capture_output=True,timeout=5)
+    f.finish();assert p.returncode==0,p.stderr
+    r=json.loads(p.stdout)
+    assert r["state"]==expected and r["sends"]==1 and r["actual_competition_fill"] is False
+    assert bodies==["pair=AVNT/USD&quantity=2.00000000&side=BUY&timestamp=1792000000000&type=MARKET"]
+def test_native_mock_timeout_freezes_without_retry():
+    seen=[]
+    def handler(c):
+        seen.append(request(c));time.sleep(.35)
+    f=Fixture(handler)
+    row={"id":"a","pair":"AVNT/USD","quantity":"2","now_ms":100,"expiry_ms":300,"timestamp":"1792000000000"}
+    p=subprocess.run([str(BIN),"order-fixture",str(CFG),f"http://127.0.0.1:{f.port}/fixture"],input=json.dumps(row)+"\n",text=True,capture_output=True,timeout=5)
+    f.finish();assert p.returncode==0,p.stderr
+    r=json.loads(p.stdout);assert r["state"]=="UNKNOWN" and r["sends"]==1 and len(seen)==1
+    assert r["curl_code"]==28 and r["elapsed_ns"]>=180000000
