@@ -7,7 +7,7 @@ Use user-stated Oct18 12UTC endpoint as SCENARIO. Public Luma still saysOct4–1
 Oct15 16UTC first decision implies68h left;72h stays benchmark. Actual account funded transition is not reconstructed.
 
 ## Existing evidence and immutable comparison
-Old40 gate candidates'2022–24 discovery /2025–Sep2026 check and old36 market-buy variants are SPENT evidence.
+Old38 gate candidates'2022–24 discovery /2025–Sep2026 check and old36 market-buy variants are SPENT evidence.
 Prior14 recovery trials and all frozen future cohorts remain untouched; no failed model becomes eligible.
 Independent verification of this mission is a separate objective, not proof original gates passed.
 Read recent live-fill reports as committed evidence; no raw authenticated probe output found locally at inspection.
@@ -61,3 +61,8 @@ Inventory every requested track; untestable fields (depth,24h activity,queue,act
 Penalty20% exact wording not found in repo/public rules; request pending. Latency stays last and forbidden by present repo rules.
 Only conditional penalty arithmetic. Never disguise an external-price/stale-quote trade as directional.
 Commit code/reports; raw data stay untracked. No deployment recommendation without executable evidence and funded-state transition.
+
+## Final reporting addendum
+The original text said 40 legacy gate candidates; the source script and CSV contain 38. This was a documentation correction, with no trial setting or outcome change.
+The user subsequently confirmed the reported 20% latency penalty came from WhatsApp. Accept that penalty constraint; its formula remains UNVERIFIED. Do not request the wording again.
+Phase2 expanded the conditional family to 26 as recorded in SHORT_PHASE2.md. The phase1 candidate settings stayed fixed.
