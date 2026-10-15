@@ -1,0 +1,33 @@
+quote:
+  offset_seconds: 3.15
+  sample_seconds: 30
+  stale_samples: 1
+  lag_samples: 1
+  capital: 100000
+  exposure: 0.99
+  taker: 0.001
+  maker: 0.0005
+  maker_expiry_seconds: 120
+  maker_confirm_samples: 2
+  decision_seconds: 300
+  pause_seconds: 60
+  tick_hold_seconds: 3600
+  stop_ticks: 2
+  entry_hurdle: 0.002
+  min_order: 1
+  reserve_calls_per_minute: 4
+  total_calls_per_minute: 20
+  partial_fill_fraction: 0.5
+historical:
+  exposure: 0.99
+  start: '2022-01-01'
+  split: '2025-01-01'
+  end: '2026-09-30 23:00'
+  horizons: [68, 72]
+  bootstrap_draws: 10000
+  family: 23
+  seed: 20261015
+scenario:
+  current_round_return: -0.16
+  cutoffs: [0.0, 0.02]
+  end_at: '2026-10-18 12:00'
