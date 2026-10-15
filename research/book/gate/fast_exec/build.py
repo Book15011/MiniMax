@@ -4,7 +4,7 @@ import subprocess,json,hashlib,os,sys,shlex
 HERE=Path(__file__).parent
 OUT=Path(os.environ.get('MM_FAST_RESULTS','/home/ubuntu/test/MiniMax/results/book/20261015-fast-execution-v1'))
 def main():
-    d=OUT/'build';d.mkdir(exist_ok=True)
+    d=OUT/'build';d.mkdir(parents=True,exist_ok=True)
     cmd=['g++','-std=c++17','-O3','-Wall','-Wextra','-Werror','-fPIC','-shared',str(HERE/'core.cpp'),'-o',str(d/'core.so')]
     r=subprocess.run(cmd,capture_output=True,text=True)
     (OUT/'build.log').write_text(r.stdout+r.stderr)

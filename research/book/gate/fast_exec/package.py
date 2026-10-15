@@ -5,7 +5,7 @@ from .driver import HERE,OUT
 def main():
     commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
     dest=OUT/'portable';package=dest/'fast_exec';package.mkdir(parents=True,exist_ok=True)
-    names=['core.cpp','driver.py','build.py','native_http.py','benchmark.py','signal.py','shadow.py','ws.py','observe_ec2.py','public_auth.py','config.json',
+    names=['core.cpp','driver.py','build.py','native_http.py','benchmark.py','signal.py','shadow.py','ws.py','observe_ec2.py','public_auth.py','config.json','PILOT_SPEC.json',
            'test_native.py','test_http.py','test_signal.py','PLAN.md','CPP_EXECUTION_PLAN.md','RESEARCH.md','README.md']
     hashes={}
     for name in names:
