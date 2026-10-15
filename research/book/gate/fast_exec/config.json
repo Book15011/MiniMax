@@ -42,5 +42,8 @@
   "mode": "shadow_only",
   "burst_max_reference_age_ms": 3000,
   "reserved_order_ack_ms": 500,
-  "max_shadow_intent_records": 10000
+  "max_shadow_intent_records": 10000,
+  "health_min_samples": 30,
+  "health_safety_margin_ms": 50,
+  "health_local_budget_ms": 5
 }

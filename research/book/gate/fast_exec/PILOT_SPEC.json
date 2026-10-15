@@ -1,0 +1,14 @@
+{
+  "status": "PLANNED_NOT_EXECUTED",
+  "user_authorized_small_live_test": true,
+  "orders_enabled_in_current_prototype": false,
+  "entry_notional_usd": "10",
+  "max_concurrent_test_positions": 1,
+  "max_completed_round_trips": 3,
+  "new_entry_loss_stop_usd": "0.25",
+  "deadline_ms": 1000,
+  "real_filled_only_counts": true,
+  "automatic_order_retries": false,
+  "gateway": "Existing autonomous order owner; shared account budget; reconcile unknown state first",
+  "profitability_or_capacity_qualified": false
+}

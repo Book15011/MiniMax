@@ -2,7 +2,7 @@
 from collections import deque
 from .driver import CFG,plain,prepare
 class BurstDetector:
-    def __init__(self):self.history={};self.ids={}
+    def __init__(self):self.history={};self.ids={};self.active={}
     def update(self,symbol,update,now,bid):
         if update<=self.ids.get(symbol,0):return None
         self.ids[symbol]=update
@@ -13,7 +13,10 @@ class BurstDetector:
             if now-t>=CFG['burst_horizon_ms']*1_000_000:ref=(t,p)
             else:break
         q.append((now,bid))
-        if ref is None or (bid-ref[1])*10000<ref[1]*CFG['burst_min_bps']:return None
+        if ref is None or (bid-ref[1])*10000<ref[1]*CFG['burst_min_bps']:
+            self.active[symbol]=False;return None
+        if self.active.get(symbol,False):return None
+        self.active[symbol]=True
         return {'reference_mono_ns':ref[0],'reference_bid':ref[1],'burst_bps':(bid-ref[1])/ref[1]*10000}
 def fee_room(bid,ask):
     return bid>0 and ask>0 and (bid-ask)*10000>=ask*CFG['gap_min_bps'] and bid*(1000000-CFG['exit_fee_ppm'])>ask*(1000000+CFG['entry_fee_ppm']+CFG['extra_cost_ppm'])
@@ -22,7 +25,7 @@ def decision(core,symbol,start,now,b,q,clock_uncertainty,info,timestamp):
     if now<start or now-start>=(CFG['target_filled_ms']-CFG['reserved_order_ack_ms'])*1_000_000:
         return {**result,'reason':'preparation_deadline'}
     pair=symbol.removesuffix('USDT')+'/USD';meta=info.get(pair,{})
-    if meta.get('CanTrade') is not True or not isinstance(meta.get('AmountPrecision'),int) or not 0<=meta['AmountPrecision']<=8:
+    if meta.get('CanTrade') is not True or type(meta.get('AmountPrecision')) is not int or not 0<=meta['AmountPrecision']<=8:
         return {**result,'reason':'missing_or_unsupported_pair_metadata'}
     if not q.get('success'):return {**result,'reason':'quote_request_failed'}
     try:

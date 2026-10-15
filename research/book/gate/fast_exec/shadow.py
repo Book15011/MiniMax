@@ -6,7 +6,8 @@ import requests
 from .driver import CFG,OUT,Core,book
 from .native_http import NativeHTTP
 from .signal import BurstDetector,decision
-from research.book.gate.latency.stream import read_frame,client_frame
+from .ws import read_frame,client_frame
+from .public_auth import PublicAuth
 def main():
     paths=[OUT/'shadow_stream.jsonl',OUT/'shadow_requests.jsonl',OUT/'shadow_intents.jsonl']
     if any(p.exists() for p in paths):raise FileExistsError('Never overwrite a shadow run')
@@ -51,7 +52,7 @@ def main():
         names='/'.join(s.lower()+'usdt@bookTicker' for s in CFG['symbols'])
         url='https://data-stream.binance.vision:443/stream?streams='+names
         key=base64.b64encode(__import__('os').urandom(16)).decode()
-        r=requests.get(url,headers={'Connection':'Upgrade','Upgrade':'websocket','Sec-WebSocket-Key':key,'Sec-WebSocket-Version':'13'},stream=True,timeout=5)
+        r=requests.get(url,headers={'Connection':'Upgrade','Upgrade':'websocket','Sec-WebSocket-Key':key,'Sec-WebSocket-Version':'13'},stream=True,timeout=5,auth=PublicAuth())
         expected=base64.b64encode(hashlib.sha1((key+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
         if r.status_code!=101 or r.headers.get('Sec-WebSocket-Accept')!=expected:raise ValueError('Public stream handshake failed')
         reader=r.raw._fp.fp;sock=reader.raw._sock;fragment=None

@@ -37,3 +37,11 @@ Work only in Book's feature/latency-gate worktree. Results: /home/ubuntu/test/Mi
 Official APT downloads were interrupted after stalled acquisition; HTTPS Ubuntu package downloads and individual official raw header requests also timed out. Logs remain in the ignored results folder. No global package/runtime was modified.
 Build the exact sizing/risk/state core in dependency-free C++17. A thin Python supervisor supplies the installed C-backed JSON/TLS/HMAC facilities, and an isolated libcurl C-ABI binding measures native HTTP1/HTTP2 with connection reuse. This is a C++ core plus supervisor, not a standalone all-C++ trading application. Benchmark the complete supervisor path before any claim that rewriting the remaining network glue matters. A clean full-C++ transport build remains a later option when development headers are available.
 The user's EC2 measurements are pending; do not duplicate or interfere with that EC2 job.
+
+## Review of the newly supplied EC2 measurements
+
+Source found remotely earlier: an earlier latency study. Reported187ms median/548ms p90 is public ticker round-trip through RoostooClient, which already reuses requests.Session. The timer includes its local rolling rate limiter and possible read-only retries. The observed48s pause can be consistent with quota waiting; raw stage timings are needed to attribute it. Binance133ms is an urllib REST round-trip, not WS event delivery age.
+
+lag.py fetches Roostoo then Binance, assigns both one averaged timestamp, linearly interpolates onto0.25s samples and searches only0..3s lag. This can bias or overstate temporal precision. Keep0.5s/corr0.77 as a reported hypothesis, not a proven fixed tradable window. Do not infer half of trades fail from one p90 value. Actual order-arrival time is earlier than response receipt and is not measured by GET.
+
+New clean observer: independent WS and paced REST threads, one monotonic clock, each Roostoo send/receive interval saved, budget waiting separate from network, all failures retained, BTC primary plus14 log coins. Default600s,4s spacing including three startup clock probes. No dense interpolation of sparse Roostoo observations. Lag diagnostics must examine both signs and send/midpoint/receive anchors; a bookTicker receipt has no source timestamp. This public capture still cannot verify actual order fills.

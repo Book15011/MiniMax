@@ -69,7 +69,20 @@ extern "C" int rate_take(void* h,i64 now,int limit,int reserve,int account,int a
 }
 extern "C" int state_event(int* state,int event){
     // 0 ready,1 submitted,2 unknown,3 pending,4 filled. Terminal states require explicit reconciliation outside this prototype.
+    if(!state||event<0||event>3||*state<0||*state>4)return -1;
     if(event==0){if(*state!=0)return 0;*state=1;return 1;}
     if(*state!=1)return -1;
     *state=event==1?2:(event==2?3:4);return 1;
+}
+
+extern "C" int health_permission(i64 age,i64 need_quote,i64 quote_p95,i64 order_p95,i64 uncertainty,i64 samples,i64 unresolved,
+ i64 opportunity,i64 target,i64 local,i64 margin,i64 minimum_samples,i64 feed_max,i64 clock_max){
+    if(age<0||need_quote<0||need_quote>1||quote_p95<0||order_p95<0||uncertainty<0||samples<0||unresolved<0||local<0||margin<0)return 1;
+    if(samples<minimum_samples||order_p95==0)return 2;
+    if(unresolved)return 3;
+    if(age>feed_max||uncertainty>clock_max)return 4;
+    if(opportunity<=0)return 5; // Unknown/absent opportunity budget is never green.
+    i128 total=static_cast<i128>(age)+(need_quote?quote_p95:0)+order_p95+uncertainty+local;
+    if(total>=target||total+margin>=opportunity)return 6;
+    return 0;
 }

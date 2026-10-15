@@ -3,7 +3,8 @@ from pathlib import Path
 from decimal import Decimal,ROUND_DOWN,ROUND_UP
 import subprocess,json,random,hmac,hashlib
 import pytest
-BIN=Path('/home/ubuntu/test/MiniMax/results/book/20261015-fast-execution-v1/build/fast_exec')
+from research.book.gate.fast_exec.driver import OUT
+BIN=OUT/'build/fast_exec'
 def native(rows):
     r=subprocess.run([str(BIN),'--worker'],input=''.join(json.dumps(x)+'\n' for x in rows),capture_output=True,text=True,check=True)
     return [json.loads(x) for x in r.stdout.splitlines()]
@@ -61,3 +62,22 @@ def test_book_decoder_rejects_crossed_invalid_and_unknown_symbols():
     good={'stream':'avntusdt@bookTicker','data':{'u':123,'s':'AVNTUSDT','b':'0.1338','a':'0.1339','B':'100','A':'100'}}
     r=native([dict(cmd='book',packet=good),dict(cmd='book',packet={**good,'data':{**good['data'],'b':'0.2'}}),dict(cmd='book',packet={**good,'data':{**good['data'],'s':'OTHERUSDT'}})])
     assert r[0]['valid'] and not r[1]['valid'] and not r[2]['valid']
+
+def test_invalid_native_state_event_cannot_mark_an_order_filled():
+    import ctypes as C
+    from research.book.gate.fast_exec.driver import Core
+    core=Core();state=C.c_int(1)
+    assert core.lib.state_event(C.byref(state),99)==-1
+    assert state.value==1
+def test_zero_depth_book_is_rejected():
+    from research.book.gate.fast_exec.driver import Core,book
+    p={'u':1,'s':'AVNTUSDT','b':'1','a':'1.01','B':'100','A':'0'}
+    assert book(Core(),p)['valid'] is False
+
+def test_latency_permission_is_independent_from_model_direction_and_uses_tail_budget():
+    base=dict(cmd='health',feed_age_ms=10,quote_needed=False,quote_p95_ms=187,order_p95_ms=187,clock_uncertainty_ms=20,
+        samples=30,unresolved_timeouts=0,opportunity_ms=500)
+    r=native([base,{**base,'order_p95_ms':548},{**base,'samples':3},{**base,'unresolved_timeouts':1},{**base,'quote_needed':True},{**base,'opportunity_ms':0}])
+    assert r[0]['allowed'] and not r[1]['allowed']
+    assert not r[2]['allowed'] and not r[3]['allowed']
+    assert r[4]['allowed'] and not r[5]['allowed']

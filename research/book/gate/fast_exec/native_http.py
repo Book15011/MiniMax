@@ -35,6 +35,7 @@ class NativeHTTP:
         if L.curl_easy_setopt(self.h,opt,value):raise RuntimeError('Unsupported libcurl option')
     def validate(self,url):
         p=urlsplit(url)
+        if p.username or p.password or p.fragment:raise ValueError('Credentials/fragments forbidden')
         if self.loopback_port and p.scheme=='http' and p.hostname=='127.0.0.1' and p.port==self.loopback_port and p.path=='/fixture' and not p.query:return
         if p.scheme!='https' or p.hostname!='mock-api.roostoo.com' or p.port not in [None,443] or p.username or p.password or p.fragment:
             raise ValueError('Public target not allowed')
@@ -59,6 +60,7 @@ class NativeHTTP:
         try:row['body']=json.loads(b''.join(self.chunks))
         except (ValueError,UnicodeDecodeError):row['body']=None
         row['success']=code==0 and row['http_status']==200 and isinstance(row['body'],dict) and row['body'].get('Success',True) is not False
+        if urlsplit(url).path=='/v3/ticker':row['success']=row['success'] and row['body'].get('Success') is True and isinstance(row['body'].get('Data'),dict)
         return row
     def close(self):
         if self.h:L.curl_easy_cleanup(self.h);self.h=None

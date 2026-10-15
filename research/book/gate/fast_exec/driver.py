@@ -1,8 +1,8 @@
 """Thin supervisor around the exact C++ core; no credential loading/order network path."""
 from pathlib import Path
-import ctypes as C,json,hashlib,hmac,sys,time
+import ctypes as C,json,hashlib,hmac,sys,time,os
 HERE=Path(__file__).parent
-OUT=Path('/home/ubuntu/test/MiniMax/results/book/20261015-fast-execution-v1')
+OUT=Path(os.environ.get('MM_FAST_RESULTS','/home/ubuntu/test/MiniMax/results/book/20261015-fast-execution-v1'))
 CFG=json.loads((HERE/'config.json').read_text())
 class Sized(C.Structure):
     _fields_=[('quantity',C.c_int64),('notional',C.c_int64),('fee',C.c_int64),('status',C.c_int)]
@@ -14,6 +14,7 @@ class Core:
         L.gate_order.argtypes=[C.c_int64]*9+[C.c_char_p]*5+[C.c_int,C.c_int64,C.POINTER(Sized)];L.gate_order.restype=C.c_int
         L.rate_new.restype=C.c_void_p;L.rate_free.argtypes=[C.c_void_p]
         L.rate_take.argtypes=[C.c_void_p,C.c_int64,C.c_int,C.c_int,C.c_int,C.c_int];L.rate_take.restype=C.c_int
+        L.health_permission.argtypes=[C.c_int64]*14;L.health_permission.restype=C.c_int
         L.state_event.argtypes=[C.POINTER(C.c_int),C.c_int];L.state_event.restype=C.c_int
     def parse(self,x):
         n=C.c_int64()
@@ -49,11 +50,16 @@ def book(core,packet):
     if symbol not in {s+'USDT' for s in CFG['symbols']}:return {'valid':False}
     try:
         b,a=core.parse(d['b']),core.parse(d['a']);bq,aq=core.parse(d['B']),core.parse(d['A'])
-        if b<=0 or a<b or bq<0 or aq<0 or not isinstance(d['u'],int) or d['u']<=0:return {'valid':False}
+        if b<=0 or a<b or bq<=0 or aq<=0 or type(d['u']) is not int or d['u']<=0:return {'valid':False}
         return {'valid':True,'symbol':symbol,'bid':b,'ask':a,'update_id':d['u']}
     except (KeyError,ValueError,TypeError):return {'valid':False}
 def execute(core,r):
     cmd=r['cmd']
+    if cmd=='health':
+        inputs=[r['feed_age_ms'],int(r['quote_needed']),r['quote_p95_ms'],r['order_p95_ms'],r['clock_uncertainty_ms'],r['samples'],r['unresolved_timeouts'],r['opportunity_ms'],CFG['target_filled_ms'],CFG['health_local_budget_ms'],CFG['health_safety_margin_ms'],CFG['health_min_samples'],CFG['feed_max_receipt_age_ms'],CFG['clock_max_uncertainty_ms']]
+        code=core.lib.health_permission(*inputs)
+        total=r['feed_age_ms']+(r['quote_p95_ms'] if r['quote_needed'] else 0)+r['order_p95_ms']+r['clock_uncertainty_ms']+CFG['health_local_budget_ms']
+        return {'allowed':code==0,'reason_code':code,'predicted_total_ms':total,'actual_order_stats_verified':False}
     if cmd=='size':return sized(core.size(r))
     if cmd=='prepare':
         if core.parse(r['quantity'])<=0:raise ValueError('Nonpositive quantity')

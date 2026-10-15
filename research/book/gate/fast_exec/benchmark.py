@@ -5,6 +5,7 @@ from decimal import Decimal,ROUND_DOWN
 import requests
 from .driver import CFG,OUT,Core,book,prepare,sized
 from .native_http import NativeHTTP,L
+from .public_auth import PublicAuth
 def stats(x):
     x=sorted(x)
     def q(p):return x[min(len(x)-1,math.ceil(p*len(x))-1)] if x else None
@@ -17,8 +18,8 @@ def micro(out,core_path=None):
     native=[];py=[];checksum=0
     for i in range(CFG['microbenchmark_iterations']):
         t=time.perf_counter_ns()
-        b=book(core,json.loads(packet));code,s=core.gate(fixture)
-        if not b['valid'] or code:raise AssertionError('Positive fixture rejected')
+        b=book(core,json.loads(packet));health=core.lib.health_permission(50,0,187,187,20,30,0,500,CFG['target_filled_ms'],CFG['health_local_budget_ms'],CFG['health_safety_margin_ms'],CFG['health_min_samples'],CFG['feed_max_receipt_age_ms'],CFG['clock_max_uncertainty_ms']);code,s=core.gate(fixture)
+        if not b['valid'] or code or health:raise AssertionError('Positive fixture rejected')
         prepared=prepare('AVNT/USD',sized(s)['quantity'],'1792040000000')
         checksum+=len(prepared['body'])
         native.append((time.perf_counter_ns()-t)/1000)
@@ -26,18 +27,18 @@ def micro(out,core_path=None):
         quantity=(Decimal(fixture['budget'])/(Decimal(fixture['price'])*Decimal('1.001'))).quantize(Decimal('0.0001'),rounding=ROUND_DOWN)
         checksum+=int(quantity>0)
         py.append((time.perf_counter_ns()-t)/1000)
-    result={'boundary':'JSON decode, book validation, native risk and sizing, decimal output, canonical body, dummy HMAC; no network or actual fill',
+    result={'boundary':'JSON decode, book validation, native latency permission, native risk and sizing, decimal output, canonical body, dummy HMAC; no network or actual fill',
         'complete_supervisor_prepare_us':stats(native),'decimal_size_only_us':stats(py),
         'complete_prepare_deadline_misses':sum(x>CFG['local_prepare_target_us'] for x in native),
         'target_prepare_us':CFG['local_prepare_target_us'],'iterations':CFG['microbenchmark_iterations'],'checksum':checksum,
         'comparison_is_same_scope':False,'performance_guarantee':False}
     (out/'microbenchmark.json').write_text(json.dumps(result,indent=2))
-def public(out):
+def public(out,host_role="unknown"):
     path=out/'public_matrix.jsonl'
     if path.exists():raise FileExistsError('Never overwrite captures')
     variants=['python_fresh_h1','native_warm_h2','native_cold_h1','python_reused_h1','native_warm_h1','native_cold_h2']
     native={v:NativeHTTP(http2=v.endswith('h2'),cold='cold' in v) for v in variants if v.startswith('native')}
-    py=requests.Session();due=time.monotonic();offset=0.;rows=[]
+    py=requests.Session();py.auth=PublicAuth();due=time.monotonic();offset=0.;rows=[]
     def pace():
         nonlocal due
         time.sleep(max(0,due-time.monotonic()));due=time.monotonic()+CFG['public_sample_interval_ms']/1000
@@ -58,6 +59,7 @@ def public(out):
                         t=time.monotonic_ns();wall=time.time_ns()
                         try:
                             h=py if v=='python_reused_h1' else requests.Session()
+                            h.auth=PublicAuth()
                             response=h.get(url,timeout=(CFG['connect_timeout_ms']/1000,CFG['request_timeout_ms']/1000),allow_redirects=False)
                             body=response.json()
                             r={'start_mono_ns':t,'end_mono_ns':time.monotonic_ns(),'send_unix_ns':wall,'receive_unix_ns':time.time_ns(),
@@ -76,14 +78,14 @@ def public(out):
                 'actual_http_versions':sorted({r.get('http_version') for r in z if r.get('http_version') is not None}),
                 'native_new_connections':sum(r.get('new_connections',0) for r in z)}
         result={'status':'PUBLIC_GET_ONLY','host':platform.node(),'libcurl':L.curl_version().decode(),'variants':summary,
-            'clock_offset_ms_last_probe':offset,'order_ack_or_fill_measured':False,'signed_calls':0,'orders':0,'ec2_measurement':False,
+            'clock_offset_ms_last_probe':offset,'order_ack_or_fill_measured':False,'signed_calls':0,'orders':0,'ec2_measurement':host_role=='ec2','host_role':host_role,'host_role_source':'Explicit CLI label; not attested',
             'small_sample_percentiles_descriptive_only':True}
         (out/'public_summary.json').write_text(json.dumps(result,indent=2));print(json.dumps(result,indent=2),flush=True)
     finally:
         py.close()
         for h in native.values():h.close()
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--out',type=Path,default=OUT);p.add_argument('--core',type=Path);p.add_argument('--micro-only',action='store_true')
+    p=argparse.ArgumentParser();p.add_argument('--out',type=Path,default=OUT);p.add_argument('--core',type=Path);p.add_argument('--micro-only',action='store_true');p.add_argument('--host-role',choices=['lab','ec2','unknown'],default='unknown')
     a=p.parse_args();a.out.mkdir(parents=True,exist_ok=True);micro(a.out,a.core)
-    if not a.micro_only:public(a.out)
+    if not a.micro_only:public(a.out,a.host_role)
 if __name__=='__main__':main()

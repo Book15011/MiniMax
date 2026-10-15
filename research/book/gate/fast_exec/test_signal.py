@@ -29,3 +29,11 @@ def test_untradable_coin_and_stale_feed_block_intent():
     assert not decision(c,'AVNTUSDT',900_000_000,1_000_000_000,b,q,20,{},1792040000000)['eligible']
     b['receive_mono_ns']=500_000_000
     assert not decision(c,'AVNTUSDT',900_000_000,1_000_000_000,b,q,20,{'AVNT/USD':{'CanTrade':True,'AmountPrecision':4}},1792040000000)['eligible']
+
+def test_burst_fires_once_per_episode_and_rearms_after_condition_clears():
+    d=BurstDetector()
+    d.update('AVNTUSDT',1,0,10000000)
+    assert d.update('AVNTUSDT',2,1_100_000_000,10100000)
+    assert not d.update('AVNTUSDT',3,1_200_000_000,10100000)
+    assert not d.update('AVNTUSDT',4,2_300_000_000,10100000)
+    assert d.update('AVNTUSDT',5,3_400_000_000,10200000)
