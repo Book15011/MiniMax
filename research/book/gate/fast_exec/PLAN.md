@@ -32,3 +32,8 @@ User request: research first, then build the simplest correct low-latency protot
 - ENA Express requirements/limitations: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-express.html
 
 Work only in Book's feature/latency-gate worktree. Results: /home/ubuntu/test/MiniMax/results/book/20261015-fast-execution-v1. Public research only; no secret reads, signed calls, orders, live changes or main merge. Build outputs/dependency archives/raw evidence remain ignored under results.
+
+## Implementation addendum: dependency evidence
+Official APT downloads were interrupted after stalled acquisition; HTTPS Ubuntu package downloads and individual official raw header requests also timed out. Logs remain in the ignored results folder. No global package/runtime was modified.
+Build the exact sizing/risk/state core in dependency-free C++17. A thin Python supervisor supplies the installed C-backed JSON/TLS/HMAC facilities, and an isolated libcurl C-ABI binding measures native HTTP1/HTTP2 with connection reuse. This is a C++ core plus supervisor, not a standalone all-C++ trading application. Benchmark the complete supervisor path before any claim that rewriting the remaining network glue matters. A clean full-C++ transport build remains a later option when development headers are available.
+The user's EC2 measurements are pending; do not duplicate or interfere with that EC2 job.
