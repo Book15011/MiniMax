@@ -33,8 +33,14 @@ def simulate(t,bid,ask,long_gap,short_gap,rules,coins,candidate,p,delay,start,en
     fee=p["taker"]*fee_multiplier;cash=float(p["capital"]);q=0.;side=0;j=None;opened=None
     pending=None;next_entry=-np.inf;trips=[];fees=0.;attempts=fills=expired=0
     equity=[];gross=[];orders=[];entry_wait=[];exit_wait=[]
+    V=np.isfinite(bid)&np.isfinite(ask)&(bid>0)&(ask>=bid)
+    options=[(k,sd) for k in range(len(coins)) for sd in sorted(candidate["directions"],reverse=True)]
+    strengths=np.column_stack([np.where(V[:,k],long_gap[:,k] if sd>0 else short_gap[:,k],np.nan) for k,sd in options])
+    strengths=np.where(np.isfinite(strengths)&(strengths>=candidate["threshold"]),strengths,-np.inf)
+    winners=np.argmax(strengths,axis=1)
+    bestg=strengths[np.arange(len(t)),winners]
     def valid(i,k):
-        return np.isfinite([bid[i,k],ask[i,k]]).all() and 0<bid[i,k]<=ask[i,k]
+        return bool(V[i,k])
     def close(i,terminal=False):
         nonlocal cash,q,side,j,opened,fees,next_entry
         px=bid[i,j] if side>0 else ask[i,j];f=q*px*fee
@@ -67,17 +73,9 @@ def simulate(t,bid,ask,long_gap,short_gap,rules,coins,candidate,p,delay,start,en
             if (np.isfinite(gap) and gap<=0) or now-opened["entry_time"]>=p["hold_seconds"] or adverse<=-p["stop_fraction"]:
                 pending={"kind":"exit","due":now+delay,"i":i,"signal_time":float(now)}
         if not q and pending is None and now>=next_entry:
-            best=None
-            for sd in candidate["directions"]:
-                signals=long_gap[i] if sd>0 else short_gap[i]
-                for k in range(len(coins)):
-                    g=signals[k]
-                    if valid(i,k) and np.isfinite(g) and g>=candidate["threshold"]:
-                        key=(float(g),-k,sd)
-                        if best is None or key>best[0]:best=(key,k,sd)
-            if best is not None:
-                _,k,sd=best;attempts+=1
-                pending={"kind":"entry","coin":k,"side":sd,"gap":best[0][0],"due":now+delay,"i":i,"signal_time":float(now)}
+            if np.isfinite(bestg[i]):
+                k,sd=options[winners[i]];attempts+=1
+                pending={"kind":"entry","coin":k,"side":sd,"gap":float(bestg[i]),"due":now+delay,"i":i,"signal_time":float(now)}
         if q:
             nav=cash+side*q*(bid[i,j] if side>0 else ask[i,j])-q*(bid[i,j] if side>0 else ask[i,j])*fee if valid(i,j) else np.nan
             notional=q*(bid[i,j] if side>0 else ask[i,j]) if valid(i,j) else np.nan
@@ -92,7 +90,7 @@ def simulate(t,bid,ask,long_gap,short_gap,rules,coins,candidate,p,delay,start,en
     pnl=np.array([x["net_pnl"] for x in trips]);wins=pnl[pnl>0];loss=pnl[pnl<0]
     maxcalls=0
     for k,s in enumerate(orders):
-        maxcalls=max(maxcalls,2+int(np.sum((np.array(orders)>=s)&(np.array(orders)<s+60))))
+        maxcalls=max(maxcalls,int(np.sum((np.array(orders)>=s)&(np.array(orders)<s+60))))
     return {"candidate":candidate["name"],"return":net,"mdd":dd,"trades":len(trips),"entry_attempts":attempts,"entry_fills":fills,
             "expired_entries":expired,"fill_rate":fills/attempts if attempts else None,
             "win_rate":float((pnl>0).mean()) if len(pnl) else None,
