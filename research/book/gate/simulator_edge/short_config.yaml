@@ -1,0 +1,7 @@
+lookbacks: [24, 72, 168]
+exposure: 0.5
+selection_hours: 4
+squeeze_guard: 0.08
+rebalance_hours: 1
+band: 0.03
+total_family: 26
