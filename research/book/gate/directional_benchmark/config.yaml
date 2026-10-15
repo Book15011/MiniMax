@@ -1,0 +1,47 @@
+protocol_version: 1
+primary_horizon_hours: 50
+live_test_budget_usd: 2000
+live_test_condition: strong_simulation_evidence_first
+paper_starting_equity: 2000
+main_model: book_orch
+main_model_registry_run: 033c466d54a7766f
+main_model_registry_commit: bd30554e9c94
+reference_model: pol_switch_vt_tl_e20v45
+reference_registry_run: 0ec3cf0ca1185b36
+train_start: '2026-08-01'
+train_end_exclusive: '2026-09-01'
+quote_start: '2026-10-06'
+quote_end_exclusive: '2026-10-15'
+diagnostic_split: '2026-10-10'
+liquid_coins: [BTC, ETH, SOL, BNB, XRP]
+feature_horizon_minutes: 10
+feature_availability_delay_seconds: 60
+ridge_alpha: 10.0
+prediction_entry_bps: 25.0
+flow_entry: 0.20
+flat_return_1m_bps: 5.0
+no_chase_return_5m_bps: 30.0
+hold_seconds: 600
+entry_ttl_seconds: 120
+cooldown_seconds: 60
+long_exposure: 0.99
+short_exposure: 0.50
+base_execution_delay_seconds: 6
+stress_execution_delay_seconds: [30, 60]
+taker_fee: 0.001
+maker_fee: 0.0005
+maker_fill_sensitivity: [1.0, 0.5]
+minimum_order_usd: 1
+maximum_quote_age_seconds: 12
+sampled_public_calls_per_minute: 10
+max_process_calls_per_minute: 20
+reserve_exit_calls: 3
+max_workers: 2
+pass_rules:
+  paired_95pct_lower_difference_vs_B: positive
+  median_50h_return_after_costs: positive
+  stress_net_result: positive
+  recent_day_return: nonnegative
+  minimum_reconciled_round_trips: 20
+  gross_exposure: at_most_1
+  actual_maker_role_and_queue: unverified_is_not_live_qualification
