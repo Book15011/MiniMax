@@ -62,3 +62,17 @@ def test_penalty_denominators_differ_and_do_not_discount_losses():
     assert penalized_round(.5,"round_profit_haircut20")==pytest.approx(.208)
     assert penalized_round(.5,"incremental_profit_haircut20")==pytest.approx(.176)
     assert penalized_round(-.1,"round_profit_haircut20")==pytest.approx(-.244)
+
+def test_favorable_long_and_short_moves_can_make_positive_net_profit():
+    assert run([100,100,103])["return"]>0
+    assert run([100,100,97],short=True)["return"]>0
+def test_stop_does_not_fill_at_the_earlier_trigger_price():
+    z=run([100,100,96,110])
+    tr=z["trips"][0]
+    assert tr["exit_time"]==18 and tr["exit_price"]==110 and not tr["terminal"]
+def test_gate_requirements_match_each_penalty_equation():
+    from research.book.gate.simulator_edge.money import penalty_gain
+    for tr in ["none","subtract_20pp","equity_haircut20","round_profit_haircut20","incremental_profit_haircut20"]:
+        for cutoff in [0,.02]:
+            g=penalty_gain(-.16,cutoff,tr)
+            assert penalized_round(g,tr)==pytest.approx(cutoff,abs=1e-14)
