@@ -1,7 +1,7 @@
 """Money and causal accounting contracts for the new comparison."""
 from decimal import Decimal as D
 import pytest
-from .broker import Portfolio, Order
+from research.book.gate.directional_benchmark.broker import Portfolio, Order
 def test_long_round_trip_fees_and_spread():
     p=Portfolio(D("2000"))
     p.fill(Order("BTC",1,D("1")),D("1000"),D(".001"))
@@ -25,7 +25,7 @@ def test_invalid_and_insufficient_funds_are_atomic():
     with pytest.raises(ValueError):p.fill(Order("BTC",1,D("3")),D("1000"),D(".001"))
     assert p.cash==D("2000") and not p.positions and p.fees==0
 def test_maker_role_depends_on_arrival_not_order_name():
-    from .broker import role
+    from research.book.gate.directional_benchmark.broker import role
     assert role(1,D("100"),D("99"),D("100"))=="TAKER"
     assert role(1,D("99"),D("99"),D("100"))=="RESTING"
     assert role(-1,D("100"),D("99"),D("100"))=="RESTING"

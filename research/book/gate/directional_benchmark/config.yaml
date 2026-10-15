@@ -45,3 +45,11 @@ pass_rules:
   minimum_reconciled_round_trips: 20
   gross_exposure: at_most_1
   actual_maker_role_and_queue: unverified_is_not_live_qualification
+
+feature_clip_quantiles: [0.01, 0.99]
+label_clip_quantiles: [0.001, 0.999]
+minimum_quote_volume_5m: 250000
+ridge_features: [ret1, ret5, ret15, vol15, flow1, flow5, volume_ratio]
+price_features: [ret1, ret5, ret15, vol15, volume_ratio]
+bootstrap_draws: 2000
+bootstrap_seed: 20261015
