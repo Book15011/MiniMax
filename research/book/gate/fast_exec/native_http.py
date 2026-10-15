@@ -38,7 +38,7 @@ class NativeHTTP:
         if self.loopback_port and p.scheme=='http' and p.hostname=='127.0.0.1' and p.port==self.loopback_port and p.path=='/fixture' and not p.query:return
         if p.scheme!='https' or p.hostname!='mock-api.roostoo.com' or p.port not in [None,443] or p.username or p.password or p.fragment:
             raise ValueError('Public target not allowed')
-        if p.path=='/v3/serverTime' and not p.query:return
+        if p.path in ['/v3/serverTime','/v3/exchangeInfo'] and not p.query:return
         if p.path=='/v3/ticker':
             q=parse_qsl(p.query,keep_blank_values=True)
             if len(q)==1 and q[0][0]=='timestamp' and re.fullmatch(r'\d{13}',q[0][1]):return

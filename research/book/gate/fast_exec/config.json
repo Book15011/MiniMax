@@ -39,5 +39,8 @@
   "microbenchmark_iterations": 20000,
   "paper_equity": "100000.00000000",
   "paper_order_budget": "1000.00000000",
-  "mode": "shadow_only"
+  "mode": "shadow_only",
+  "burst_max_reference_age_ms": 3000,
+  "reserved_order_ack_ms": 500,
+  "max_shadow_intent_records": 10000
 }
