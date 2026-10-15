@@ -34,7 +34,7 @@ def features(b,a,l,rules,p):
     tick.loc[:,[c for c in b.columns if c not in ["BONK/USD","PEPE/USD","STO/USD"]]]=np.nan
     f["tick_mm"]=tick;f["taker_tick"]=tick
     return {k:v.replace([np.inf,-np.inf],np.nan).to_numpy() for k,v in f.items()}
-def run(name,b,a,l,signals,rules,p,t0,t1,*,buy_rule="ask",fee_mult=1.,lag_mult=1,partial=False):
+def run(name,b,a,l,signals,rules,p,t0,t1,*,buy_rule="ask",fee_mult=1.,lag_mult=1,partial=False,trace=False):
     t=b.index.asi8/1e9;B,A,L=b.to_numpy(),a.to_numpy(),l.to_numpy();cols=list(b.columns)
     lo=int(b.index.searchsorted(t0));hi=int(b.index.searchsorted(t1,side="right"))-1
     fe=p["maker"]*fee_mult;ft=p["taker"]*fee_mult;lag=int(p["lag_samples"]*lag_mult)
@@ -138,13 +138,15 @@ def run(name,b,a,l,signals,rules,p,t0,t1,*,buy_rule="ask",fee_mult=1.,lag_mult=1
     maxcalls=int(rolling.max()+p["reserve_calls_per_minute"])
     assert maxcalls<=p["total_calls_per_minute"]
     win=pn[pn>0];loss=pn[pn<0]
-    return {"return":float(e[-1]/p["capital"]-1),"mdd":float(-(e/np.maximum.accumulate(e)-1).min()),
+    result={"return":float(e[-1]/p["capital"]-1),"mdd":float(-(e/np.maximum.accumulate(e)-1).min()),
             "trades":len(trips),"entry_attempts":attempts,"entry_fills":fills,"fill_rate":fills/attempts if attempts else None,
             "win_rate":float((pn>0).mean()) if len(pn) else None,"avg_win_usd":float(win.mean()) if len(win) else None,
             "avg_loss_usd":float(loss.mean()) if len(loss) else None,"ev_usd":float(pn.mean()) if len(pn) else None,
             "ev_return":float(rr.mean()) if len(rr) else None,"total_costs":float(costs),"crossed_spread_cost":float(spread_cost),
             "orders":orders,"max_calls_minute":maxcalls,"terminal_price_missing":terminal_missing,"trips":trips,
             "actual_fill_verified":False,"quantity_precision_applied":True,"assumed_partial_fills":partial}
+    if trace:result["_trace"]={"equity":e.copy(),"calls":np.array(callcounts),"times":t[lo:hi+1].copy()}
+    return result
 def load():
     p=yaml.safe_load(Path(__file__).with_name("config.yaml").read_text())["quote"]
     snapshot=json.loads((OUT/"public_exchange_snapshot.json").read_text())

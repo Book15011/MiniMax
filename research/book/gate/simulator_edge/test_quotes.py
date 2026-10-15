@@ -43,3 +43,11 @@ def test_multiasset_features_align_to_coins_and_market_filter_broadcasts():
     assert np.isfinite(f["tick_mm"][:,0]).all()
     assert np.isnan(f["tick_mm"][:,1]).all()
     assert f["market60_tt"].shape==b.shape
+
+def test_saved_equity_and_cash_ledger_reconstruct_exactly():
+    b,a,l=data();b.iloc[:21,0]=np.linspace(.03,.0363,21);a=b+.0001;l=a.copy()
+    z=run("mom5_tt",b,a,l,features(b,a,l,RULE,P),RULE,P,b.index[20],b.index[-1],trace=True)
+    e=z["_trace"]["equity"]
+    assert abs(z["return"]-sum(x["net_pnl"] for x in z["trips"])/P["capital"])<1e-12
+    assert z["mdd"]==float(-(e/np.maximum.accumulate(e)-1).min())
+    assert abs(z["total_costs"]-sum(x["entry_fee"]+x["exit_fees"] for x in z["trips"]))<1e-9
