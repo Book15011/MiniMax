@@ -18,16 +18,45 @@ quote:
   reserve_calls_per_minute: 4
   total_calls_per_minute: 20
   partial_fill_fraction: 0.5
+  hold_minutes: 30
+  tick_reversal_hold_minutes: 10
+  breakout_hold_minutes: 60
+  leader_hold_minutes: 60
+  lookback_minutes: 5
+  breakout_lookback_minutes: 60
+  spread_lookback_minutes: 30
+  strict_buy_rule: ask
 historical:
   exposure: 0.99
   start: '2022-01-01'
   split: '2025-01-01'
-  end: '2026-09-30 23:00'
-  horizons: [68, 72]
+  end: 2026-09-30 23:00
+  horizons:
+  - 68
+  - 72
   bootstrap_draws: 10000
   family: 23
   seed: 20261015
+  momentum:
+  - name: mom24_4h
+    lookback: 24
+    every: 4
+  - name: mom72_4h
+    lookback: 72
+    every: 4
+  - name: mom168_4h
+    lookback: 168
+    every: 4
+  - name: mom24_24h
+    lookback: 24
+    every: 24
+  breakout_lookback: 24
+  breakout_trail: 0.04
+  breakout_hold: 24
+  research_band: 0.03
 scenario:
   current_round_return: -0.16
-  cutoffs: [0.0, 0.02]
-  end_at: '2026-10-18 12:00'
+  cutoffs:
+  - 0.0
+  - 0.02
+  end_at: 2026-10-18 12:00
