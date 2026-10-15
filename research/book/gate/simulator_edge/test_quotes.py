@@ -34,3 +34,12 @@ def test_future_rows_do_not_change_a_fixed_past_period():
 def test_execution_price_changes_beyond_entry_are_losses_after_costs():
     b,a,l=data();z=run("last_low_tt",b,a,b.copy(),features(b,a,b,RULE,P),RULE,P,b.index[10],b.index[-1])
     assert z["return"]<0 and z["max_calls_minute"]<=20
+
+def test_multiasset_features_align_to_coins_and_market_filter_broadcasts():
+    b,a,l=data()
+    b["BTC/USD"]=b["STO/USD"]*1e6;a["BTC/USD"]=b["BTC/USD"]+.01;l["BTC/USD"]=a["BTC/USD"]
+    rules={**RULE,"BTC/USD":{"PricePrecision":2,"AmountPrecision":6,"MiniOrder":1}}
+    f=features(b,a,l,rules,P)
+    assert np.isfinite(f["tick_mm"][:,0]).all()
+    assert np.isnan(f["tick_mm"][:,1]).all()
+    assert f["market60_tt"].shape==b.shape

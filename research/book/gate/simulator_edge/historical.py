@@ -2,7 +2,7 @@
 from pathlib import Path
 from dataclasses import replace
 from concurrent.futures import ProcessPoolExecutor
-import hashlib,json,copy
+import hashlib,json,copy,inspect
 import numpy as np
 import pandas as pd
 import yaml
@@ -36,7 +36,7 @@ def job(name):
         if name==NAMES[0]:model=get(name)
         else:
             z=next(x for x in P["momentum"] if x["name"]==name);L,R=z["lookback"],z["every"]
-            model=Momentum(name,L,R);cfg["models"][model.spec.name]={"lookback_hours":L,"exposure":P["exposure"],"rebalance_hours":R,"research_source_sha256":hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+            model=Momentum(name,L,R);cfg["models"][model.spec.name]={"lookback_hours":L,"exposure":P["exposure"],"rebalance_hours":R,"research_source_sha256":hashlib.sha256(inspect.getsource(Momentum).encode()).hexdigest()}
         run=simulate(model,mk,cfg,starts,use_cache=True)
         E,G=run.equity,run.gross
         tr=run.trades
@@ -57,7 +57,7 @@ def job(name):
                     if c in lookup:U[i,lookup[c]]=True
         sig=U&(C>hi)&(v24>v7)&np.isfinite(C)
         strength=np.where(sig,C/hi-1,-np.inf)
-        dummy=pd.DataFrame(0.,index=idx,columns=cols)
+        dummy=pd.DataFrame(0.,index=pd.date_range(idx[0],idx[-1],freq="h"),columns=cols)
         sim=Simulator(mk,dummy,float(P["research_band"]),Costs(cfg["harness"]["fees"]["taker"],cfg["harness"]["fees"]["short"]),
                       cfg["harness"]["execution_lag_hours"],16,cfg["harness"]["activity_guard_offset_hours"],
                       cfg["harness"]["keep_alive_weight"],guard_utc_day=cfg["harness"]["guard_utc_day"],extra_cols=cols)
@@ -72,7 +72,7 @@ def job(name):
                 if held is None and np.isfinite(strength[i]).any():
                     held=int(np.argmax(strength[i]));entry=h;peak=C[i,held]
                 if held is not None:rows[h,held]=P["exposure"]
-            res=sim.run(sim.index.get_loc(t),72,trace=True,first=(np.arange(i0,i0+73),rows,i0+73))
+            res=sim.run(sim.index.get_loc(t),72,trace=True,first=(np.arange(sim.index.get_loc(t),sim.index.get_loc(t)+73),rows,sim.index.get_loc(t)+73))
             E[n]=res.equity;G[n]=res.trace["gross"]
             for h,kind,w0,w1,eq,cost in res.trace["trades"]:
                 delta=np.abs(w1-w0);fees+=float(delta.sum())*cfg["harness"]["fees"]["taker"]*eq*cfg["scoring"]["e0"]
