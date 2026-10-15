@@ -40,14 +40,16 @@ static void cpu(const Config& cfg,const fs::path& output,int iterations){
  const std::string prep=R"({"cmd":"prepare","pair":"AVNT/USD","quantity":"9.99000000","timestamp":"1792000000000"})";
  Protocol engine(cfg);std::vector<I> samples;samples.reserve(iterations);I failures=0;volatile size_t bytes=0;
  for(int i=0;i<iterations+1000;++i){
-  I start=mono();auto parsed=parse_json(message);auto r=engine.process(parsed.get());
+  std::string book_message=R"({"cmd":"book","now_ms":)"+std::to_string(i)+R"(,"packet":{"s":"AVNTUSDT","u":)"+std::to_string(i+1)+R"(,"b":"1.00400000","a":"1.00410000","B":"100","A":"100"}})";
+  I start=mono();auto book_input=parse_json(book_message);auto book_result=engine.process(book_input.get());bytes+=dump(book_result.get()).size();
+  auto parsed=parse_json(message);auto r=engine.process(parsed.get());
   if(!b(r.get(),"allowed"))++failures;auto parsed_prepare=parse_json(prep);auto result=engine.process(parsed_prepare.get());bytes+=dump(result.get()).size();
   I elapsed=mono()-start;if(i>=1000)samples.push_back(elapsed);
  }
  std::sort(samples.begin(),samples.end());auto r=object();add(r.get(),"iterations",static_cast<I>(iterations));add(r.get(),"failures",failures);
  add(r.get(),"median_ns",samples[samples.size()/2]);add(r.get(),"p95_ns",samples[(samples.size()*95+99)/100-1]);add(r.get(),"p99_ns",samples[(samples.size()*99+99)/100-1]);
  add(r.get(),"maximum_ns",samples.back());add(r.get(),"over_1ms",static_cast<I>(std::count_if(samples.begin(),samples.end(),[](I x){return x>=1000000;})));
- add(r.get(),"network_or_fill_measured",false);add(r.get(),"pipeline",std::string("native JSON decode, latency/risk/fee gate, sizing, serialization, OpenSSL dummy HMAC"));
+ add(r.get(),"network_or_fill_measured",false);add(r.get(),"pipeline",std::string("native book JSON decode/validation, pure burst detector, timing/risk/fee gate, sizing, serialization, OpenSSL dummy HMAC"));
  save(output/"cpu.json",r.get());std::cout<<dump(r.get())<<'\n';(void)bytes;
 }
 static void shadow(const Config& cfg,const fs::path& output,int seconds){
@@ -91,15 +93,23 @@ static void shadow(const Config& cfg,const fs::path& output,int seconds){
    Detector detector;std::unordered_map<std::string,I> ids;
    try{
     websocket("https://data-stream.binance.vision:443"+path,"data-stream.binance.vision",path,deadline,[&](const std::string& text){
-     I received=mono();auto p=parse_json(text);Book x=decode_book(p.get(),received/1000000,cfg);
+     I received=mono();auto p=parse_json(text);Book x=decode_book(p.get(),received,cfg);
      if(x.id<=ids[x.symbol])return;ids[x.symbol]=x.id;++books;bool signal=detector.update(x,cfg);
      auto event=object();add(event.get(),"kind",std::string("book"));add(event.get(),"receive_mono_ns",received);add(event.get(),"receive_unix_ms",unixms());
      add(event.get(),"burst_episode",signal);json_object_object_add(event.get(),"packet",p.release());audit.append(event.get());
      if(signal){
       ++episodes;auto decision_row=object();add(decision_row.get(),"kind",std::string("decision"));add(decision_row.get(),"symbol",x.symbol);
       add(decision_row.get(),"receive_mono_ns",received);add(decision_row.get(),"allowed",false);
-      add(decision_row.get(),"reason",std::string("actual_order_timing_unverified"));add(decision_row.get(),"model_function",std::string("Detector::update"));
-      {std::lock_guard<std::mutex> g(quotes.mutex);add(decision_row.get(),"quote_age_ms",quotes.received?(received-quotes.received)/1000000:-1);add(decision_row.get(),"quote_rtt_ms",quotes.rtt);add(decision_row.get(),"clock_uncertainty_ms",quotes.uncertainty);}
+      add(decision_row.get(),"model_function",std::string("Detector::update"));
+      auto inputs=object();add(inputs.get(),"now_ms",received/1000000);add(inputs.get(),"feed_ms",received/1000000);
+      add(inputs.get(),"account_ms",received/1000000);add(inputs.get(),"verified_order_stats",false);
+      {std::lock_guard<std::mutex> g(quotes.mutex);
+       add(inputs.get(),"quote_ms",quotes.received/1000000);
+       add(decision_row.get(),"quote_age_ms",quotes.received?(received-quotes.received)/1000000:-1);
+       add(decision_row.get(),"quote_rtt_ms",quotes.rtt);add(decision_row.get(),"clock_uncertainty_ms",quotes.uncertainty);}
+      auto permission=decision(inputs.get(),cfg,false);add(decision_row.get(),"reason",s(permission.get(),"reason"));
+      add(decision_row.get(),"account_is_paper_assumption",true);
+      json_object_object_add(decision_row.get(),"permission",permission.release());
       audit.append(decision_row.get());
      }
     });

@@ -154,3 +154,8 @@ def test_native_websocket_rejects_bad_frames(frame):
 def test_native_websocket_handshake_must_be_valid():
     def handler(c):ws_handshake(c,bad=True)
     r=run_ws(handler);assert r[-1]["messages"]==0 and "validation" in r[-1]["error"]
+
+def test_account_counter_overflow_and_extreme_times_fail_closed():
+    assert "error" in call([{"cmd":"quota","now_ms":0,"account_used":2147483647,"exit":True}])[0]
+    row={"cmd":"book","now_ms":9223372036854775807,"packet":{"s":"AVNTUSDT","u":1,"b":"1","a":"1","B":"1","A":"1"}}
+    assert not call([row])[0]["valid"]

@@ -53,9 +53,9 @@ struct Detector {
   if(x.id<=h.id||x.received<h.last)return false;
   h.id=x.id;h.last=x.received;
   auto& v=h.values;
-  while(!v.empty()&&x.received-v.front().first>cfg.get("burst_max_reference_age_ms"))v.pop_front();
+  while(!v.empty()&&x.received-v.front().first>cfg.get("burst_max_reference_age_ms")*1000000)v.pop_front();
   I reference=0;
-  for(const auto& a:v){if(x.received-a.first>=cfg.get("burst_horizon_ms"))reference=a.second;else break;}
+  for(const auto& a:v){if(x.received-a.first>=cfg.get("burst_horizon_ms")*1000000)reference=a.second;else break;}
   if(v.size()>=100000){v.clear();h.active=false;return false;}v.push_back({x.received,x.bid});
   bool on=reference>0&&static_cast<__int128>(x.bid-reference)*10000>=static_cast<__int128>(reference)*cfg.get("burst_min_bps");
   bool signal=on&&!h.active;h.active=on;return signal;
@@ -74,7 +74,7 @@ inline J decision(json_object* p,const Config& c,bool unresolved){
  auto r=object();add(r.get(),"allowed",false);
  auto reject=[&](const std::string& why){add(r.get(),"reason",why);return std::move(r);};
  I now=n(p,"now_ms"),feed=n(p,"feed_ms"),qt=n(p,"quote_ms"),account=n(p,"account_ms");
- if(now<0||feed>now||qt>now||account>now||now-account>c.get("feed_max_receipt_age_ms"))return reject("stale_or_future_snapshot");
+ if(now<0||feed<0||qt<0||account<0||feed>now||qt>now||account>now||now-account>c.get("feed_max_receipt_age_ms"))return reject("stale_or_future_snapshot");
  if(!b(p,"verified_order_stats"))return reject("actual_order_timing_unverified");
  int h=health_permission(now-feed,0,0,n(p,"order_p95_ms"),n(p,"uncertainty_ms"),n(p,"order_samples"),unresolved?1:0,
  n(p,"opportunity_ms"),c.get("target_filled_ms"),c.get("health_local_budget_ms"),c.get("health_safety_margin_ms"),c.get("health_min_samples"),c.get("feed_max_receipt_age_ms"),c.get("clock_max_uncertainty_ms"));
@@ -117,12 +117,12 @@ struct Protocol {
   if(cmd=="ack")return order.ack(p);
   if(cmd=="decision")return decision(p,cfg,order.blocked());
   if(cmd=="quota"){
-   I used=n(p,"account_used");if(used<0||used>2147483647)throw std::invalid_argument("account quota");
+   I used=n(p,"account_used");if(used<0||used>30)throw std::invalid_argument("account quota");
    bool ok=rate_take(rate,n(p,"now_ms"),static_cast<int>(cfg.get("process_calls_per_minute")),b(p,"exit")?0:static_cast<int>(cfg.get("reserve_exit_calls")),static_cast<int>(used),static_cast<int>(cfg.get("account_calls_per_minute")));
    auto r=object();add(r.get(),"accepted",ok);return r;
   }
   if(cmd=="book"){
-   auto r=object();try{Book x=decode_book(field(p,"packet"),n(p,"now_ms"),cfg);
+   auto r=object();try{I stamp=n(p,"now_ms");if(stamp<0||stamp>9223372036854LL)throw std::invalid_argument("timestamp");Book x=decode_book(field(p,"packet"),stamp*1000000,cfg);
     if(x.id<=last[x.symbol]){add(r.get(),"valid",false);return r;}last[x.symbol]=x.id;
     bool signal=detector.update(x,cfg);add(r.get(),"valid",true);add(r.get(),"signal",signal);add(r.get(),"symbol",x.symbol);
    }catch(const std::invalid_argument&){add(r.get(),"valid",false);}return r;
