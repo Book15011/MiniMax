@@ -2,6 +2,9 @@
 
 **Built and tested. No prototype demonstrates a verified repeatable edge; no deployment recommended.**
 
+Scope: this six-second-resolution screen on BTC/ETH/BONK/PEPE/STO does not settle a one-second execution opportunity.
+Its fee pattern and conditional matched cash gains warrant a different declared test. No actual subsecond order-processing delay has been measured.
+
 ## Historical recent-day results
 
 | Prototype | Logic | Oct 14 net gain before penalty | Closed trips | Net wins | Fees (initial USD 100k) |
