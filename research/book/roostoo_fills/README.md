@@ -56,3 +56,20 @@ Why: the whole profit of a tick scalp is one tick, the spread. A market buy pays
 ask) plus a 0.1% fee, so a win needs the price to rise two more ticks before it falls. At the tick level that is
 close to a coin flip, and no timing filter changed it.
 
+
+## Experiment results (2026-10-14 08:46-09:06 UTC and 2026-10-15 01:47 UTC, STO, live account)
+
+| Test | Quote (bid / ask / last) | Result |
+|---|---|---|
+| Resting sell at the ask, 0.0364 | 0.0363 / 0.0364 / 0.0364 for 5+ min | Pending while the last price equalled it; filled after 346 s, the moment the bid rose to 0.0364 (maker 0.05%) |
+| Resting buy one step under the bid, 0.0363 | 0.0364 / 0.0365 / 0.0364 | Pending 105 s, cancelled; the cancelled order again came back with `FilledQuantity` = the whole quantity and `FilledAverPrice` = 0 |
+| Limit buy priced at the ask, 0.0364 | 0.0363 / 0.0364 / 0.0364 | Filled at once as taker (0.1%): a limit at the ask is a market buy |
+| **Market buy** (Oct 15) | **0.0356 / 0.0357 / 0.0356**, unchanged after | **Filled at 0.0357 = the ask**, not the last price (taker 0.1%) |
+
+So Roostoo uses a different price for each case: market buys fill at MinAsk and market sells at MaxBid; a resting sell
+fills when MaxBid reaches it; a resting buy needs more than MaxBid touching it. "The price you see is the fill price"
+means exactly the shown ask or bid, with no hidden discount.
+
+Bug noted: `fillprobe.py`'s final `cancel_order(pair=...)` raises when nothing is pending, so its closing market sell
+did not run and 5494.5 STO stayed in the account; the hourly bot sold it at its next 16:00 decision (the account held
+0 STO on Oct 15). `mkttest.py` (the market-order test) wraps its clean-up so it always runs.
