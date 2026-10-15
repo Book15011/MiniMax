@@ -1,0 +1,33 @@
+symbols: [BTC, ETH, BONK, PEPE, STO]
+capture:
+  duration_seconds: 1200
+  external_interval_seconds: 1.5
+  roostoo_interval_seconds: 12
+  request_timeout_seconds: 5
+signal:
+  basis_seconds: 300
+  min_basis_observations: 15
+  hold_seconds: 120
+  stop_fraction: 0.02
+  taker: 0.001
+  capital: 100000
+  long_exposure: 0.99
+  short_exposure: 0.50
+  min_order: 1
+  cooldown_seconds: 12
+candidates:
+  - {name: latency_both25, directions: [1, -1], threshold: 0.0025}
+  - {name: latency_both50, directions: [1, -1], threshold: 0.005}
+  - {name: latency_long25, directions: [1], threshold: 0.0025}
+  - {name: latency_short25, directions: [-1], threshold: 0.0025}
+scenarios:
+  - {name: base, order_delay: 6, external_delay: 2, clock_offset: 3.15, fee_multiplier: 1}
+  - {name: fast2, order_delay: 2, external_delay: 2, clock_offset: 3.15, fee_multiplier: 1}
+  - {name: slow12, order_delay: 12, external_delay: 2, clock_offset: 3.15, fee_multiplier: 1}
+  - {name: external_slow6, order_delay: 6, external_delay: 6, clock_offset: 3.15, fee_multiplier: 1}
+  - {name: clock0, order_delay: 6, external_delay: 2, clock_offset: 0, fee_multiplier: 1}
+  - {name: clock6, order_delay: 6, external_delay: 2, clock_offset: 6, fee_multiplier: 1}
+  - {name: double_fees, order_delay: 6, external_delay: 2, clock_offset: 3.15, fee_multiplier: 2}
+archive:
+  days: ['2026-10-08','2026-10-09','2026-10-10','2026-10-11','2026-10-12','2026-10-13','2026-10-14']
+  max_workers: 2
