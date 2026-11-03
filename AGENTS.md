@@ -1,5 +1,7 @@
 # MiniMax: rules for agents and teammates
 
+> **Status, 2026-11-03.** The round is over and the project is closed. This file is kept as the record of how the team worked during the competition. Its server paths and its rule against using GitHub day to day no longer apply. Start from `README.md`.
+
 Every agent (Claude Code, Codex/ChatGPT, Copilot) reads this file at the start of every session and follows it.
 It overrides tool defaults. Change it only through a reviewed merge (§4). Last updated 2026-10-08.
 

@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+type: software
+title: "MiniMax: an autonomous crypto trading bot and research record from the Roostoo APAC Quant Trading Hackathon"
+authors:
+  - given-names: Pol
+  - given-names: Book
+  - given-names: Baitoey
+license: MIT
+date-released: 2026-11-03
+repository-code: "https://github.com/Book15011/MiniMax"
+keywords:
+  - quantitative trading
+  - crypto
+  - backtesting
+  - momentum
+  - pre-registration
