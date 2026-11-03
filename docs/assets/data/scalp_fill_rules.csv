@@ -1,0 +1,8 @@
+group,label,per_day_pct
+Assumed: a resting buy fills when the bid touches it,Replay at default lots,7.86
+Measured fill rules,"Resting buy, sell +1 step, stop 2 steps",-1.6
+Measured fill rules,"Resting buy, sell +1 step, stop 4 steps",-0.5
+Measured fill rules,"Resting buy, sell +1 step, stop 8 steps",-1.3
+Measured fill rules,"Resting buy, no stop (closed trips only)",0.2
+Measured fill rules,Buy fills only when the ask falls to it,-10.6
+Measured fill rules,"Market buy at the ask, stop 2 steps",-29.0
