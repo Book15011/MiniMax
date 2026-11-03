@@ -26,13 +26,9 @@ It overrides tool defaults. Change it only through a reviewed merge (§4). Last 
    - Never commit to `main` directly; changes reach it only through `scripts/wt merge` with a reviewer.
    - Never rewrite or delete someone else's branch.
    - Never commit data, logs, secrets, or files over 5 MB.
-6. **Respect the competition rules in code.**
-   - Directional strategies only: no market-making, arbitrage, pair trading or HFT.
-   - Gross exposure ≤ 100% of equity.
-   - At most 20 Roostoo calls per minute per process.
-   - Order requests are never retried automatically.
-7. **Keep other teams out of our work.** Describe strategies by what they do. Never name other teams, and never copy their code, anywhere (code, commits, docs, prompts).
-8. **Don't guess.** Mark an unverified fact `UNVERIFIED` in code or docs and say so in your report.
+
+6. **Keep other teams out of our work.** Describe strategies by what they do. Never name other teams, and never copy their code, anywhere (code, commits, docs, prompts).
+7. **Don't guess.** Mark an unverified fact `UNVERIFIED` in code or docs and say so in your report.
 
 ## 3. Environment
 
@@ -105,20 +101,9 @@ Shared contracts: `src/contracts.py`. Change them only with all three members re
   - After an order timeout, reconcile with `query_order` and never resend.
 - **Logging:** JSONL, one line per request, decision and order, stamped with the git commit. Never log headers or keys.
 
-## 8. Competition facts
 
-| Fact | Value | Source |
-|---|---|---|
-| Fees | 0.10% market (taker), 0.05% limit (maker); shorts 0.10% on open and close | Luma, API docs |
-| Rate limit | 30 calls/min per account, queries included | FAQ Q22 |
-| Activity | ≥ 10 active days (deck) or 8 (Luma). **Plan for all 14.** An active day = ≥ 1 strategy trade | Deck, organizers |
-| Allowed | Directional long, sell, short, close. No leverage, HFT, market-making or arbitrage | Luma, deck |
-| Keys | Test key during prep; competition key only from the live start | Organizer email |
-| Scoring | Top 20 by return per region, then 0.4·Sortino + 0.3·Sharpe + 0.3·Calmar; formulas published on Finale Day | Luma, deck |
-| Repo | Markdown-only README explaining strategy, backtests, engine, fees and risk. Target **Oct 10**, deadline Oct 14 | Organizer email, deck |
-| Prices | Streamed from Binance, so Binance history is valid for backtests | FAQ Q17 |
 
-## 9. Dates (HKT)
+## 8. Dates (HKT)
 
 - Oct 1–3: prep, test key only.
 - **Oct 4 00:00**: live start, competition key on EC2.
