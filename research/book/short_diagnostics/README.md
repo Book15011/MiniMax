@@ -191,3 +191,5 @@ No live changes or current-account-switch claim follows from these diagnostics.
 The strongest baseline actual cost replay reproduced every original equity hour with maximum error 0 on all 160 cases and all 2,311 target decisions. Original versus doubled costs: mean +1.613% versus +1.223%; P10 -7.219% versus -7.517%; worst -18.769% versus -19.099%. Fees and halfspreads were both doubled. This does not demonstrate a reliable edge or establish replacement readiness.
 
 NEW_MODEL_SOURCE_REVIEW.json records the independent read-only review of the two cash-only hybrid sources and their exact source hashes. No causal or sizing defect was found. Candidate outcome and full cache checks remain separate.
+
+Cost replay v2 additionally hashes frozen raw close/volume and current universe/notes/spread before/after, as well as model/framework sources and published caches. The first baseline cost run remains in20261009-short-next-cost; paired new-model runs use20261009-short-next-cost-v2 with the same160 starts and same simulation math.

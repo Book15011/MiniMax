@@ -5,7 +5,7 @@ Decisions are recomputed once to recover source Series order and must exactly
 reproduce cached targets. Both cost scenarios use the same frozen decisions.
 """
 from __future__ import annotations
-import argparse,dataclasses,hashlib,inspect,json,sys
+import argparse,dataclasses,glob,hashlib,inspect,json,sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -101,7 +101,7 @@ def pin_publication(root,name,key,cp):
     files[str(sp)]=sha(sp)
     return score,files
 
-def source_hashes(source,model):
+def source_hashes(source,model,cfg,cp):
     modules=set(model_modules(model))
     if model.spec.name==BASELINE:
         modules.update(model_modules(model.INNER))
@@ -112,6 +112,19 @@ def source_hashes(source,model):
                 "backtest/scoring/evaluate.py","backtest/scoring/windows.py",
                 "backtest/scoring/weak_risk.py","backtest/scoring/metrics.py","src/contracts.py"):
         p=source/rel;out[rel]={"path":str(p),"sha256":sha(p)}
+    for label in ("historical_close","historical_qv"):
+        item=cp["input"]["sources"][label]
+        if sha(item["path"])!=item["sha256"]:
+            raise ValueError("frozen historical input changed: "+label)
+        out["input:"+label]={"path":item["path"],"sha256":item["sha256"],"matches_frozen":True}
+    panel=resolve(cfg["harness"]["panel_dir"])
+    for filename in ("universe.parquet","panel_notes.json"):
+        p=panel/filename
+        out["input:"+filename]={"path":str(p),"sha256":sha(p)}
+    spreads=sorted(glob.glob(str(resolve(cfg["harness"]["spreads_snapshot_glob"]))))
+    if spreads:
+        out["input:spread"]={"path":spreads[-1],"sha256":sha(spreads[-1]),
+                            "historical_bid_ask":False}
     return out
 
 def main(argv=None):
@@ -132,7 +145,7 @@ def main(argv=None):
     score,pins=pin_publication(root,a.model,a.key,cp)
     params=score["model"]["params"]
     model=get(a.model);market=load_market(cfg);h=cfg["harness"]
-    before=source_hashes(source,model)
+    before=source_hashes(source,model,cfg,cp)
     if a.model==BASELINE:
         proof=json.loads(Path(a.baseline_evidence).read_text())
         if proof["status"]!="PASS" or proof["run_key"]!=BASELINE_KEY or a.key!=BASELINE_KEY:
@@ -190,7 +203,7 @@ def main(argv=None):
             pairs.update({scenario+"_"+k:v for k,v in r.items()})
         rows.append(dict(model=a.model,start=str(t),end=str(t+pd.Timedelta(hours=HOURS)),**pairs))
         if i%40==0:print(a.model,i+1,"/160",flush=True)
-    if before!=source_hashes(source,model):raise ValueError("source changed during cost replay")
+    if before!=source_hashes(source,model,cfg,cp):raise ValueError("source changed during cost replay")
     if cache_before!={str(p):sha(p) for p in paths.values()}:raise ValueError("cache changed during cost replay")
     if any(sha(p)!=digest for p,digest in pins.items()):raise ValueError("published inputs changed")
     frame=pd.DataFrame(rows);out.mkdir(parents=True,exist_ok=True)
