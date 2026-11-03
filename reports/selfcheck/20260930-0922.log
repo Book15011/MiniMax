@@ -1,0 +1,5 @@
+2026-09-30 17:22:28,740 INFO no usable credentials (ROOSTOO_API_KEY / ROOSTOO_SECRET_KEY are not set (.env)); running public checks only
+2026-09-30 17:22:30,154 INFO server time and clock offset: PASS offset +1.81 s (applied to every signed request)
+2026-09-30 17:22:30,540 INFO exchangeInfo vs config universe: PASS 88 pairs listed; config universe missing on exchange: none
+2026-09-30 17:22:31,263 INFO ticker coverage: PASS 86 pairs quoted; 65/65 of the config universe
+2026-09-30 17:22:31,263 INFO report: /home/ubuntu/test/MiniMax/.worktrees/pol-roostoo-client/reports/selfcheck/20260930-0922.md
