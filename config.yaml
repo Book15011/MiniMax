@@ -571,6 +571,130 @@ models:
     sleeves:
       baitoey_vt_mom: {when: up, params: *baitoey_vt_mom, override: {target_daily_vol: 0.045}}
       pol_trend_ls: {when: down, params: *pol_trend_ls}
+  # DRY RUN ONLY (Pol, not committed): Book's book_e20combo_brk_cash, resolved from feature/e20-shortguard bd5e454
+  book_e20combo_brk_cash:
+    base:
+      channel_days: 20
+      scan_days: 120
+      vt:
+        prev: own
+        sleeves:
+          baitoey_vt_mom:
+            override:
+              target_daily_vol: 0.045
+            params:
+              chase_pullback: 0.05
+              chase_return: 0.15
+              chase_return_hours: 24
+              chase_volume_ratio: 3.0
+              chase_window_hours: 72
+              early_exit: true
+              exit_cooldown_hours: 24
+              exit_low_hours: 24
+              exit_volume_ratio: 1.5
+              k: 6
+              keep_rank: 12
+              lookback_days:
+              - 7
+              - 14
+              min_history_days: 30
+              no_chase: false
+              target_daily_vol: 0.03
+              vol_days: 30
+              volume_long_days: 7
+              volume_short_hours: 24
+              weighting: equal
+            when: up
+          pol_trend_ls:
+            params:
+              lookback_days: 21
+              min_coins: 8
+              min_history_days: 30
+              target_vol: 0.35
+              threshold: 0.5
+              top_n: 15
+              vol_days: 30
+            when: down
+        switch:
+          coins:
+          - BTCUSDT
+          - ETHUSDT
+          ema_days: 20
+          hysteresis: 0.03
+          out_of_trend_scale: 0.15
+          risk_budget: 0.25
+          state_days: 120
+          vol_days: 30
+    breadth_hours: 48
+    breadth_max_positive: 0.4
+    breadth_min_coins: 20
+    breadth_top_n: 30
+    btc_ema_days: 20
+    btc_ema_warmup_spans: 3
+    btc_return_hours: 168
+    btc_symbol: BTCUSDT
+    e20:
+      prev: own
+      sleeves:
+        baitoey_vt_mom:
+          override:
+            target_daily_vol: 0.045
+          params:
+            chase_pullback: 0.05
+            chase_return: 0.15
+            chase_return_hours: 24
+            chase_volume_ratio: 3.0
+            chase_window_hours: 72
+            early_exit: true
+            exit_cooldown_hours: 24
+            exit_low_hours: 24
+            exit_volume_ratio: 1.5
+            k: 6
+            keep_rank: 12
+            lookback_days:
+            - 7
+            - 14
+            min_history_days: 30
+            no_chase: false
+            target_daily_vol: 0.03
+            vol_days: 30
+            volume_long_days: 7
+            volume_short_hours: 24
+            weighting: equal
+          when: up
+        pol_trend_ls:
+          params:
+            lookback_days: 21
+            min_coins: 8
+            min_history_days: 30
+            target_vol: 0.35
+            threshold: 0.5
+            top_n: 15
+            vol_days: 30
+          when: down
+      switch:
+        coins:
+        - BTCUSDT
+        - ETHUSDT
+        ema_days: 20
+        hysteresis: 0.03
+        out_of_trend_scale: 0.15
+        risk_budget: 0.25
+        state_days: 120
+        vol_days: 30
+    liquidity_hours: 168
+    pullback_prior_hours: 24
+    pullback_recent_hours: 4
+    short_coin_cap: 0.1
+    short_daily_vol: 0.01
+    short_gross_cap: 0.25
+    short_k: 3
+    short_lookback_days:
+    - 7
+    - 14
+    short_min_score: 0.0
+    short_vol_days: 30
+    volume_fill_hours: 12
   # --- pol: ablations of Book's hierarchical-orchestrator plan (research only, reports/review/20261002-orchestrator-ablation.md) ---
   pol_abl_partial:                # C: move only alpha of the way to each new vt_mom target
     vt: *baitoey_vt_mom
