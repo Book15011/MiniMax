@@ -7,7 +7,6 @@
 ![License](https://img.shields.io/badge/license-MIT-52514e)
 ![Status](https://img.shields.io/badge/status-round%20finished-52514e)
 
-Team MiniMax: Pol (live engine), Book (data, backtest, validation), Baitoey (strategies, risk).
 
 The bot traded spot crypto by itself on one AWS EC2 machine for a 14-day round, starting from $100,000, with no leverage and no manual trading. This repository holds the code, the backtest and scoring system, the models we built, and an honest account of what worked and what did not.
 
